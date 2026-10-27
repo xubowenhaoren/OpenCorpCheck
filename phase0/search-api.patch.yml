@@ -1,0 +1,10 @@
+# Optional fallback when deepseek-official search is too slow or expensive.
+# Use it by replacing --patch ./dsh.patch.yml with:
+#   --patch ./dsh.patch.yml --patch ./search-api.patch.yml
+#
+# A patch replaces the whole `config` of the targeted row, so include both
+# searchProvider and fetchProvider.
+- id: web
+  config:
+    searchProvider: deepseek-search-api
+    fetchProvider: http

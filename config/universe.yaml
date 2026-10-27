@@ -1,0 +1,263 @@
+# OpenCorpCheck universe seed
+#
+# v1 = four index snapshots + a curated AI watchlist + on-demand private companies.
+# Entity resolution dedupes companies that appear in both an index and the watchlist.
+#
+# status:   listed | private | verify
+# category: model_lab | ai_search | ai_coding | robotics | ai_infra | ai_chips |
+#           ai_platform | data_labeling
+# coverage: index_member | ai_watchlist | discovered | stub
+
+version: 1
+as_of: "2026-10-27"
+
+indices:
+  - code: "000510"
+    name: "CSI A500"
+    market: A
+    source: csindex
+    refresh: weekly
+  - code: "HSI"
+    name: "Hang Seng Index"
+    market: HK
+    source: hsi
+    refresh: weekly
+  - code: "SPX"
+    name: "S&P 500"
+    market: US
+    source: spglobal
+    refresh: weekly
+  - code: "NDX"
+    name: "NASDAQ-100"
+    market: US
+    source: nasdaq
+    refresh: weekly
+
+# Curated AI watchlist. Not exhaustive; add companies when a demo/question needs them.
+ai_watchlist:
+  # ── US model labs ─────────────────────────────────────────────
+  - name: OpenAI
+    aliases: ["Open AI", "OpenAI OpCo"]
+    country: US
+    status: private
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://openai.com
+
+  - name: Anthropic
+    aliases: ["Anthropic PBC"]
+    country: US
+    status: private
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://www.anthropic.com
+
+  - name: xAI
+    aliases: ["xAI Corp"]
+    country: US
+    status: private
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://x.ai
+
+  - name: Mistral AI
+    aliases: ["Mistral"]
+    country: FR
+    status: private
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://mistral.ai
+
+  - name: Cohere
+    aliases: ["Cohere Inc"]
+    country: CA
+    status: private
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://cohere.com
+
+  - name: Safe Superintelligence
+    aliases: ["SSI", "Safe Superintelligence Inc"]
+    country: US
+    status: private
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://ssi.inc
+
+  - name: Thinking Machines Lab
+    aliases: ["Thinking Machines"]
+    country: US
+    status: private
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://thinkingmachines.ai
+
+  - name: Perplexity
+    aliases: ["Perplexity AI"]
+    country: US
+    status: private
+    category: ai_search
+    coverage: ai_watchlist
+    website: https://www.perplexity.ai
+
+  # ── US AI apps / infra ────────────────────────────────────────
+  - name: Anysphere
+    aliases: ["Cursor", "Anysphere Inc"]
+    country: US
+    status: private
+    category: ai_coding
+    coverage: ai_watchlist
+    website: https://cursor.com
+
+  - name: Figure AI
+    aliases: ["Figure"]
+    country: US
+    status: private
+    category: robotics
+    coverage: ai_watchlist
+    website: https://www.figure.ai
+
+  - name: Hugging Face
+    aliases: ["HuggingFace"]
+    country: US
+    status: private
+    category: ai_infra
+    coverage: ai_watchlist
+    website: https://huggingface.co
+
+  - name: Scale AI
+    aliases: ["Scale"]
+    country: US
+    status: private
+    category: data_labeling
+    coverage: ai_watchlist
+    website: https://scale.com
+
+  # ── China model labs ──────────────────────────────────────────
+  - name: DeepSeek
+    aliases: ["深度求索", "DeepSeek AI", "杭州深度求索"]
+    country: CN
+    status: private
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://www.deepseek.com
+
+  - name: Moonshot AI
+    aliases: ["月之暗面", "Kimi", "Moonshot"]
+    country: CN
+    status: private
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://www.moonshot.cn
+
+  - name: Zhipu AI
+    aliases: ["智谱", "智谱AI", "Zhipu"]
+    country: CN
+    status: listed
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://www.zhipuai.cn
+    identifiers:
+      - type: ticker
+        value: "02513.HK"
+        note: "From the finance_analyst watchlist; verify against HKEX before canonical use"
+
+  - name: MiniMax
+    aliases: ["稀宇科技", "MiniMax AI"]
+    country: CN
+    status: verify
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://www.minimax.io
+    notes: "Listing status/venue to verify; keep as private until confirmed"
+
+  - name: Baichuan AI
+    aliases: ["百川智能", "Baichuan"]
+    country: CN
+    status: private
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://www.baichuan-ai.com
+
+  - name: StepFun
+    aliases: ["阶跃星辰", "StepFun AI"]
+    country: CN
+    status: private
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://www.stepfun.com
+
+  - name: 01.AI
+    aliases: ["零一万物", "Yi"]
+    country: CN
+    status: private
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://www.01.ai
+
+  # ── China listed AI ───────────────────────────────────────────
+  - name: SenseTime
+    aliases: ["商汤", "商汤科技"]
+    country: CN
+    status: listed
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://www.sensetime.com
+    identifiers:
+      - type: ticker
+        value: "0020.HK"
+
+  - name: iFlytek
+    aliases: ["科大讯飞", "讯飞"]
+    country: CN
+    status: listed
+    category: model_lab
+    coverage: ai_watchlist
+    website: https://www.iflytek.com
+    identifiers:
+      - type: ticker
+        value: "002230.SZ"
+
+  - name: Cambricon
+    aliases: ["寒武纪", "寒武纪科技"]
+    country: CN
+    status: listed
+    category: ai_chips
+    coverage: ai_watchlist
+    website: https://www.cambricon.com
+    identifiers:
+      - type: ticker
+        value: "688256.SH"
+
+  # ── China AI platforms ────────────────────────────────────────
+  - name: ByteDance
+    aliases: ["字节跳动", "Doubao", "豆包"]
+    country: CN
+    status: private
+    category: ai_platform
+    coverage: ai_watchlist
+    website: https://www.bytedance.com
+
+  - name: Huawei
+    aliases: ["华为", "昇腾", "Ascend"]
+    country: CN
+    status: private
+    category: ai_infra
+    coverage: ai_watchlist
+    website: https://www.huawei.com
+
+# Companies already covered by the four indices; used for AI-theme tagging after entity
+# resolution, not duplicated in the watchlist.
+themes:
+  ai:
+    - NVIDIA
+    - Microsoft
+    - Alphabet
+    - Meta
+    - Amazon
+    - Broadcom
+    - AMD
+    - TSMC
+    - Alibaba
+    - Tencent
+    - Baidu

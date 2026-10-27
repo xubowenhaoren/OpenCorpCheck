@@ -1,0 +1,263 @@
+# Data Sources & the `finance_analyst` Reuse Plan
+
+> Status: draft · 2026-10-27
+> Related: [Architecture](ARCHITECTURE.md) · [Prior art](PRIOR_ART.md)
+
+This document defines where OpenCorpCheck gets its facts, which existing code we reuse, what
+must change before it becomes a database source, and the licensing constraints.
+
+## 1. Principles
+
+1. **Official first, scraper second.** Exchange filings and registry data are the citation
+   source of truth. Eastmoney F10 is a fast coverage/enrichment layer, not the final word.
+2. **Every fact has provenance.** URL, quote, page, retrieval time, extractor version, and
+   confidence. No provenance, no fact.
+3. **Snapshot before extract.** Store the raw HTML/PDF (MinIO, SHA-256) so extraction can be
+   replayed when prompts/models change.
+4. **Polite by default.** Per-domain rate limits, robots.txt, descriptive User-Agent, no
+   CAPTCHA/paywall bypass, no bulk redistribution.
+5. **Scrapers are adapters, not the product.** They can be replaced without touching the data
+   model or UI.
+
+## 2. Source hierarchy by market
+
+| Market | Primary (citation truth) | Fast coverage | Notes |
+|---|---|---|---|
+| US | SEC EDGAR XBRL + filings | Eastmoney F10 US pages, company IR | XBRL is structured and authoritative; F10 is supplementary |
+| A-share | CNINFO / SSE / SZSE announcements | Eastmoney F10 A pages (via `finance_analyst`) | F10 gives 6–9 period statements, peer comparison, events |
+| HK | HKEXnews announcements + HKEX DION | Eastmoney F10 HK pages (via `finance_analyst`) | F10 is strong for Chinese-format financials + analyst ratings |
+| Private / AI watchlist | Company site, blog, press releases | DeepSeek Harness `web_search`, credible news | Lower confidence; label `reported` until primary source |
+| Entity spine | GLEIF (LEI, parent relationships), Wikidata | OpenCorporates (BYO token) | GLEIF is CC0; use it for ownership edges |
+| News | Company IR RSS, GDELT, credible outlets | dsh `web_search` | Dedupe + entity link |
+
+## 3. Reused assets from `finance_analyst`
+
+The private repo ([xubowenhaoren/finance_analyst](https://github.com/xubowenhaoren/finance_analyst),
+Apache-2.0, read via `gh`) already contains proven scrapers. Reuse them behind a clean
+interface instead of rewriting the hard-won URL/scroll logic.
+
+| Asset | What it gives | Reuse in v1 | Changes needed |
+|---|---|---|---|
+| `scripts/aif10_scraper.py` | Eastmoney F10 (A/HK/US): 16/12/5 pages — financial analysis, operating analysis, company profile, shareholders, events, research reports, peer comparison, dividends, capital operations, management | **Yes — primary A/HK/US coverage** | JSON output, table extraction, remove 8k truncation for financial pages, retries, snapshots, page presets |
+| `scripts/edgar_scraper.py` | SEC full-text search + submissions + filing text | Yes — wrap in the same sidecar; later port to TS | Structured `companyfacts` XBRL fetch (the current script only fetches filing text), retries, 10 req/s limiter |
+| `scripts/hkex_di_scraper.py` | HKEX DION substantial-shareholder notices (buy/sell, shares, avg price, holdings) | Yes — relation/ownership evidence | JSON output, cache off in production, retries |
+| `scripts/hkex_news_scraper.py` | HKEXnews announcement titles + PDF links | Yes — announcement discovery | Follow PDF links, download + parse, dedupe |
+| `scripts/market_utils.py` | Market detection, trading-hours warnings, financial-statement keyword maps, DCF field extraction | Reference/port the keyword maps into `packages/sources/taxonomy.ts` | Do not rely on string matching for canonical facts; use as validation/fallback |
+| `scripts/wrappers_mcp.py` (`a_share_comprehensive`) | AkShare A-share indicators, valuation, forecasts, dividends | Optional; not v1 primary | AkShare/Eastmoney reliability issues (see `context_transfer.md`); treat as fallback |
+| `scripts/futu_mcp.py` | Moomoo/OpenD 110+ tools (quotes, valuation, institutional holdings, revenue breakdown, short interest) | **No — post-v1** | Requires OpenD daemon + China IP; not suitable for the Docker-only v1 |
+
+License: `finance_analyst` is Apache-2.0. If we vendor code, keep the license, add a `NOTICE`
+entry, and mark modified files. If we call it as an external sidecar, document the version
+and source commit.
+
+## 4. Recommended reuse shape: a Python sidecar
+
+Do **not** import the scraper directly into the TS worker or run its CLI ad hoc. Put it behind
+an internal HTTP service:
+
+```text
+apps/worker (TS, pg-boss)
+  └─ packages/sources/eastmoney-f10 (TS adapter)
+       └─ HTTP → services/finance-analyst (Python 3.12 + Playwright)
+            ├─ POST /v1/f10/scrape   { market, code, pages?, force? }
+            ├─ POST /v1/edgar/search  { query, ticker?, forms?, from?, to? }
+            ├─ POST /v1/edgar/filing  { ticker, form, date? }
+            ├─ POST /v1/hkex/di       { code, days }
+            ├─ POST /v1/hkex/news     { code, days }
+            └─ GET  /health
+```
+
+Why a sidecar:
+
+- The existing scraper is Python + Playwright; reusing it is zero-rewrite.
+- Browser isolation: a crash/OOM in Chromium does not take down the API or worker.
+- Independent scaling and rate limiting: F10 scraping is the slowest, most fragile part.
+- The TS adapter still owns normalization, provenance, and storage; the sidecar only fetches
+  and returns page payloads.
+
+The image is based on `mcr.microsoft.com/playwright/python` (or `python:3.12-slim` +
+`playwright install --with-deps chromium`), runs as a non-root user, exposes only the
+internal port, and has a read-only root filesystem with temp dirs. It is large (~1.5–2 GB);
+keep it out of the API image.
+
+Porting the scraper to TS later is straightforward (the URL map + scroll loop are small); the
+sidecar boundary makes that a drop-in replacement for the TS adapter. Do it in v2 only if the
+second runtime becomes a real maintenance cost.
+
+## 5. What must change in `aif10_scraper.py`
+
+The current script is designed for an LLM reading terminal output, not for a database. Keep
+the URL map, code formatting, scroll strategy, and anti-bot stagger; change the contract.
+
+### 5.1 Output: JSON, not a stdout blob
+
+```json
+{
+  "market": "A",
+  "code": "600519",
+  "fetched_at": "2026-10-27T12:34:56Z",
+  "pages": [
+    {
+      "label": "财务分析",
+      "hash": "cwfx",
+      "url": "https://emweb.eastmoney.com/PC_HSF10/pages/index.html?type=web&color=w&ischoice=1&code=SH600519#/cwfx",
+      "http_status": 200,
+      "text": "…full page text…",
+      "tables": [
+        { "caption": "利润表", "headers": ["报告期", "营业收入", "…"], "rows": [["2025-12-31", "…"]] }
+      ],
+      "html_sha256": "…",
+      "storage_key": "s3://opencorpcheck/raw/eastmoney/600519/cwfx/….html",
+      "warnings": []
+    }
+  ],
+  "errors": []
+}
+```
+
+### 5.2 Stop truncating financial pages at 8,000 chars
+
+The current `_fetch_one` caps every page at 8,000 chars. That is fine for a chat snippet and
+useless for a 6–9 period financial statement. Make the cap per-page and configurable; disable
+it for `cwfx`, `jyfx`, `gsgk`, `NewFinancialAnalysis`, `CoreReading`, `BusinessExpectation`.
+Keep a hard safety cap (e.g. 2 MB of text) and record a warning.
+
+### 5.3 Preserve tables and prefer XHR JSON
+
+`document.body.innerText` flattens tables. For each page, also:
+
+1. Extract `<table>` elements to `{caption, headers, rows}` (BeautifulSoup/pandas or a small
+   DOM serializer).
+2. Capture XHR/fetch responses that return JSON (Eastmoney's SPA callbacks) and store the
+   relevant payloads. JSON is more stable than DOM text for financial tables.
+3. Store the raw HTML in MinIO; the sidecar returns the hash/key, not the full HTML over HTTP
+   unless requested.
+
+### 5.4 Cache semantics
+
+The current script caches for one day under `reports/aif10/{code}/` and reuses it silently.
+For a database:
+
+- Dev cache is optional and keyed by `(market, code, page, date, scraper_version)`.
+- Production always fetches (or uses an explicit `force=false` cache with a TTL and a
+  `fetched_at` return), then stores a content-addressed snapshot. The database, not the
+  scraper's folder, is the source of truth.
+- Re-extraction from a snapshot must not refetch.
+
+### 5.5 Robustness
+
+- Retry 2–3 times with jitter on timeouts/5xx; never retry 4xx in a loop.
+- Per-domain token bucket (5 req/s for Eastmoney, 10 req/s for SEC, 5 req/s for HKEX).
+- Concurrency: 2–3 F10 pages per company, 1–2 companies in parallel; the current
+  all-pages-at-once stagger is too aggressive for a bulk crawl.
+- Dismiss cookie/consent overlays; set `locale` (`zh-CN` for A/HK, `en-US` for US) and a
+  realistic viewport/UA.
+- Return partial results with per-page errors; one bad page must not fail the company.
+- Log `traceId`, market, code, page, duration, retry count; never log full HTML.
+
+### 5.6 Page presets
+
+| Market | v1 pages | Optional |
+|---|---|---|
+| A | `cwfx` (财务分析), `jyfx` (经营分析), `gsgk` (公司概况), `gdyj` (股东研究), `gsds` (公司大事), `hxtc` (核心题材), `yjbg` (研究报告), `thbj` (同行比较) | `fhrz`, `zbyz`, `gsgg`, `gbjg`, `zxgg`, `glgg` |
+| HK | `NewFinancialAnalysis`, `CoreReading`, `CompanyProfile`, `MajorShareholder`, `CorporateEvents`, `InvestmentRating`, `BusinessExpectation` | `IndustryComparison`, `CapitalStructure`, `CompanyManager`, `CompanyNews` |
+| US | `cwfx`, `gsgk`, `gbgd`, `gsds`, `hxbd` | — |
+
+Start with the v1 set; add pages only when a schema gap demands it. More pages = more
+anti-bot risk and more tokens.
+
+## 6. Extraction and normalization
+
+The sidecar returns page text/tables; the TS pipeline turns them into canonical facts:
+
+1. **Deterministic table mapping** for known statement layouts where possible (headers →
+   canonical items). Keep the mapping versioned.
+2. **LLM extraction** with a strict Zod/JSON schema and page citations for the rest.
+3. **Validation**: balance-sheet identity, income-statement identity, cash-flow identity,
+   segment sums vs totals. Reject or down-rank facts that fail.
+4. **Cross-check** with official filings (SEC XBRL, CNINFO/HKEX PDFs) before marking a fact
+   `confirmed`.
+5. **Review queue** for low-confidence/conflicting facts.
+
+`market_utils.py`'s keyword groups (`revenue`, `net income`, `CFO`, `capex`, `D&A`, etc.) are
+a useful fallback and a source of bilingual synonyms. Port the taxonomy, not the
+substring-match-everything approach.
+
+## 7. Licensing and attribution
+
+| Source | License / terms | What we can do | What we must not do |
+|---|---|---|---|
+| `finance_analyst` code | Apache-2.0 | Reuse, modify, distribute with NOTICE + license | Strip attribution; imply endorsement |
+| Eastmoney F10 data | Proprietary site/ToS | Internal demo, attribution, polite rate limits | Bulk redistribution of raw data; bypassing restrictions |
+| SEC EDGAR | Public domain | Store, derive, redistribute | Ignore fair-access (10 req/s, User-Agent) |
+| HKEXnews / HKEX DION | Public site terms | Store evidence for research/demo | Bulk redistribution; ignore rate limits |
+| CNINFO / SSE / SZSE | Public announcements | Store evidence, cite | Misrepresent as licensed data |
+| GLEIF | CC0 | Store, derive, redistribute | — |
+| Wikidata | CC0 | Store, derive | — |
+| Wikipedia | CC BY-SA | Store with attribution | Relicense without attribution |
+| Moomoo/Futu | Vendor API terms | Post-v1, with user's own account | Redistribute market data |
+
+Add a `NOTICE` file when vendoring Apache-2.0 code. Keep `docs/DATA_SOURCES.md` current when
+adding an adapter. The repo ships **code, adapters, seed lists, and small fixtures**, not bulk
+proprietary datasets.
+
+## 8. AI watchlist
+
+`config/universe.yaml` seeds the AI watchlist. It is a curated list, not "every AI startup":
+
+- US model labs: OpenAI, Anthropic, xAI, Mistral AI, Cohere, Safe Superintelligence,
+  Thinking Machines Lab, Perplexity.
+- US AI apps/infra: Anysphere (Cursor), Figure AI, Hugging Face, Scale AI.
+- China model labs: DeepSeek, Moonshot AI (Kimi), Zhipu AI, MiniMax, Baichuan AI, StepFun,
+  01.AI.
+- China listed AI: SenseTime, iFlytek, Cambricon.
+- China AI platforms: ByteDance, Huawei.
+
+US AI leaders already in S&P 500 / NDX (NVIDIA, Microsoft, Alphabet, Meta, Amazon, Broadcom,
+AMD, TSMC) are tracked via the `themes.ai` tag after entity resolution, not duplicated in the
+watchlist. Zhipu's ticker comes from the `finance_analyst` watchlist (`02513.HK`); verify it
+against HKEX before using it as a canonical identifier.
+
+Each watchlist entry gets a `coverage_tier`:
+
+- `index_member` — in one of the four indices.
+- `ai_watchlist` — curated, not necessarily in an index.
+- `discovered` — created by the agent/web research.
+- `stub` — name only, no verified profile.
+
+Private companies have no CIK/LEI; use the canonical website domain + Wikidata QID when
+available. Their facts are lower confidence and labeled `reported` until a primary source
+appears.
+
+## 9. Snapshot and replay
+
+Every fetch produces:
+
+```text
+source_id  → URL, canonical URL, domain, fetched_at, status, content_hash, license
+document   → source_id, company_id, doc_type, mime, storage_key, sha256, pages
+chunk      → document_id, page, section, text, qdrant_point_id, embedding_version
+```
+
+Changing the extractor prompt, model, or taxonomy triggers re-extraction from MinIO — not a
+refetch. This makes evals reproducible and keeps us polite to the sources.
+
+## 10. Future: Moomoo / OpenD
+
+`futu_mcp.py` has excellent data (valuation, institutional holdings, revenue breakdown, short
+interest), but it requires:
+
+- OpenD running on `127.0.0.1:11111` (Windows/WSLg headless in the original setup).
+- A China IP for some flows; the repo documents VPN/sshuttle workarounds.
+- Moomoo API terms and a user account.
+
+That is incompatible with a Docker-only, cross-platform v1. Revisit when OpenCorpCheck adds a
+"market data" tier; keep the adapter seam (`QuoteProvider`) ready.
+
+## 11. Source health checks
+
+- Daily canary: scrape 3 known companies (`600519` A, `00700` HK, `AAPL` US) and assert that
+  key pages/fields exist.
+- Fixture snapshots for CI: recorded F10/EDGAR/HKEX responses; no live network in unit tests.
+- Dashboards: success rate, latency, block rate, parser warnings, stale sources.
+- Alert when a page hash/title changes or a field mapping disappears.

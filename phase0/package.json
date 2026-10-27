@@ -1,0 +1,15 @@
+{
+  "name": "opencorpcheck-phase0",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal DeepSeek Harness headless + agentic web-search skill for Magnificent Seven company profiles",
+  "engines": {
+    "node": ">=24.9.0"
+  },
+  "scripts": {
+    "research": "node run.mjs",
+    "validate": "node lib/validate.mjs",
+    "mock": "node run.mjs --mock"
+  }
+}

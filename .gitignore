@@ -1,0 +1,21 @@
+# Secrets — never commit
+DEEPSEEK_API_KEY.txt
+.env
+.env.*
+!.env.example
+phase0/.env
+phase0/.env.*
+!phase0/.env.example
+
+# Local dsh state and raw run artifacts
+phase0/.dsh-home/
+phase0/.npm-cache/
+phase0/runs/
+phase0/out/sections/
+phase0/out/synthesis.md
+phase0/out/live-*.log
+
+# Node / OS
+node_modules/
+npm-debug.log*
+.DS_Store

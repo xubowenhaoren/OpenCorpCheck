@@ -1,0 +1,6 @@
+.env
+.dsh-home/
+.npm-cache/
+runs/
+out/sections/
+out/synthesis.md
