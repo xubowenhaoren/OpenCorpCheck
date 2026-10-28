@@ -8,6 +8,7 @@ import {
   jsonb,
   numeric,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -249,6 +250,12 @@ export const facts = pgTable(
       scale: 3,
       mode: "number",
     }),
+    extractorVersion: text("extractor_version"),
+    /** Citation numbers from the source section, e.g. [10, 12]. */
+    sourceRefs: jsonb("source_refs")
+      .$type<number[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     observedAt: timestamp("observed_at", { withTimezone: true }),
     validFrom: timestamp("valid_from", { withTimezone: true }),
     validTo: timestamp("valid_to", { withTimezone: true }),
@@ -267,6 +274,10 @@ export const financialFacts = pgTable(
     item: text("item").notNull(),
     periodStart: date("period_start", { mode: "string" }),
     periodEnd: date("period_end", { mode: "string" }).notNull(),
+    /** annual | quarter | half | ttm */
+    periodKind: text("period_kind").notNull().default("annual"),
+    /** Raw label from the profile table, e.g. "Q3 FY2026". */
+    periodLabel: text("period_label"),
     fiscalYear: integer("fiscal_year"),
     fiscalQuarter: integer("fiscal_quarter"),
     value: numeric("value", { precision: 28, scale: 6, mode: "number" }).notNull(),
@@ -283,6 +294,11 @@ export const financialFacts = pgTable(
       scale: 3,
       mode: "number",
     }),
+    extractorVersion: text("extractor_version"),
+    sourceRefs: jsonb("source_refs")
+      .$type<number[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
   },
   (table) => [
     uniqueIndex("financial_facts_uq").on(
@@ -292,6 +308,11 @@ export const financialFacts = pgTable(
       table.periodEnd,
     ),
     index("financial_facts_company_idx").on(table.companyId),
+    index("financial_facts_company_kind_idx").on(
+      table.companyId,
+      table.periodKind,
+      table.fiscalYear,
+    ),
   ],
 );
 
@@ -334,11 +355,16 @@ export const relations = pgTable(
       scale: 3,
       mode: "number",
     }),
+    extractorVersion: text("extractor_version"),
+    reviewId: text("review_id").references(() => reviewQueue.id, {
+      onDelete: "set null",
+    }),
   },
   (table) => [
     index("relations_src_idx").on(table.srcCompanyId),
     index("relations_dst_idx").on(table.dstCompanyId),
     index("relations_type_idx").on(table.type),
+    index("relations_status_idx").on(table.status),
   ],
 );
 
@@ -355,7 +381,14 @@ export const relationEvidence = pgTable(
     quote: text("quote"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
   },
-  (table) => [index("relation_evidence_relation_idx").on(table.relationId)],
+  (table) => [
+    index("relation_evidence_relation_idx").on(table.relationId),
+    uniqueIndex("relation_evidence_uq").on(
+      table.relationId,
+      table.sourceId,
+      sql`md5(coalesce(${table.quote}, ''))`,
+    ),
+  ],
 );
 
 export const reviewQueue = pgTable(
@@ -367,11 +400,22 @@ export const reviewQueue = pgTable(
     evidence: jsonb("evidence").$type<unknown>(),
     status: text("status").notNull().default("pending"),
     reviewer: text("reviewer"),
+    /** Stable key so repeated extraction does not spam the queue. */
+    dedupeKey: text("dedupe_key"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
-  (table) => [index("review_queue_status_idx").on(table.status)],
+  (table) => [
+    index("review_queue_status_idx").on(table.status),
+    index("review_queue_kind_status_idx").on(table.kind, table.status),
+    uniqueIndex("review_queue_dedupe_uq")
+      .on(table.dedupeKey)
+      .where(sql`${table.dedupeKey} IS NOT NULL`),
+  ],
 );
 
 export const outbox = pgTable(
@@ -388,6 +432,35 @@ export const outbox = pgTable(
       .defaultNow(),
   },
   (table) => [index("outbox_pending_idx").on(table.processedAt)],
+);
+
+/** Per-company extraction checkpoint (deterministic stage and LLM stage). */
+export const extractionCache = pgTable(
+  "extraction_cache",
+  {
+    companyId: text("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    /** deterministic | relations */
+    stage: text("stage").notNull(),
+    inputSha256: text("input_sha256").notNull(),
+    promptHash: text("prompt_hash"),
+    model: text("model"),
+    /** ok | partial | failed */
+    status: text("status").notNull(),
+    stats: jsonb("stats")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    error: text("error"),
+    tokensInput: integer("tokens_input").notNull().default(0),
+    tokensOutput: integer("tokens_output").notNull().default(0),
+    durationMs: integer("duration_ms"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.companyId, table.stage] })],
 );
 
 export const schema = {
