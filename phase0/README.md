@@ -44,7 +44,9 @@ npm run validate
 ## 它怎么工作
 
 1. `run.mjs` 读取 `../.dsh/skills/mag7-profile/SKILL.md`（dsh 自动发现）。
-2. 对每家公司启动一个 headless dsh 进程：
+2. 默认最多 **4 家公司并行**（`--concurrency 4`）；每家一个 headless dsh 进程。之前那次
+   7 家是用 `--concurrency 1` 串行跑的，所以慢；backfill 请用默认并发或更高（4–8），
+   遇到限流再降。
 
    ```bash
    npx --yes @deepseek-ai/dsh@0.2.1-rc.3 \
@@ -69,7 +71,7 @@ npm run validate
 | `--only AAPL,MSFT` | 只跑指定公司 |
 | `--force` | 已有 section 也重跑 |
 | `--mock` | 用 fixture 跑完整流水线，不调 API |
-| `--concurrency N` | 并发公司数，默认 1（避免限流） |
+| `--concurrency N` | 并发公司数，默认 **4**；遇到 429/限流降到 1–2 |
 | `--search-api` | 附加 `search-api.patch.yml`，切到直接 Search API |
 | `--synthesize` | 额外跑一次摘要/跨公司主题；会增加一次模型调用 |
 

@@ -33,7 +33,7 @@ const searchApi = argv.includes("--search-api");
 const onlyArg = argv.includes("--only") ? argv[argv.indexOf("--only") + 1] : null;
 const concurrencyArg = argv.includes("--concurrency")
   ? Number(argv[argv.indexOf("--concurrency") + 1])
-  : 1;
+  : 4;
 
 const only = onlyArg
   ? onlyArg
@@ -42,7 +42,7 @@ const only = onlyArg
       .filter(Boolean)
   : null;
 const selected = only ? COMPANIES.filter((c) => only.includes(c.ticker)) : [...COMPANIES];
-const concurrency = Number.isFinite(concurrencyArg) && concurrencyArg > 0 ? concurrencyArg : 1;
+const concurrency = Number.isFinite(concurrencyArg) && concurrencyArg > 0 ? concurrencyArg : 4;
 const model = process.env.DSH_MODEL || DEFAULT_MODEL;
 
 loadEnv(path.join(moduleDir, ".env"));

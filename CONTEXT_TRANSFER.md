@@ -99,6 +99,32 @@ Phase 0 的 agent 只用了 dsh 内置 `web_search` / `web_fetch`，**没有接 
 所以当前 profile 是 **web-research-grade**，不是 filing-grade。Phase 1 要补 F10 + SEC XBRL，
 把财务数字变成可交叉校验的确定性数据。
 
+### 2.5 硬性要求：并行 backfill（用户明确要求）
+
+Phase 0 的 7 家是用 `--concurrency 1` 串行跑的，约 20 分钟；用户明确要求 backfill 必须
+并行，不能这么慢。`phase0/run.mjs` 现在默认 `--concurrency 4`，但这只是脚本级并发；
+Phase 1 必须把它做成可恢复、可限流的生产级 backfill。
+
+要求：
+
+1. **队列化**：pg-boss（Postgres）建 `crawl` / `research` / `extract` / `embed` 队列；
+   每个 company/page 是一个 job；`singletonKey` 去重；retry + backoff + dead-letter。
+2. **并发**：worker 池 4–8；LLM 全局并发 4–6；每个搜索 provider 2–4；每个域名 1–2 req/s；
+   429 指数退避。
+3. **分片/优先级**：按 index/市场/公司权重分片；先跑 index 权重高 + AI watchlist；每个
+   company 独立 checkpoint，失败只重跑该公司/该页。
+4. **可恢复**：`crawl_jobs` / `research_runs` 记录状态；section/document/fact 幂等写入；
+   内容 hash + prompt hash 缓存，重复 backfill 不重复调用 LLM。
+5. **可观测**：queue depth、每公司状态、限流命中、token/成本、p95；`run-summary.json`
+   继续作为机器可读验收。
+6. **F10 sidecar 并发**：sidecar 自己要有 per-domain token bucket 和请求队列；不要用
+   Playwright 无限并发；F10 是外部站点，必须限流。
+7. **Phase 0 用法**：`npm run research -- --concurrency 4`（默认已是 4）；遇到 429 降到
+   1–2；不要为了快而绕过限流。
+
+验收：7 家 backfill 在 concurrency 4 下明显快于串行；100 家公司 backfill 可断点续跑；
+单家失败不影响其他；队列/worker 重启后从 checkpoint 继续。
+
 ---
 
 ## 3. 仓库结构
@@ -280,6 +306,8 @@ npm run validate
    - `cwfx` 不再被 8k 截断；
    - F10 财务数字与 SEC/stockanalysis 交叉校验，>1% 差异标注；
    - dsh 能通过 MCP 调用 `f10_scrape`。
+6. **并行 backfill（硬性要求）**：F10 sidecar 支持并发请求 + per-domain 限流；用 pg-boss
+   把 company/page 拆成 job，worker 池 4–8；不要串行跑 1,000 家。单家失败只重跑该公司。
 
 ### P2 — 数据层 + 混合检索
 
@@ -292,6 +320,7 @@ npm run validate
   BM25，jieba/Intl.Segmenter）+ RRF/DBSF + bge-reranker-v2-m3。
 - MinIO 存原始 HTML/PDF；TEI 跑 BGE-M3/reranker。
 - CLI `occ search`、`occ company get` 等；`--explain` 显示 BM25/dense/RRF/rerank 排名。
+- backfill 用 pg-boss 队列 + worker 池，按 company/page 分片，支持断点续跑；不要串行。
 - 先把 Phase 0 的 7 份 profile 作为 golden baseline，再扩到 A500/HSI/S&P 500/NDX + AI watchlist。
 
 ### P3 — API / CLI / MCP / dsh ACP sidebar
@@ -344,6 +373,8 @@ npm run validate
 8. **不完整移植 opportunity-radar**；Phase 0 的 skill 是蒸馏版，保留 BFS/DFS + 引用纪律，
    不做 1–5 裁决/G1–G14/Python XBRL 工具。
 9. **Read-only by default**：agent 只能 propose fact/relation，写入进 review queue。
+10. **Backfill 必须并行 + 可恢复**：Phase 0 的 `--concurrency 4` 只是脚本级；Phase 1 用
+    pg-boss + worker 池 + per-domain 限流 + checkpoint，不能串行跑全量。
 
 ---
 
@@ -354,6 +385,7 @@ npm run validate
 | dsh 是 developer preview，接口会变 | 固定 `0.2.1-rc.3`；spawn/解析集中在 `lib/dsh.mjs`；异常试 rc.4 |
 | npm `~/.npm/_cacache` 不可写 | `lib/dsh.mjs` 用 `OCC_NPM_CACHE` / `$TMPDIR/occ-npm-cache`；不要继承 `npm_config_cache` |
 | Python 3.9 vs F10 的 3.10+ | 用 `uv` 装 Python 3.12，或用 Playwright Python Docker 镜像 |
+| 串行 backfill 太慢（Phase 0 的 7 家约 20 分钟） | `--concurrency 4`；Phase 1 用 pg-boss + worker 池 + per-domain 限流 + checkpoint |
 | API key 泄露风险 | 不要 `pgrep -fl`（会打印 env）；用 `pgrep -f` 只看 PID；key 只放 `.env`/环境变量，绝不提交 |
 | Eastmoney 反爬/ToS | 限流、重试、robots、attribution；不批量重分发 |
 | dsh `--json` 8 KiB 截断 | 完整结果读 `phase0/.dsh-home/sessions` 明文 JSONL |
@@ -374,6 +406,7 @@ npm run validate
 - [ ] `DEEPSEEK_API_KEY.txt`、`phase0/.env`、`phase0/runs/`、`phase0/out/sections/`
       都被 `.gitignore` 忽略。
 - [ ] 下一阶段优先做 F10 sidecar（P1）。
+- [ ] 并行 backfill：`--concurrency 4` 起步；Phase 1 用 pg-boss + worker 池，确认可断点续跑。
 - [ ] 不要把 `deepseek-v4-pro` 写回配置。
 - [ ] 不要提交任何 key、token、cookie、`.env`。
 
