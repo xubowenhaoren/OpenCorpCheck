@@ -78,13 +78,16 @@ function readIfExists(file) {
 
 function renderPrompt(company, repair = false) {
   const template = fs.readFileSync(path.join(moduleDir, "prompts", "company.md"), "utf8");
+  const skill = "mag7-profile";
   const prompt = template
     .replaceAll("{{COMPANY}}", company.company)
     .replaceAll("{{TICKER}}", company.ticker)
+    .replaceAll("{{MARKET}}", "美股")
     .replaceAll("{{DATE}}", date)
-    .replaceAll("{{FOCUS}}", company.focus);
+    .replaceAll("{{FOCUS}}", company.focus)
+    .replaceAll("{{SKILL}}", skill);
   const skillLine =
-    "重要：请先调用 skill 工具加载 mag7-profile，再开始研究。只返回最终 markdown profile。\n";
+    `重要：请先调用 skill 工具加载 ${skill}，再开始研究。只返回最终 markdown profile。\n`;
   const repairLine = repair
     ? "\n上一次运行没有返回可用的 profile。这次务必先加载 mag7-profile skill，完整输出全部 13 个章节，只返回 markdown。\n"
     : "";

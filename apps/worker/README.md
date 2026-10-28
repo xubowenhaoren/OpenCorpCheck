@@ -76,6 +76,10 @@ Environment:
 node apps/worker/dist/cli.js enqueue research --universe mag7
 node apps/worker/dist/cli.js work --queues research --drain
 
+# research: A/HK companies with the F10 data layer attached (sidecar must be up)
+node apps/worker/dist/cli.js enqueue research --tickers 600519:A,00700:HK --include-f10
+node apps/worker/dist/cli.js work --queues research --drain
+
 # research without an API key (fixture sections; exercises the queue)
 node apps/worker/dist/cli.js enqueue research --tickers AAPL,MSFT --mock
 node apps/worker/dist/cli.js work --queues research --drain
@@ -113,15 +117,25 @@ pg-boss owns its own `pgboss` schema.
 | F10 AAPL `minimal` | 2/2 pages, ~14s each, `f10_pages` upserted |
 | Research mock ×2 | second run: both jobs `cache_hit`, no work |
 | Live research AAPL + MSFT, concurrency 4 | wall **147s** vs ~273s serial; 2/2 completed |
+| Live A/HK research 600519 + 00700, `--include-f10` | 2/2 completed (202s / 219s, wall 221s); full names resolved, 13 sections, F10 cited with `fetched_at` |
 | Sidecar down | 4 attempts over ~151s → dead-letter; run `failed`, error recorded |
+
+## Skill selection
+
+Research prompts are market-aware: MAG7-universe targets load the tuned
+`mag7-profile` skill; everything else (A-share, HK, US non-MAG7, AI watchlist)
+loads `.dsh/skills/company-profile`, which carries per-market source
+hierarchies (CNINFO / HKEXnews as citation truth, F10 as the secondary data
+layer) and F10 cross-check discipline. The `research_cache` prompt hash includes
+the skill file, so switching skills invalidates cached sections. Pass
+`--include-f10` on A/HK runs to attach the F10 MCP tools to dsh (the sidecar
+must be running, or dsh startup fails).
 
 ## Known limits
 
 - `config/universe.yaml` has index metadata but no constituents yet; use
   `--universe mag7|ai-watchlist` or explicit `--tickers` until P4 loads the
   index snapshots.
-- Research uses the `mag7-profile` skill; a generic A/HK company-profile skill is
-  still needed before large non-US backfills.
 - Live queue counts query `pgboss.job` directly, assuming the default schema.
 - Token/cost is logged per job but not summed per run.
 - Snapshots are referenced by `storage_key`; MinIO upload is still P2.

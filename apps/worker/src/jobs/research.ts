@@ -14,7 +14,13 @@ import {
 } from "../db.js";
 import { QUEUES } from "../queues.js";
 import { runDshResearch } from "../research/dsh.js";
-import { promptHash, renderPrompt, sha256Text, today } from "../research/profiler.js";
+import {
+  promptHash,
+  renderPrompt,
+  sha256Text,
+  skillForTarget,
+  today,
+} from "../research/profiler.js";
 import type { CompanyTarget } from "../universe.js";
 
 export interface ResearchJobData {
@@ -22,6 +28,8 @@ export interface ResearchJobData {
   key: string;
   ticker: string;
   name: string;
+  market?: "A" | "HK" | "US";
+  skill?: "mag7-profile" | "company-profile";
   focus?: string;
   force?: boolean;
   mock?: boolean;
@@ -53,15 +61,17 @@ async function processResearchJob(job: Job<ResearchJobData>): Promise<void> {
     key: data.key,
     ticker: data.ticker,
     name: data.name,
+    market: data.market,
     focus: data.focus,
     priority: 0,
     source: "explicit",
   };
-  const prompt = renderPrompt(target);
+  const skill = data.skill ?? skillForTarget(target);
+  const prompt = renderPrompt(target, today(), skill);
   const patches = data.includeF10
     ? [config.basePatch, config.f10Patch]
     : [config.basePatch];
-  const hash = promptHash(prompt, patches);
+  const hash = promptHash(prompt, patches, skill);
 
   // Resume fast-path: same prompt/model/skill/patch hash and an intact section.
   if (!data.force) {

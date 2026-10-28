@@ -135,7 +135,8 @@ OpenCorpCheck/
   CONTEXT_TRANSFER.md              # 本文件
   .gitignore                       # 忽略 key、.env、runs、sections、live logs
   .dsh/skills/
-    mag7-profile/SKILL.md          # Phase 0 的蒸馏版 BFS/DFS skill
+    mag7-profile/SKILL.md          # Phase 0 的蒸馏版 BFS/DFS skill（MAG7 专用）
+    company-profile/SKILL.md       # 通用 A/HK/US profile skill（市场感知来源层级 + F10 纪律）
     f10-financials/SKILL.md        # F10 来源层级、页面选择、引用纪律
   config/universe.yaml             # 4 个指数 + 24 家 AI watchlist
   docs/
@@ -252,7 +253,8 @@ npm run validate
 - Postgres / Qdrant / MinIO / TEI
 - API server / `occ` CLI / MCP server
 - F10 scraper / SEC XBRL / CNINFO / HKEX 数据管道
-- A/HK 覆盖、AI watchlist 的实际 profile
+- A500/HSI/S&P 500/NDX 成分股快照与 AI watchlist 的全量 profile（A/HK 路径已用
+  600519/00700 验证，见 §6 P1 进度）
 - dsh ACP sidebar / Cordis 插件
 - Docker / CI / 多架构镜像
 - 混合检索（dense + sparse + RRF/DBSF + rerank）
@@ -290,7 +292,25 @@ npm run validate
     与死信详情、队列深度直接读 `pgboss.job`。
   - 实测：AAPL+MSFT 并发 4 总耗时 **147s**（单家 128s/145s，串行约 273s）；
     mock 重跑全部 cache hit；sidecar 停机时 4 次尝试后进死信，run 标 failed。
-- [ ] 待办：index constituent 快照（P4）、通用 A/HK profile skill、MinIO 快照上传。
+- 数据库分工（2026-10-28 确认）：**Postgres 17 = 真相库 + pg-boss 队列**，不是检索引擎。
+  当前只建了 `backfill_runs` / `backfill_jobs` / `research_cache` / `f10_pages`；扩展
+  `pg_trgm` 可用（够公司名/ticker 模糊快查）。**Hybrid search 规划是 Qdrant 1.18（P2）**：
+  dense BGE-M3 + sparse 自研 BM25 + 服务端 RRF/DBSF；pgvector/ParadeDB 只是备选，不把
+  Postgres 改造成检索引擎。
+- [x] 通用 A/HK profile skill（2026-10-28）：`.dsh/skills/company-profile/SKILL.md`
+  ——市场感知来源层级（A 股：CNINFO > 交易所 > IR > F10 > 财经媒体；HK：HKEXnews >
+  IR > F10 > 媒体；US 同 MAG7）、F10 使用纪律（二手标注、>1% 差异双写、工具不可用
+  时降级不中断）、币种/报告期口径规则。worker 按 target 选 skill：MAG7 universe 用
+  `mag7-profile`，其余（A/HK/US 非 MAG7/AI watchlist）用 `company-profile`；
+  `research_cache` 的 prompt hash 含 skill 文件内容，切换 skill 自动失效缓存。
+- [x] A/HK live 验收（`--tickers 600519:A,00700:HK --include-f10 --force`）：
+  2/2 完成，A 股 202s / 港股 219s，总 wall 221s；两家均正确解析公司全称
+  （贵州茅台酒股份有限公司 / 腾讯控股有限公司）、13 章节齐全、F10 被实际调用
+  （600519：2 次 `f10_scrape` 覆盖 cwfx/gsgk/jyfx/thbj/hxtc；00700：`f10_pages` +
+  2 次 `f10_scrape`）；引用含 F10 attribution（页面 + fetched_at）与官方媒体，
+  缺口处写“未验证”。注意：模型会用 bash grep dsh spill 文件读被 `--json` 8KiB 截断的
+  完整 F10 结果——这是特性不是 bug。
+- [ ] 待办：index constituent 快照（P4）、MinIO 快照上传、P2 数据层（Drizzle/Qdrant）。
 - 运行方式见 [`services/finance-analyst/README.md`](services/finance-analyst/README.md)。
 
 ### P1 — 东方财富 F10 sidecar（用户明确要求优先）
@@ -440,6 +460,7 @@ npm run validate
 | 本机 Postgres 启动失败 `postmaster became multithreaded` | macOS 需要有效 locale：`scripts/dev-db.sh` 已设 `LC_ALL=en_US.UTF-8`；或手动 export |
 | F10 enqueue 报 sidecar unreachable | enqueue 需要调 `GET /v1/f10/pages/{market}` 解析 preset；先起 sidecar，或显式传 `--pages cwfx,gsgk` |
 | worker 队列深度/`--drain` 数字不对 | worker 直接读 `pgboss.job`，假设默认 `pgboss` schema；换 schema 需同步改 `apps/worker/src/queues.ts` |
+| **phase0 `npm run research -- --mock` 会无条件覆盖 `out/sections/` 并重组 `magnificent-seven.md` 等交付物** | 验证流水线后必须 `git checkout -- phase0/out/` 并删除 mock sections（2026-10-28 踩过，已恢复）；中间 section 想保留时先备份 |
 | 没有 `--approval-policy`（rc.3） | 用 `DSH_PERMISSION_MODE=read-only`；不要在命令里加不存在的 flag |
 | `deepseek-official` 搜索每次是一次模型 turn | 预算控制；必要时用 `search-api.patch.yml` 切直接 HTTP |
 | 来源偏 stockanalysis、SEC 少 | Phase 1 接 F10 + SEC XBRL；profile 标注未验证项 |

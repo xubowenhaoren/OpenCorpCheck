@@ -1,4 +1,4 @@
-请使用 **mag7-profile** skill，为 {{COMPANY}}（{{TICKER}}）生成一份中文 company profile。
+请使用 **{{SKILL}}** skill，为 {{COMPANY}}（{{TICKER}}，市场：{{MARKET}}）生成一份中文 company profile。
 
 要求：
 
@@ -12,3 +12,4 @@
 
 公司：{{COMPANY}}
 Ticker：{{TICKER}}
+市场：{{MARKET}}

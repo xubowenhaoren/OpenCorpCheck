@@ -61,7 +61,6 @@ export const config = {
   mockSection: path.join(repoRoot, "phase0", "fixtures", "mock-section.md"),
   basePatch: path.join(repoRoot, "phase0", "dsh.patch.yml"),
   f10Patch: path.join(repoRoot, "phase0", "f10-mcp.patch.yml"),
-  skillFile: path.join(repoRoot, ".dsh", "skills", "mag7-profile", "SKILL.md"),
   universeFile: path.join(repoRoot, "config", "universe.yaml"),
 };
 

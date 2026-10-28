@@ -10,6 +10,7 @@ import type { PgBoss } from "pg-boss";
 import { config } from "./config.js";
 import { createRun, type JobSpec } from "./db.js";
 import { QUEUES, sendJob } from "./queues.js";
+import { skillForTarget } from "./research/profiler.js";
 import { resolveTargets } from "./universe.js";
 
 const PAGE_PRIORITY: Record<string, number> = {
@@ -85,6 +86,8 @@ export async function enqueueResearch(
       key: target.key,
       ticker: target.ticker,
       name: target.name,
+      ...(target.market ? { market: target.market } : {}),
+      skill: skillForTarget(target),
       ...(target.focus ? { focus: target.focus } : {}),
       force: Boolean(options.force),
       mock: Boolean(options.mock),
