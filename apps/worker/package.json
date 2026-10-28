@@ -1,0 +1,29 @@
+{
+  "name": "@occ/worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCorpCheck parallel backfill worker (pg-boss)",
+  "type": "module",
+  "bin": {
+    "occ-backfill": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/cli.js work",
+    "test": "tsc -p ../../packages/sources/eastmoney-f10/tsconfig.json && tsc -p tsconfig.json && vitest run"
+  },
+  "dependencies": {
+    "@occ/sources-eastmoney-f10": "workspace:*",
+    "pg": "^8.23.1",
+    "pg-boss": "^12.38.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/pg": "^8.23.1",
+    "typescript": "5.9.3",
+    "vitest": "^5.0.5"
+  }
+}

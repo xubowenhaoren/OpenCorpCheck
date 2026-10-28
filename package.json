@@ -9,6 +9,9 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "mcp:f10": "node apps/cli/dist/mcp.js"
+    "mcp:f10": "node apps/cli/dist/mcp.js",
+    "db:migrate": "node apps/worker/dist/cli.js migrate",
+    "backfill": "node apps/worker/dist/cli.js",
+    "worker": "node apps/worker/dist/cli.js work"
   }
 }

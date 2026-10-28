@@ -2,7 +2,7 @@
 
 **Open, agentic company intelligence for A500 · Hang Seng Index · S&P 500 · NASDAQ-100.**
 
-> Status: Phase 1 in progress — F10 sidecar + MCP tool wired to dsh · 2026-10-28 · full platform still design
+> Status: Phase 1 in progress — F10 sidecar + MCP + pg-boss backfill · 2026-10-28 · full platform still design
 
 OpenCorpCheck is an open-source, AI-native alternative to commercial company-intelligence
 products (the "企查查" category). It builds a cited, queryable profile for every company in
@@ -44,6 +44,7 @@ skill that produces cited company profiles. No UI, no database. See
 - [Phase 0 output — Magnificent Seven profiles](phase0/out/magnificent-seven.md)
 - [finance-analyst sidecar — Eastmoney F10](services/finance-analyst/README.md)
 - [MCP server — F10 tools](apps/cli/README.md)
+- [Parallel backfill worker](apps/worker/README.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Prior art & competitive scan](docs/PRIOR_ART.md)
 - [Data sources & the finance_analyst reuse plan](docs/DATA_SOURCES.md)

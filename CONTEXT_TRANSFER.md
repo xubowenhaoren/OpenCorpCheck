@@ -134,12 +134,23 @@ OpenCorpCheck/
   README.md
   CONTEXT_TRANSFER.md              # 本文件
   .gitignore                       # 忽略 key、.env、runs、sections、live logs
-  .dsh/skills/mag7-profile/SKILL.md # Phase 0 的蒸馏版 BFS/DFS skill
+  .dsh/skills/
+    mag7-profile/SKILL.md          # Phase 0 的蒸馏版 BFS/DFS skill
+    f10-financials/SKILL.md        # F10 来源层级、页面选择、引用纪律
   config/universe.yaml             # 4 个指数 + 24 家 AI watchlist
   docs/
     ARCHITECTURE.md                # 完整平台设计（Phase 1+ 的主要参考）
     DATA_SOURCES.md                # 数据源矩阵 + F10 复用方案
     PRIOR_ART.md                   # 竞品/开源生态扫描
+  apps/
+    cli/                           # MCP stdio server（f10_scrape / f10_pages）
+    worker/                        # pg-boss 并行 backfill（research / f10）
+  packages/
+    sources/eastmoney-f10/         # TS adapter：Zod 校验 + summary/full 投影
+  services/
+    finance-analyst/               # Python sidecar：A/HK/US F10（uv + Playwright）
+  scripts/
+    dev-db.sh                      # 本地 Postgres 17 init/start/stop
   phase0/
     README.md                      # Phase 0 快速开始/排错
     .env.example                   # DEEPSEEK_API_KEY 占位
@@ -268,7 +279,18 @@ npm run validate
 - [x] dsh 端到端实测：headless 调用 `mcp__occ__f10_pages` 返回 US 页面表；
   调用 `mcp__occ__f10_scrape` 抓 AAPL `gsgk`（2,976 字符）并由模型正确总结。
   `apps/cli` 集成测试 3 passed（stdio handshake + 工具调用 + 投影，无网络）。
-- [ ] 待办：MinIO 快照上传、pg-boss 队列驱动的并行 backfill、worker/API 复用 adapter。
+- [x] 并行 backfill：`apps/worker`（pg-boss 17 + Postgres 17）。
+  - 队列 `research.company` / `f10.page`，逐 company / 逐 page job；死信队列
+    `*.dead`；retry + 指数退避；`singletonKey` + 唯一约束去重。
+  - Postgres：`backfill_runs` / `backfill_jobs` / `research_cache` / `f10_pages`；
+    完成态 checkpoint、prompt hash + section hash 缓存、F10 页面 upsert。
+  - 并发：research 4、F10 4（可用 env 调整）；侧车仍是全局 2 页 / 每域 5 req/s。
+  - 优先级：AI watchlist 100 > MAG7 60 > 显式 50，财务页加权；`--shard i/n`。
+  - 可观测：逐 job JSON 日志（耗时/token/错误）、`status --run` 的 p50/p95/avg
+    与死信详情、队列深度直接读 `pgboss.job`。
+  - 实测：AAPL+MSFT 并发 4 总耗时 **147s**（单家 128s/145s，串行约 273s）；
+    mock 重跑全部 cache hit；sidecar 停机时 4 次尝试后进死信，run 标 failed。
+- [ ] 待办：index constituent 快照（P4）、通用 A/HK profile skill、MinIO 快照上传。
 - 运行方式见 [`services/finance-analyst/README.md`](services/finance-analyst/README.md)。
 
 ### P1 — 东方财富 F10 sidecar（用户明确要求优先）
@@ -396,6 +418,9 @@ npm run validate
 9. **Read-only by default**：agent 只能 propose fact/relation，写入进 review queue。
 10. **Backfill 必须并行 + 可恢复**：Phase 0 的 `--concurrency 4` 只是脚本级；Phase 1 用
     pg-boss + worker 池 + per-domain 限流 + checkpoint，不能串行跑全量。
+    **已实现**：`apps/worker`，Postgres 17 + pg-boss，见该目录 README。
+11. **默认直接在 `main` 上提交，不开额外 branch**（用户 2026-10-28 明确要求）。
+    需要隔离实验时再临时开分支，合并后删除。
 
 ---
 
@@ -412,6 +437,9 @@ npm run validate
 | dsh `--json` 8 KiB 截断 | 完整结果读 `phase0/.dsh-home/sessions` 明文 JSONL |
 | 直接跑 dsh 时 `~/.dsh` 里已有 zstd session | 本项目 patch 用 `compression: none`，会报 backend 不匹配；设 `DSH_HOME=phase0/.dsh-home` 或临时目录 |
 | MCP 工具不出现 | 先 `corepack pnpm -r build`；sidecar 要在 `:8090`；检查 `--dump-config` 里 `mcp-finance-analyst` 是否被 `insert` 进去 |
+| 本机 Postgres 启动失败 `postmaster became multithreaded` | macOS 需要有效 locale：`scripts/dev-db.sh` 已设 `LC_ALL=en_US.UTF-8`；或手动 export |
+| F10 enqueue 报 sidecar unreachable | enqueue 需要调 `GET /v1/f10/pages/{market}` 解析 preset；先起 sidecar，或显式传 `--pages cwfx,gsgk` |
+| worker 队列深度/`--drain` 数字不对 | worker 直接读 `pgboss.job`，假设默认 `pgboss` schema；换 schema 需同步改 `apps/worker/src/queues.ts` |
 | 没有 `--approval-policy`（rc.3） | 用 `DSH_PERMISSION_MODE=read-only`；不要在命令里加不存在的 flag |
 | `deepseek-official` 搜索每次是一次模型 turn | 预算控制；必要时用 `search-api.patch.yml` 切直接 HTTP |
 | 来源偏 stockanalysis、SEC 少 | Phase 1 接 F10 + SEC XBRL；profile 标注未验证项 |
@@ -430,6 +458,8 @@ npm run validate
       都被 `.gitignore` 忽略。
 - [ ] 下一阶段优先做 F10 sidecar（P1）。
 - [ ] 并行 backfill：`--concurrency 4` 起步；Phase 1 用 pg-boss + worker 池，确认可断点续跑。
+- [ ] 本地 DB：`scripts/dev-db.sh status` 正常；`node apps/worker/dist/cli.js status` 能看到队列。
+- [ ] `corepack pnpm -r test` 全绿（adapter 9 + MCP 3 + worker 19）。
 - [ ] 不要把 `deepseek-v4-pro` 写回配置。
 - [ ] 不要提交任何 key、token、cookie、`.env`。
 

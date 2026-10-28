@@ -15,6 +15,9 @@ phase0/out/sections/
 phase0/out/synthesis.md
 phase0/out/live-*.log
 
+# Local PostgreSQL cluster
+.pgdata/
+
 # Node / OS
 node_modules/
 dist/

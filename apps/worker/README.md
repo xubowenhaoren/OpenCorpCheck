@@ -1,0 +1,127 @@
+# @occ/worker — parallel backfill
+
+Postgres + [pg-boss](https://github.com/timgit/pg-boss) worker that turns company
+research and F10 crawls into independent, retryable, resumable jobs. It replaces
+the Phase 0 pattern of running companies one at a time in one process.
+
+## Model
+
+| Queue | Job | Handler |
+|---|---|---|
+| `research.company` | one company → one dsh headless turn | [jobs/research.ts](src/jobs/research.ts) |
+| `f10.page` | one company × one F10 page | [jobs/f10.ts](src/jobs/f10.ts) |
+| `research.company.dead` / `f10.page.dead` | exhausted jobs | marks the DB row `dead` |
+
+- **Granularity**: research is one job per company; F10 is one job per page, so a
+  failed page retries without re-crawling the company.
+- **Concurrency**: pg-boss `localConcurrency` — research defaults to 4, F10 to 4
+  (`OCC_RESEARCH_CONCURRENCY`, `OCC_F10_CONCURRENCY`). The sidecar still caps
+  Playwright at 2 pages globally and 5 req/s per domain, so F10 jobs queue behind
+  that limit instead of hammering Eastmoney.
+- **Retries**: research 2 retries (30s exponential backoff, 10m cap); F10 3
+  retries (15s base, 5m cap). Exhausted jobs move to a dead-letter queue and the
+  DB records `dead` + the last error.
+- **Checkpoint / resume**: `backfill_runs` + `backfill_jobs` hold per-job state.
+  Completed jobs are skipped on rerun; pg-boss persists queued/retry jobs across
+  worker restarts. Research also has a content cache: `research_cache` stores the
+  prompt hash (prompt + date + model + skill + patches) and section SHA-256, so a
+  rerun with identical inputs makes no LLM call.
+- **Priority / sharding**: AI watchlist 100, MAG7 60, explicit 50; financial
+  pages get a small boost. `--shard 0/4` splits targets by `sha256(key) % N` so
+  several worker processes can share the load.
+- **Idempotency**: `UNIQUE (run_id, queue, job_key)` plus pg-boss `singletonKey`
+  per run; F10 rows are upserted by `(market, code, page)`; sections are written
+  atomically (tmp + rename).
+- **Observability**: every job logs one JSON line (duration, tokens, error,
+  retry count) to stderr; `status --run` reports counts, p50/p95/avg duration and
+  dead jobs; queue depth comes from pg-boss's job table (not its 60s cache).
+
+## Setup
+
+Requires Node 24, pnpm (corepack), PostgreSQL 17, and — for F10 — the
+[finance-analyst sidecar](../finance-analyst/README.md).
+
+```bash
+# 1. local Postgres (project-local cluster, gitignored)
+brew install postgresql@17
+scripts/dev-db.sh init          # first time only
+scripts/dev-db.sh start         # prints DATABASE_URL
+
+# 2. build and migrate
+corepack pnpm -r build
+node apps/worker/dist/cli.js migrate
+
+# 3. sidecar, for F10 jobs
+cd services/finance-analyst && uv run occ-f10 serve --port 8090
+```
+
+Environment:
+
+| Env | Default |
+|---|---|
+| `DATABASE_URL` | `postgres://occ@127.0.0.1:5432/occdb` |
+| `OCC_RESEARCH_CONCURRENCY` | `4` |
+| `OCC_F10_CONCURRENCY` | `4` |
+| `OCC_FINANCE_ANALYST_URL` | `http://127.0.0.1:8090` |
+| `OCC_DSH_HOME` | `phase0/.dsh-home` |
+| `OCC_RUNS_DIR` | `phase0/runs` |
+| `OCC_SECTIONS_DIR` | `phase0/out/sections` |
+| `OCC_RESEARCH_MODEL` | `deepseek-flash` |
+| `DEEPSEEK_API_KEY` | required for live research |
+
+## Usage
+
+```bash
+# research: MAG7, 4 at a time
+node apps/worker/dist/cli.js enqueue research --universe mag7
+node apps/worker/dist/cli.js work --queues research --drain
+
+# research without an API key (fixture sections; exercises the queue)
+node apps/worker/dist/cli.js enqueue research --tickers AAPL,MSFT --mock
+node apps/worker/dist/cli.js work --queues research --drain
+
+# F10: 600519 preset default, or an explicit page list
+node apps/worker/dist/cli.js enqueue f10 --tickers 600519:A --preset default
+node apps/worker/dist/cli.js enqueue f10 --tickers AAPL:US --pages cwfx,gsgk
+node apps/worker/dist/cli.js work --queues f10 --drain
+
+# operations
+node apps/worker/dist/cli.js status
+node apps/worker/dist/cli.js status --run <uuid> --json
+node apps/worker/dist/cli.js status --run <uuid> --json --out phase0/out/backfill-summary.json
+node apps/worker/dist/cli.js targets --universe mag7
+```
+
+`--drain` exits when every queue is empty (useful for CI and one-shot
+backfills); without it the worker stays up and polls. `--force` ignores both the
+completed checkpoint and the research cache.
+
+## Tables
+
+- `backfill_runs` — one row per enqueue: kind, status, totals, options.
+- `backfill_jobs` — per company/page: status, attempts, duration, last error.
+- `research_cache` — company → prompt hash, section hash, tokens.
+- `f10_pages` — latest snapshot per `(market, code, page)`: HTTP status, text
+  length, table count, `html_sha256`, `storage_key`, warnings.
+
+pg-boss owns its own `pgboss` schema.
+
+## Verified (2026-10-28, local)
+
+| Scenario | Result |
+|---|---|
+| F10 AAPL `minimal` | 2/2 pages, ~14s each, `f10_pages` upserted |
+| Research mock ×2 | second run: both jobs `cache_hit`, no work |
+| Live research AAPL + MSFT, concurrency 4 | wall **147s** vs ~273s serial; 2/2 completed |
+| Sidecar down | 4 attempts over ~151s → dead-letter; run `failed`, error recorded |
+
+## Known limits
+
+- `config/universe.yaml` has index metadata but no constituents yet; use
+  `--universe mag7|ai-watchlist` or explicit `--tickers` until P4 loads the
+  index snapshots.
+- Research uses the `mag7-profile` skill; a generic A/HK company-profile skill is
+  still needed before large non-US backfills.
+- Live queue counts query `pgboss.job` directly, assuming the default schema.
+- Token/cost is logged per job but not summed per run.
+- Snapshots are referenced by `storage_key`; MinIO upload is still P2.
