@@ -1,6 +1,6 @@
 # Search Evaluation
 
-> Status: harness implemented · live results pending the NDX-100 backfill
+> Status: measured on the NDX-100 corpus · 2026-10-28
 > Related: [Data layer & hybrid search](SEARCH.md) · [NDX snapshot](../config/indices/ndx.yaml)
 
 ## What we measure
@@ -41,13 +41,63 @@ node scripts/eval-search.mjs --mode semantic
 
 ## Results
 
-Filled in after the 100-company NDX backfill completes.
+**Corpus (2026-10-28):** 100 NASDAQ-100 companies backfilled and ingested
+(102 profile documents including 600519/00700, 1,428 profile chunks), plus the
+24 synthetic fixture companies (31 chunks). Postgres: 116 companies;
+Qdrant: 1,459 document points / 116 company points.
+
+All numbers are `limit=10`, rerank off, local Postgres + Qdrant 1.18 + BGE-M3.
+
+| Mode | Family | Cases | Top-1 | MRR@10 | Recall@5 | Zero | p50 | p95 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| hybrid | ticker | 100 | **100%** | 1.000 | 100% | 0% | 172ms | 214ms |
+| hybrid | English name | 100 | **100%** | 1.000 | 100% | 0% | 203ms | 278ms |
+| hybrid | semantic (companies) | 20 | 70% | 0.800 | 90% | 0% | 222ms | 268ms |
+| hybrid | semantic (documents) | 5 | 80% | 0.900 | 100% | 0% | 245ms | 273ms |
+| keyword | ticker | 100 | 100% | 1.000 | 100% | 0% | 182ms | 248ms |
+| keyword | English name | 100 | 100% | 1.000 | 100% | 0% | 216ms | 311ms |
+| keyword | semantic (companies) | 20 | 80% | 0.839 | 95% | 0% | 212ms | 263ms |
+| keyword | semantic (documents) | 5 | 80% | 0.900 | 100% | 0% | 183ms | 230ms |
+| semantic | ticker | 100 | 100% | 1.000 | 100% | 0% | 180ms | 262ms |
+| semantic | English name | 100 | 100% | 1.000 | 100% | 0% | 207ms | 274ms |
+| semantic | semantic (companies) | 20 | 55% | 0.708 | 90% | 0% | 244ms | 295ms |
+| semantic | semantic (documents) | 5 | 80% | 0.822 | 80% | 0% | 279ms | 288ms |
+
+### What the numbers mean
+
+- **Acceptance gate met**: ticker / English-name top-1 accuracy is **100%** in
+  all three modes (target ≥ 90%).
+- **Hybrid is the default** because it combines the planner with retrieval:
+  semantic descriptions reach 90% recall@5. The two hybrid misses are genuine
+  ambiguity, not failures — `半导体设备 光刻` returns AMD/ASML/TER (AMAT at 7),
+  `在线支付 数字钱包` returns Shopify/MercadoLibre/DoorDash (PYPL at 6).
+- **Dense-only weakens Chinese business descriptions** (55% top-1), which is
+  expected: many NDX companies' Chinese aliases are model-written rather than
+  canonical, and SPARSE terms such as `模拟芯片` / `薪酬外包` carry the signal.
+- **Document search** returns the right company profile for all five probes at
+  recall@5; the one hybrid top-1 miss is a same-company section rather than a
+  wrong company.
+- **Latency** p95 is 214–295ms across groups (meta `took_ms`), under the 400ms
+  local target even on the full corpus.
+- **Exact-match ranking fix**: before the fix, keyword mode sorted unbounded
+  BM25 scores (e.g. 9.79) above exact alias matches (score 1), giving 2% name
+  accuracy. Identifier → alias → fuzzy matches now sort ahead of retrieval hits
+  in every mode; keyword name accuracy went to 100%. Exact matches still carry
+  their planner score in the response.
+
+Reproduce:
+
+```bash
+node scripts/eval-search.mjs --mode hybrid
+node scripts/eval-search.mjs --mode keyword
+node scripts/eval-search.mjs --mode semantic
+```
 
 ## Known limits
 
 - The visible corpus still contains the 24 synthetic fixture companies, which
-  can outrank a real profile for broad semantic queries. A fixture-free run is
-  the cleanest comparison.
+  can outrank a real profile for broad semantic queries. The NDX-100 numbers
+  above include them; a fixture-free corpus is the cleanest future comparison.
 - Chinese descriptions for US companies depend on the model writing the section
   with Chinese aliases; ticker/English-name queries are the primary acceptance
   gate.

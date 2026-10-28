@@ -174,6 +174,15 @@ Selected results:
 Explain mode verified: BM25 branch, dense branch, fusion list, and per-hit
 branch ranks are all present.
 
+## Real-corpus evaluation (2026-10-28)
+
+The NDX-100 backfill is ingested and indexed: 100 companies, 1,428 profile
+chunks, 1,459 document points. `scripts/eval-search.mjs` reports hybrid
+ticker/English-name **top-1 100%**, semantic recall@5 **90%**, document
+recall@5 **100%**, and p95 **214–278ms**. Exact identifier/alias/fuzzy matches
+now sort ahead of unbounded BM25 scores. Full method and comparisons:
+[EVAL.md](EVAL.md).
+
 ## Known limits / next
 
 - The seed corpus is **synthetic fixtures** (`fixture://` URLs,

@@ -458,8 +458,15 @@ npm run validate
   wall **281s**；research p50 131s / p95 234s，ingest p50 13s；285k input /
   78k output tokens；70 chunks 入 Qdrant，0 retry。搜索验收：ticker/英文名 top1，
   “模拟芯片” → ADI top1，“人力资源 薪酬外包” → ADP top1。
-- [ ] 100 家 backfill 与 wall time / token 成本记录。
-- [ ] Golden query 评测（MRR/nDCG/Recall/p95）。
+- [x] 100 家 backfill：`--universe ndx`，research 并发 6 / ingest 4，
+  **200/200 jobs**（100 research + 100 ingest），wall **约 42 分钟**，
+  research p50 143s / p95 221s，ingest p50 15s，4.94M input / 1.57M output tokens，
+  0 failed / 0 dead letter；1,428 个 profile chunk、100 条 NDX membership。
+- [x] Golden query 评测（`scripts/eval-search.mjs`，结果见 `docs/EVAL.md`）：
+  hybrid 下 ticker / 英文名 **top1 100%**、semantic recall@5 90%、
+  document recall@5 100%；p95 214–278ms（< 400ms 目标）。
+  顺带修复 exact identifier/alias/fuzzy 排在 BM25 原始分数之后的问题
+  （keyword 模式英文名 top1 从 2% → 100%）。
 
 **目标**：跑通真实数据闭环，测 backfill pipeline 速度 + hybrid search 质量。
 

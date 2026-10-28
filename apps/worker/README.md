@@ -134,6 +134,7 @@ pg-boss owns its own `pgboss` schema.
 | Live research AAPL + MSFT, concurrency 4 | wall **147s** vs ~273s serial; 2/2 completed |
 | Live A/HK research 600519 + 00700, `--include-f10` | 2/2 completed (202s / 219s, wall 221s); full names resolved, 13 sections, F10 cited with `fetched_at` |
 | NDX pilot AAPL/ABNB/ADBE/ADI/ADP, research + ingest, concurrency 4 | 5/5 research + 5/5 ingest, wall **281s**; research p50 131s / p95 234s, ingest p50 13s; 285k input / 78k output tokens; 70 chunks indexed, 0 retries |
+| NDX full backfill, 100 companies, research 6 / ingest 4 | **200/200 jobs** (100 research + 100 ingest), wall **~42 min**; research p50 143s / p95 221s, ingest p50 15s; 4.94M input / 1.57M output tokens; 1,428 chunks; 0 failures / 0 dead letters |
 | `occ ingest` rerun | unchanged sections skipped without embeddings; `--force` reindexes |
 | Sidecar down | 4 attempts over ~151s → dead-letter; run `failed`, error recorded |
 

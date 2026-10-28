@@ -106,6 +106,21 @@ export class SearchService {
     const bundles = await getCompanyBundles(this.deps.db, ids);
     const explainContext = buildExplainContext(retrieval.explain, "company_id");
 
+    /**
+     * Planner intent: an exact identifier or alias match is a user telling us
+     * which company they mean. Raw BM25 scores are unbounded (a keyword hit can
+     * score 9.8 while an exact alias scores 1), so exact matches must sort
+     * ahead of retrieval hits in every mode, including keyword-only.
+     */
+    const exactWeight = (matchType: MatchType): number =>
+      matchType === "identifier"
+        ? 3
+        : matchType === "alias"
+          ? 2
+          : matchType === "fuzzy"
+            ? 1
+            : 0;
+
     type OrderedCompany = {
       bundle: CompanyBundle;
       candidate: NeutralHit;
@@ -127,7 +142,11 @@ export class SearchService {
           (bundle.company.coverageTier === "index_member" ? 0.003 : 0) +
           (bundle.company.coverageTier === "ai_watchlist" ? 0.001 : 0),
       }))
-      .sort((a, b) => b.rankScore - a.rankScore);
+      .sort(
+        (a, b) =>
+          exactWeight(b.candidate.matchType) - exactWeight(a.candidate.matchType) ||
+          b.rankScore - a.rankScore,
+      );
 
     let rerankUsed = false;
     let rerankMs = 0;
@@ -153,7 +172,12 @@ export class SearchService {
             rankScore: byIndex.get(index) ?? -1,
             rerankScore: byIndex.get(index),
           }))
-          .sort((a, b) => b.rankScore - a.rankScore);
+          .sort(
+            (a, b) =>
+              exactWeight(b.candidate.matchType) -
+                exactWeight(a.candidate.matchType) ||
+              b.rankScore - a.rankScore,
+          );
         rerankUsed = true;
       }
       rerankMs = Math.round(performance.now() - rerankStarted);
