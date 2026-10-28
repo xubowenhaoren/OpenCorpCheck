@@ -1,0 +1,1 @@
+"""OpenCorpCheck local embedding sidecar."""

@@ -1,8 +1,14 @@
 # OpenCorpCheck — Context Transfer
 
-> 交接日期：2026-10-27
-> 当前阶段：Phase 0 已完成（headless 研究 harness + 7 份美股七姐妹 profile）
-> 下一阶段：Phase 1（F10 sidecar → 数据层/搜索 → API/CLI/MCP → dsh ACP sidebar → Docker/Electron）
+> 交接日期：2026-10-27（P2 更新：2026-10-28）
+> 当前阶段：Phase 0 + Phase 1 已完成；P2 数据层 + 混合检索 + 搜索 API 已实现并通过 live E2E（35/35）
+> 下一阶段：先做 QQQ/NDX 100 家 backfill + 检索质量评测（见 §6 P2.5）；Docker 封装全部 TODO
+>
+> **本机约束（2026-10-28 用户确认）**：这台电脑是 macOS 虚拟机，**暂时不能跑 Docker**。
+> 所有 Docker / Compose / 镜像 / 多架构 / GHCR 封装工作全部标记为 TODO，换机器后再做。
+> 本项目剩余开发继续用当前的「散装」方式：
+> 本地 Postgres 17（`scripts/dev-db.sh`）、Qdrant 原生二进制（`scripts/dev-qdrant.sh`）、
+> `uv` Python sidecars（finance-analyst / embeddings）、Node API/worker/CLI。
 
 这份文档给下一个接手的 agent/工程师。先读它，再读：
 
@@ -247,7 +253,7 @@ npm run validate
 - 结构与引用交叉校验（来源 URL 必须出现在该公司的 `web_search`/`web_fetch` 事件里）；
 - 7 份中文 profile + 摘要 + 方法/局限。
 
-### 没做（Phase 1+）
+### Phase 0 时点没做（P1/P2 已完成，见 §6；此处保留为历史）
 
 - UI（Web/Electron）
 - Postgres / Qdrant / MinIO / TEI
@@ -310,7 +316,9 @@ npm run validate
   2 次 `f10_scrape`）；引用含 F10 attribution（页面 + fetched_at）与官方媒体，
   缺口处写“未验证”。注意：模型会用 bash grep dsh spill 文件读被 `--json` 8KiB 截断的
   完整 F10 结果——这是特性不是 bug。
-- [ ] 待办：index constituent 快照（P4）、MinIO 快照上传、P2 数据层（Drizzle/Qdrant）。
+- [x] P2 数据层（Drizzle/Qdrant）已完成，见 §6 P2。
+- [ ] 待办：index constituent 快照（P4）、MinIO 快照上传、真实 backfill 输出写入
+      `documents/chunks` 并索引（P2.5）。
 - 运行方式见 [`services/finance-analyst/README.md`](services/finance-analyst/README.md)。
 
 ### P1 — 东方财富 F10 sidecar（用户明确要求优先）
@@ -374,7 +382,31 @@ npm run validate
 
 ### P2 — 数据层 + 混合检索
 
-按 `docs/ARCHITECTURE.md` §5–§7：
+**进度（2026-10-28）：已实现并通过 live E2E（35/35 checks）。** 详见
+[`docs/SEARCH.md`](docs/SEARCH.md)。
+
+- [x] `packages/core`：Zod 查询契约、类型、ULID、错误。
+- [x] `packages/db`：Drizzle schema + `0001_init.sql`；`companies`、`company_ids`、
+      `aliases`、`securities`、`index_memberships`、`sources`、`documents`、`chunks`、
+      `facts`、`financial_facts`、`products`、`relations`、`relation_evidence`、
+      `review_queue`、`outbox`。
+- [x] `packages/retrieval`：jieba `cut_for_search` + Porter2 分词；FNV-1a 32-bit sparse
+      （Qdrant `idf` modifier）；BGE-M3 dense client；Qdrant REST；服务端 RRF/DBSF；
+      可选 rerank；indexer。
+- [x] `apps/api`：Hono + Zod 搜索 API：`/v1/search/companies`、
+      `/v1/search/documents`、`/v1/companies/{id}`、`/v1/health`、`/openapi.json`；
+      `explain=true` 返回 BM25/dense 分支排名与融合结果。
+- [x] `apps/cli`：`occ migrate|seed|search|documents|company|health`。
+- [x] `services/embeddings`：本地 BGE-M3 / bge-reranker-v2-m3 sidecar，TEI 兼容
+      `/embed`、`/rerank`（无 Docker 开发用；生产仍走 TEI）。
+- [x] 本地工具链：`scripts/dev-qdrant.sh`（Qdrant 1.18 arm64 原生二进制）、
+      `scripts/dev-embeddings.sh`、`scripts/e2e-search.sh`。
+- [x] 合成 fixture 语料：24 家公司、31 篇文档；全部 `fixture://` + `trust_tier='fixture'`，
+      不是真实研究数据。
+- [ ] MinIO 快照上传、真实 F10/worker → documents/chunks 的写入管道。
+- [ ] index constituent 快照（P4）与实体解析。
+
+以下是原始 P2 设计（已完成部分以上方进度为准）：
 
 - Postgres 17 + Drizzle + pg-boss；表：`companies`、`company_ids`、`aliases`、`sources`、
   `documents`、`chunks`、`facts`、`financial_facts`、`products`、`relations`、
@@ -385,6 +417,51 @@ npm run validate
 - CLI `occ search`、`occ company get` 等；`--explain` 显示 BM25/dense/RRF/rerank 排名。
 - backfill 用 pg-boss 队列 + worker 池，按 company/page 分片，支持断点续跑；不要串行。
 - 先把 Phase 0 的 7 份 profile 作为 golden baseline，再扩到 A500/HSI/S&P 500/NDX + AI watchlist。
+
+### P2.5 — 下一步（2026-10-28 用户指定）：QQQ/NDX 100 家 backfill + 质量评测
+
+**目标**：跑通真实数据闭环，测 backfill pipeline 速度 + hybrid search 质量。
+
+关键事实 / 前置：
+
+- QQQ 跟踪 NASDAQ-100，约 100 家成分股；需要一份带 `as_of` 的成分股快照（官方/可信
+  来源，记录 license），不要把成分股写死。
+- 现有 P2 搜索用的是 synthetic fixture（24 家）。**worker 的 research 输出还没有自动写入
+  `documents/chunks`**，这是本阶段第一优先级：写 ingestion bridge，把
+  `phase0/out/sections/{TICKER}.md`（或 worker section 输出）解析成
+  `documents` + `chunks`（按章节/段落，500–800 tokens），写入 Postgres，再调用
+  `indexChunks` 写 Qdrant。没有这一步，backfill 出来的 profile 搜不到。
+- 可选：把 company profile 写入 `companies.profile` / `facts`，并重新索引 company 文本。
+- 现有入口：`node apps/cli/dist/occ.js ...`、`node apps/worker/dist/cli.js ...`、
+  `node apps/api/dist/server.js`。模型固定 `deepseek-flash`，不要用 Pro。
+
+实施顺序：
+
+1. **成分股快照**：新增/扩展 `config/universe.yaml`（或 `config/indices/ndx.yaml`），
+   存 100 家 ticker + 名称 + `as_of` + 来源 URL；先核对 ticker/交易所格式（如 BRK.B），
+   再做实体解析。
+2. **Ingestion bridge**：research 完成后读 section markdown → `sources` → `documents`
+   （`doc_type=company_profile`）→ `chunks` → `indexChunks`。必须幂等（content hash /
+   document id），失败可单家重跑。可先实现 `occ ingest --sections phase0/out/sections`，
+   再接 worker 回调。
+3. **Pilot 5 家**：先跑 5 家（如 AAPL/MSFT/NVDA/AMZN/META），验证 ingestion + 搜索 +
+   引用；`--concurrency 4`。
+4. **100 家 backfill**：`--concurrency 4–8`（LLM 全局 4–6，搜索 provider 2–4），记录
+   wall time、p50/p95、tokens/成本、失败/重试/死信、cache hit；输出 `run-summary.json`。
+5. **搜索质量评测**：50–100 条 golden queries（中文全称、英文名、ticker、错拼、拼音首字母、
+   自然语言），测 MRR@10、nDCG@10、Recall@50、zero-result rate、p95 延迟；对比
+   hybrid / keyword / semantic / +rerank。结果写进 `docs/SEARCH.md` 或 `docs/EVAL.md`。
+6. **验收**：
+   - 100 家都有 section；失败公司可单独重跑；
+   - 至少 90 家进入 `documents/chunks`，并能在 `/v1/search/companies`、
+     `/v1/search/documents` 搜到；
+   - ticker / 中文名 / 英文名三类查询 top1 准确率 ≥ 90%（golden set）；
+   - 记录 100 家 backfill wall time 与单家 p50/p95；
+   - 搜索 p95（不含 rerank）目标 < 400ms（本地 Qdrant）。
+
+注意：本机无 Docker，继续用 `scripts/dev-db.sh` / `scripts/dev-qdrant.sh` /
+`scripts/dev-embeddings.sh`；QQQ 成分股会变，快照必须带 `as_of`；真实 F10/SEC 数据的
+license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 
 ### P3 — API / CLI / MCP / dsh ACP sidebar
 
@@ -406,14 +483,23 @@ npm run validate
   MiniMax 的上市状态标了 `verify`。
 - F10 sidecar 接入后，A/HK 优先用 F10 做覆盖，官方公告做引用。
 
-### P5 — Docker / Electron
+### P5 — Docker / Electron（全部 TODO，换机器后再做）
 
-- Compose：postgres/qdrant/minio/tei-embed/tei-rerank/api/worker/finance-analyst/web/
-  dsh/jaeger；profiles `infra`、`app`、`agent`、`observability`、`full`。
-- 镜像多架构 amd64/arm64；GHCR；Trivy/SBOM。
-- Electron thin shell：web-first，electron-vite，VSCode compound launch，debug drawer，
-  typed IPC；Desktop backend = Docker/remote，不做 embedded DB。
+> **2026-10-28 用户确认**：当前开发机是 macOS 虚拟机，不能跑 Docker。P5 的所有
+> Docker/容器/打包工作暂停，标记为 TODO；在换到支持 Docker 的机器之前不要开工。
+> 剩余开发继续用「散装」方式：本地 Postgres + Qdrant 原生二进制 + uv sidecars +
+> Node 进程。下面内容只作为将来换机器时的清单保留。
+
+- **TODO（Docker 封装）**：Compose：postgres/qdrant/minio/tei-embed/tei-rerank/api/
+  worker/finance-analyst/web/dsh/jaeger；profiles `infra`、`app`、`agent`、
+  `observability`、`full`。
+- **TODO（镜像/发布）**：多架构 amd64/arm64；GHCR；Trivy/SBOM。
+- **TODO（Electron）**：thin shell，web-first，electron-vite，VSCode compound launch，
+  debug drawer，typed IPC；Desktop backend = Docker/remote，不做 embedded DB。
 - 注意：Electron 不跑 crawler/Playwright；那些在 worker/finance-analyst 容器里。
+- **当前替代方案（不要删）**：`scripts/dev-db.sh`（Postgres 17）、
+  `scripts/dev-qdrant.sh`（Qdrant 1.18 原生 arm64）、`scripts/dev-embeddings.sh`
+  （BGE-M3 sidecar）、`scripts/e2e-search.sh`。这些就是本机的「散装」运行方式。
 
 ### P6 — 评测 / 质量
 
@@ -431,6 +517,8 @@ npm run validate
 3. **dsh headless** 用于批量文档；**ACP** 用于未来交互式 sidebar。
 4. **`deepseek-flash`**，不是 Pro。
 5. **Docker/remote** 作为桌面后端；不做 PGlite/LanceDB embedded mode。
+   **2026-10-28 更新**：本机是 macOS 虚拟机，不能跑 Docker；Docker 封装全部 TODO，
+   换机器后再做。当前开发继续用本地 Postgres/Qdrant/uv 的「散装」方式。
 6. **Scope**：4 个指数 + AI watchlist + 按需私有公司，不做 200M 实体。
 7. **F10 直接复用**，不重写；Apache-2.0 attribution；Eastmoney 数据不批量重分发。
 8. **不完整移植 opportunity-radar**；Phase 0 的 skill 是蒸馏版，保留 BFS/DFS + 引用纪律，
@@ -450,7 +538,8 @@ npm run validate
 |---|---|
 | dsh 是 developer preview，接口会变 | 固定 `0.2.1-rc.3`；spawn/解析集中在 `lib/dsh.mjs`；异常试 rc.4 |
 | npm `~/.npm/_cacache` 不可写 | `lib/dsh.mjs` 用 `OCC_NPM_CACHE` / `$TMPDIR/occ-npm-cache`；不要继承 `npm_config_cache` |
-| Python 3.9 vs F10 的 3.10+ | 已用 `uv` 装 Python 3.12（`services/finance-analyst/.python-version`）；Docker 镜像留到 P5 |
+| Python 3.9 vs F10 的 3.10+ | 已用 `uv` 装 Python 3.12（`services/finance-analyst/.python-version`）；Docker 镜像 TODO，换机器后再做 |
+| **本机是 macOS 虚拟机，不能跑 Docker** | Docker/Compose/镜像全部 TODO；开发用 `scripts/dev-db.sh`、`scripts/dev-qdrant.sh`、`scripts/dev-embeddings.sh` 的「散装」方式 |
 | 串行 backfill 太慢（Phase 0 的 7 家约 20 分钟） | `--concurrency 4`；Phase 1 用 pg-boss + worker 池 + per-domain 限流 + checkpoint |
 | API key 泄露风险 | 不要 `pgrep -fl`（会打印 env）；用 `pgrep -f` 只看 PID；key 只放 `.env`/环境变量，绝不提交 |
 | Eastmoney 反爬/ToS | 限流、重试、robots、attribution；不批量重分发 |
@@ -477,10 +566,14 @@ npm run validate
 - [ ] `.dsh/skills/mag7-profile/SKILL.md` 在仓库根目录且被跟踪。
 - [ ] `DEEPSEEK_API_KEY.txt`、`phase0/.env`、`phase0/runs/`、`phase0/out/sections/`
       都被 `.gitignore` 忽略。
-- [ ] 下一阶段优先做 F10 sidecar（P1）。
+- [x] P1 F10 sidecar 已完成；下一步做 P2.5（QQQ/NDX 100 家 backfill + 检索质量）。
+- [ ] Docker 封装全部 TODO（本机 macOS 虚拟机不能跑 Docker，换机器后再做）；
+      本机用 `scripts/dev-db.sh` / `dev-qdrant.sh` / `dev-embeddings.sh` 散装运行。
 - [ ] 并行 backfill：`--concurrency 4` 起步；Phase 1 用 pg-boss + worker 池，确认可断点续跑。
 - [ ] 本地 DB：`scripts/dev-db.sh status` 正常；`node apps/worker/dist/cli.js status` 能看到队列。
-- [ ] `corepack pnpm -r test` 全绿（adapter 9 + MCP 3 + worker 19）。
+- [x] `corepack pnpm -r test` 全绿（adapter 9 + MCP 3 + worker 25 + retrieval 10 +
+      db 3 + api 5）。
+- [x] `corepack pnpm e2e:search` 通过（live Postgres + Qdrant 1.18 + BGE-M3，35/35）。
 - [ ] 不要把 `deepseek-v4-pro` 写回配置。
 - [ ] 不要提交任何 key、token、cookie、`.env`。
 

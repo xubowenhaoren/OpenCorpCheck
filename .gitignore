@@ -18,6 +18,16 @@ phase0/out/live-*.log
 # Local PostgreSQL cluster
 .pgdata/
 
+# Local Qdrant binary + storage
+.qdrant/
+.qdrant-initialized
+
+# Local embedding sidecar runtime
+.embeddings/
+services/embeddings/.venv/
+__pycache__/
+.pytest_cache/
+
 # Node / OS
 node_modules/
 dist/

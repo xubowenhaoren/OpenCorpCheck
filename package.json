@@ -10,8 +10,13 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "mcp:f10": "node apps/cli/dist/mcp.js",
-    "db:migrate": "node apps/worker/dist/cli.js migrate",
+    "db:migrate": "node apps/cli/dist/occ.js migrate",
     "backfill": "node apps/worker/dist/cli.js",
-    "worker": "node apps/worker/dist/cli.js work"
+    "worker": "node apps/worker/dist/cli.js work",
+    "seed": "node apps/cli/dist/occ.js seed",
+    "dev:api": "node apps/api/dist/server.js",
+    "dev:qdrant": "scripts/dev-qdrant.sh start",
+    "dev:embeddings": "scripts/dev-embeddings.sh start",
+    "e2e:search": "scripts/e2e-search.sh"
   }
 }
