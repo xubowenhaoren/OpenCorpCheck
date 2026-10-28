@@ -42,6 +42,12 @@ function pathEnv(name: string, fallback: string): string {
   return path.isAbsolute(raw) ? raw : path.join(repoRoot, raw);
 }
 
+/** First matching env var wins; keeps the old OCC_SECTIONS_DIR working. */
+function pathEnvAny(names: string[], fallback: string): string {
+  const name = names.find((candidate) => process.env[candidate]);
+  return pathEnv(name ?? names[0]!, fallback);
+}
+
 export const config = {
   repoRoot,
   databaseUrl:
@@ -63,8 +69,11 @@ export const config = {
   f10Concurrency: intEnv("OCC_F10_CONCURRENCY", 4),
   ingestConcurrency: intEnv("OCC_INGEST_CONCURRENCY", 4),
   dshHome: pathEnv("OCC_DSH_HOME", "phase0/.dsh-home"),
-  runsDir: pathEnv("OCC_RUNS_DIR", "phase0/runs"),
-  sectionsDir: pathEnv("OCC_SECTIONS_DIR", "phase0/out/sections"),
+  runsDir: pathEnv("OCC_RUNS_DIR", ".occ/runs"),
+  sectionsDir: pathEnvAny(
+    ["OCC_WORKER_SECTIONS_DIR", "OCC_SECTIONS_DIR"],
+    ".occ/sections",
+  ),
   npmCache: process.env.OCC_NPM_CACHE ?? path.join(os.tmpdir(), "occ-npm-cache"),
   dshVersion: "0.2.1-rc.3",
   model: process.env.OCC_RESEARCH_MODEL ?? "deepseek-flash",

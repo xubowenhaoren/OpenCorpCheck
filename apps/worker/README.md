@@ -72,10 +72,15 @@ Environment:
 | `OCC_QDRANT_URL` | `http://127.0.0.1:6333` |
 | `OCC_EMBEDDING_URL` | `http://127.0.0.1:8080` |
 | `OCC_DSH_HOME` | `phase0/.dsh-home` |
-| `OCC_RUNS_DIR` | `phase0/runs` |
-| `OCC_SECTIONS_DIR` | `phase0/out/sections` |
+| `OCC_RUNS_DIR` | `.occ/runs` |
+| `OCC_WORKER_SECTIONS_DIR` | `.occ/sections` (falls back to `OCC_SECTIONS_DIR`) |
 | `OCC_RESEARCH_MODEL` | `deepseek-flash` |
 | `DEEPSEEK_API_KEY` | required for live research |
+
+Worker output goes under `.occ/` (gitignored) so a backfill can never overwrite
+the committed Phase 0 corpus in `phase0/`. If you still point
+`OCC_SECTIONS_DIR` at `phase0/out/sections`, that value is honoured for
+compatibility, but new runs write to `.occ/sections` by default.
 
 ## Usage
 

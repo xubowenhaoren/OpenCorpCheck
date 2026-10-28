@@ -634,6 +634,7 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 | 中文常用名搜不到（奈飞/好市多） | 目前 alias 只从 profile 的 name/ticker 派生；下一轮补 curated 中文 alias，见 `docs/EVAL.md` |
 | pinyin alias 依赖 `pinyin-pro` | 只在 ingest/CLI 侧；搜索侧不需要该依赖。新增中文 alias 时用 `pinyinVariants`/`pinyinAliasForms` |
 | **phase0 `npm run research -- --mock` 会无条件覆盖 `out/sections/` 并重组 `magnificent-seven.md` 等交付物** | 验证流水线后必须 `git checkout -- phase0/out/` 并删除 mock sections（2026-10-28 踩过，已恢复）；中间 section 想保留时先备份 |
+| **旧版 worker 默认把 runs/sections 写进 `phase0/`（2026-10-28 已改）** | 曾覆盖 Phase 0 的 MAG7 事件日志，`phase0 && npm run validate` 因此 FAIL；已提交的 `magnificent-seven.md` 未受影响。现在 worker 默认写 `.occ/runs`、`.occ/sections`（`OCC_WORKER_SECTIONS_DIR`，兼容旧的 `OCC_SECTIONS_DIR`）。要重新校验 Phase 0 只能重跑那 7 家 |
 | 没有 `--approval-policy`（rc.3） | 用 `DSH_PERMISSION_MODE=read-only`；不要在命令里加不存在的 flag |
 | `deepseek-official` 搜索每次是一次模型 turn | 预算控制；必要时用 `search-api.patch.yml` 切直接 HTTP |
 | 来源偏 stockanalysis、SEC 少 | Phase 1 接 F10 + SEC XBRL；profile 标注未验证项 |
