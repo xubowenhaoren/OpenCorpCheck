@@ -404,6 +404,7 @@ export interface RunSummary {
     p95: number | null;
     avg: number | null;
   };
+  tokens: { input: number; output: number };
   failed: Array<{
     company_id: string;
     page: string | null;
@@ -450,10 +451,22 @@ export async function getRunSummary(runId: string): Promise<RunSummary> {
      WHERE run_id = $1 AND duration_ms IS NOT NULL`,
     [runId],
   );
+  const tokens = await query<{ input: number | null; output: number | null }>(
+    `SELECT sum(rc.tokens_input)::int AS input,
+            sum(rc.tokens_output)::int AS output
+     FROM research_cache rc
+     JOIN backfill_jobs j ON j.company_id = rc.company_id
+     WHERE j.run_id = $1 AND j.queue = 'research.company'`,
+    [runId],
+  );
   return {
     run: runs[0] ?? null,
     counts: Object.fromEntries(counts.map((row) => [row.status, Number(row.count)])),
     durationMs: durations[0] ?? { p50: null, p95: null, avg: null },
+    tokens: {
+      input: Number(tokens[0]?.input ?? 0),
+      output: Number(tokens[0]?.output ?? 0),
+    },
     failed,
   };
 }

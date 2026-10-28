@@ -193,6 +193,7 @@ export async function ingestSection(
   const coverageTier =
     target.coverageTier ?? (target.indexCode ? "index_member" : "discovered");
   const companyText = companyIndexText(parsed);
+  const language = detectLanguage(markdown);
 
   const output = await ctx.db.transaction(async (tx) => {
     await tx.execute(
@@ -290,7 +291,7 @@ export async function ingestSection(
         mime: "text/markdown",
         storageKey,
         sha256: sectionHash,
-        language: "zh",
+        language,
         pageCount: null,
         extractorVersion: `research-${options.model ?? "deepseek-flash"}`,
         title: `${company.displayName} — 公司研究 profile`,
@@ -317,7 +318,7 @@ export async function ingestSection(
           mime: "text/markdown",
           storageKey,
           sha256: sectionHash,
-          language: "zh",
+          language,
           extractorVersion: `research-${options.model ?? "deepseek-flash"}`,
           title: `${company.displayName} — 公司研究 profile`,
           publishedAt: now,
@@ -347,7 +348,7 @@ export async function ingestSection(
         title: `${company.displayName} — 公司研究 profile`,
         docType: "company_profile",
         market: target.market,
-        lang: "zh",
+        lang: language,
         sourceUrl,
         page: null,
         section: chunk.section,
@@ -911,6 +912,14 @@ function higherCoverage(current: string, next: string): string {
 
 function langOf(value: string): string {
   return /[㐀-鿿]/.test(value) ? "zh" : "en";
+}
+
+/** Section-level language: Chinese profile unless Latin dominates. */
+function detectLanguage(text: string): "zh" | "en" {
+  const cjk = (text.match(/[㐀-鿿]/g) ?? []).length;
+  const latin = (text.match(/[A-Za-z]/g) ?? []).length;
+  if (cjk === 0) return "en";
+  return cjk / (cjk + latin) >= 0.2 ? "zh" : "en";
 }
 
 function marketForExchange(exchange: string): Market | undefined {

@@ -19,10 +19,13 @@
 
 - [`README.md`](README.md)
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/SEARCH.md`](docs/SEARCH.md)
+- [`docs/EVAL.md`](docs/EVAL.md)
 - [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)
 - [`docs/PRIOR_ART.md`](docs/PRIOR_ART.md)
 - [`phase0/README.md`](phase0/README.md)
 - [`config/universe.yaml`](config/universe.yaml)
+- [`config/indices/ndx.yaml`](config/indices/ndx.yaml)
 
 ---
 
@@ -627,10 +630,13 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 - Phase 0 原始计划：`/Users/bowenxu/.claude/plans/phase-0-deliverable-ui-minimal-greedy-dove.md`
   （如果下个 agent 能访问本机；本文件已包含下一步任务，不依赖它）
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/SEARCH.md`](docs/SEARCH.md)
+- [`docs/EVAL.md`](docs/EVAL.md)
 - [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)
 - [`docs/PRIOR_ART.md`](docs/PRIOR_ART.md)
 - [`phase0/README.md`](phase0/README.md)
 - [`config/universe.yaml`](config/universe.yaml)
+- [`config/indices/ndx.yaml`](config/indices/ndx.yaml)
 - `finance_analyst`（private）：`https://github.com/xubowenhaoren/finance_analyst`
   — Apache-2.0；用 `gh repo clone` / `gh api` 读取；不要提交其数据快照。
 - `opportunity-radar`（public, MIT）：`https://github.com/xubowenhaoren/opportunity-radar`

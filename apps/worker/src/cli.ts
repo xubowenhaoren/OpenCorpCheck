@@ -236,6 +236,9 @@ async function statusCommand(args: string[]): Promise<void> {
           `p95=${summary.durationMs.p95 ?? "-"}ms ` +
           `avg=${summary.durationMs.avg ?? "-"}ms`,
       );
+      console.log(
+        `  tokens: input=${summary.tokens.input} output=${summary.tokens.output}`,
+      );
       if (summary.failed.length) {
         console.log("  dead jobs:");
         for (const job of summary.failed) {

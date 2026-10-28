@@ -50,6 +50,7 @@ skill that produces cited company profiles. No UI, no database. See
 - [MCP server — F10 tools](apps/cli/README.md)
 - [Parallel backfill worker](apps/worker/README.md)
 - [Data layer + hybrid search (P2)](docs/SEARCH.md)
+- [Search evaluation](docs/EVAL.md)
 - [NASDAQ-100 constituent snapshot](config/indices/ndx.yaml)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Prior art & competitive scan](docs/PRIOR_ART.md)

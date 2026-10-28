@@ -17,6 +17,7 @@
     "dev:api": "node apps/api/dist/server.js",
     "dev:qdrant": "scripts/dev-qdrant.sh start",
     "dev:embeddings": "scripts/dev-embeddings.sh start",
-    "e2e:search": "scripts/e2e-search.sh"
+    "e2e:search": "scripts/e2e-search.sh",
+    "eval:search": "node scripts/eval-search.mjs"
   }
 }
