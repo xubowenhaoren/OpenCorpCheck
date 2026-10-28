@@ -37,6 +37,8 @@ skill that produces cited company profiles. No UI, no database. See
   Web search uses dsh's built-in `web_search`; company facts come from the OpenCorpCheck
   database and the `finance_analyst` Eastmoney F10 scraper.
 - **Interfaces**: web UI, Electron desktop (Windows/macOS), `occ` CLI, MCP server, REST/OpenAPI.
+  The web UI/API also run natively on macOS and WSL2/Linux; cross-platform support is a v1
+  requirement even where Docker packaging is deferred.
 - **Deploy**: Docker Compose + GHCR images; thin Electron shell; backend local or remote.
 
 ## Docs

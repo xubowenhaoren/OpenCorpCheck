@@ -6,8 +6,9 @@
 #   scripts/dev-qdrant.sh status
 #   scripts/dev-qdrant.sh logs
 #
-# Downloads the pinned Qdrant macOS binary once into .qdrant/bin and stores
-# data in .qdrant/storage (both gitignored).
+# Supports macOS (arm64/x86_64) and Linux/WSL2 (x86_64/aarch64). Downloads the
+# pinned Qdrant binary once into .qdrant/bin and stores data in .qdrant/storage
+# (both gitignored).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -31,20 +32,28 @@ health() {
 }
 
 download() {
-  local arch asset
+  local os arch asset
+  os="$(uname -s)"
   arch="$(uname -m)"
-  case "$arch" in
-    arm64|aarch64) asset="qdrant-aarch64-apple-darwin.tar.gz" ;;
-    x86_64)        asset="qdrant-x86_64-apple-darwin.tar.gz" ;;
-    *) echo "unsupported architecture: $arch" >&2; exit 1 ;;
+  case "$os:$arch" in
+    Darwin:arm64)   asset="qdrant-aarch64-apple-darwin.tar.gz" ;;
+    Darwin:x86_64)  asset="qdrant-x86_64-apple-darwin.tar.gz" ;;
+    Linux:x86_64)   asset="qdrant-x86_64-unknown-linux-gnu.tar.gz" ;;
+    Linux:aarch64|Linux:arm64) asset="qdrant-aarch64-unknown-linux-musl.tar.gz" ;;
+    *)
+      echo "unsupported platform: $os $arch (use macOS, Linux, or WSL2)" >&2
+      exit 1
+      ;;
   esac
   mkdir -p "$BIN_DIR"
-  echo "downloading Qdrant $VERSION ($arch)…"
+  echo "downloading Qdrant $VERSION ($os $arch)…"
   local tmp
   tmp="$(mktemp -d)"
   curl -fL "$URL_BASE/$asset" -o "$tmp/qdrant.tar.gz"
   tar -xzf "$tmp/qdrant.tar.gz" -C "$BIN_DIR"
-  xattr -d com.apple.quarantine "$BIN_DIR/qdrant" 2>/dev/null || true
+  if [[ "$os" == "Darwin" ]]; then
+    xattr -d com.apple.quarantine "$BIN_DIR/qdrant" 2>/dev/null || true
+  fi
   chmod +x "$BIN_DIR/qdrant"
   rm -rf "$tmp"
 }

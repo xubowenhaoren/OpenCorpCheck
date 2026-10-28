@@ -9,6 +9,11 @@
 > 本项目剩余开发继续用当前的「散装」方式：
 > 本地 Postgres 17（`scripts/dev-db.sh`）、Qdrant 原生二进制（`scripts/dev-qdrant.sh`）、
 > `uv` Python sidecars（finance-analyst / embeddings）、Node API/worker/CLI。
+>
+> **跨平台不是 TODO**：macOS 和 WSL2/Linux 都是 v1 目标；Docker 延期不代表可以写
+> 平台相关代码。UI 必须 web-first，不在 renderer 做 OS 分支；路径统一用
+> `node:path`/`URL`；npm scripts 不写 shell-specific 命令；本地脚本要同时支持
+> Darwin 和 Linux（WSL2）。
 
 这份文档给下一个接手的 agent/工程师。先读它，再读：
 
@@ -489,6 +494,12 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 > Docker/容器/打包工作暂停，标记为 TODO；在换到支持 Docker 的机器之前不要开工。
 > 剩余开发继续用「散装」方式：本地 Postgres + Qdrant 原生二进制 + uv sidecars +
 > Node 进程。下面内容只作为将来换机器时的清单保留。
+>
+> **跨平台支持不是 TODO**：macOS 与 WSL2/Linux 都是 v1 目标。Docker 延期不改变这一点。
+> UI 设计必须 web-first、响应式、无 OS 分支；Electron 只是薄壳。后端/脚本必须能在
+> WSL2 的 Linux 文件系统里跑（repo 不要放 `/mnt/c`），Windows 宿主机通过 WSL2
+> localhost forwarding 访问 UI/API。`scripts/dev-qdrant.sh` 已支持 Darwin/Linux
+> x86_64/aarch64，`scripts/dev-db.sh` 支持从 PATH 发现 `pg_ctl` 或显式 `PGBIN`。
 
 - **TODO（Docker 封装）**：Compose：postgres/qdrant/minio/tei-embed/tei-rerank/api/
   worker/finance-analyst/web/dsh/jaeger；profiles `infra`、`app`、`agent`、
@@ -540,6 +551,9 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 | npm `~/.npm/_cacache` 不可写 | `lib/dsh.mjs` 用 `OCC_NPM_CACHE` / `$TMPDIR/occ-npm-cache`；不要继承 `npm_config_cache` |
 | Python 3.9 vs F10 的 3.10+ | 已用 `uv` 装 Python 3.12（`services/finance-analyst/.python-version`）；Docker 镜像 TODO，换机器后再做 |
 | **本机是 macOS 虚拟机，不能跑 Docker** | Docker/Compose/镜像全部 TODO；开发用 `scripts/dev-db.sh`、`scripts/dev-qdrant.sh`、`scripts/dev-embeddings.sh` 的「散装」方式 |
+| **WSL2 把 repo 放在 `/mnt/c` 会慢、file watch 失效** | repo 放 WSL2 Linux 文件系统（如 `~/OpenCorpCheck`）；Windows 宿主机用 WSL2 localhost forwarding 访问 UI/API |
+| **脚本只考虑 macOS** | 新增脚本必须同时支持 Darwin/Linux；`dev-qdrant.sh` 按 `uname -s/-m` 选二进制，`dev-db.sh` 用 `PGBIN` 或从 PATH 找 `pg_ctl`；路径用 `node:path`/`URL` |
+| **UI 写死平台分支** | renderer 不做 `navigator.platform` 分支、不依赖 native module/OS keychain；平台能力收在 Electron main/preload 后面 |
 | 串行 backfill 太慢（Phase 0 的 7 家约 20 分钟） | `--concurrency 4`；Phase 1 用 pg-boss + worker 池 + per-domain 限流 + checkpoint |
 | API key 泄露风险 | 不要 `pgrep -fl`（会打印 env）；用 `pgrep -f` 只看 PID；key 只放 `.env`/环境变量，绝不提交 |
 | Eastmoney 反爬/ToS | 限流、重试、robots、attribution；不批量重分发 |
@@ -569,6 +583,8 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 - [x] P1 F10 sidecar 已完成；下一步做 P2.5（QQQ/NDX 100 家 backfill + 检索质量）。
 - [ ] Docker 封装全部 TODO（本机 macOS 虚拟机不能跑 Docker，换机器后再做）；
       本机用 `scripts/dev-db.sh` / `dev-qdrant.sh` / `dev-embeddings.sh` 散装运行。
+- [ ] 跨平台检查：UI 无 OS 分支；路径用 `node:path`/`URL`；脚本同时支持
+      macOS + Linux/WSL2（`dev-qdrant.sh` 已按平台选二进制）。
 - [ ] 并行 backfill：`--concurrency 4` 起步；Phase 1 用 pg-boss + worker 池，确认可断点续跑。
 - [ ] 本地 DB：`scripts/dev-db.sh status` 正常；`node apps/worker/dist/cli.js status` 能看到队列。
 - [x] `corepack pnpm -r test` 全绿（adapter 9 + MCP 3 + worker 25 + retrieval 10 +

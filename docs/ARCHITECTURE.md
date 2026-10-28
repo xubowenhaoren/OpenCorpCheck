@@ -71,7 +71,8 @@ Twelve decisions define the architecture:
 - **Private companies**: created on demand by the agent or user; lower confidence, clearly
   labeled `discovered`.
 - **Languages**: Chinese and English UI; company names and aliases in local language + English.
-- **Interfaces**: web UI, Electron (Windows/macOS), `occ` CLI, MCP server, REST/OpenAPI.
+- **Interfaces**: web UI, Electron (Windows/macOS; WSL2/Linux via the browser), `occ` CLI,
+  MCP server, REST/OpenAPI.
 - **Agent**: DeepSeek Harness sidebar with streaming, tool cards, citations, permissions, trace.
 - **Deployment**: Docker Compose (local or server), thin desktop client. Docker is the
   confirmed desktop backend; there is no embedded database mode in v1.
@@ -88,7 +89,8 @@ Twelve decisions define the architecture:
 
 ### 1.4 Success criteria
 
-1. `docker compose --profile full up` starts the stack; `/health` is green.
+1. `docker compose --profile full up` starts the stack; `/health` is green. Until Docker
+   packaging lands, `corepack pnpm e2e:search` is the native equivalent.
 2. Search "宁德时代", "Tencent", "NVDA", "茅台", "gzmt" returns the right top-3.
 3. A company page shows cited financials, products, news, relations, and "as of" dates.
 4. OpenAI, Anthropic, DeepSeek, Moonshot/Kimi, and Zhipu profiles exist with sources and a
@@ -97,8 +99,10 @@ Twelve decisions define the architecture:
    search; every claim has a citation; investment, partnership, and competition are separated.
 6. `occ search ... --json` and `occ mcp` work against the same API.
 7. Electron builds run on macOS arm64 and Windows x64 and connect to the backend.
-8. The debug drawer shows API calls, agent steps, retrieval scores, and queue jobs.
-9. CI is green, images are published, and a 50-company fixture demo works without API keys.
+8. The web UI + API run from WSL2 and are reachable at `localhost` from the Windows host;
+   the same code path works on native macOS/Linux without platform branches in the UI.
+9. The debug drawer shows API calls, agent steps, retrieval scores, and queue jobs.
+10. CI is green, images are published, and a 50-company fixture demo works without API keys.
 
 ---
 
@@ -238,6 +242,7 @@ flowchart LR
 | Mode | Backend | Desktop | Use case |
 |---|---|---|---|
 | Browser dev | Vite + local API/worker | — | Fastest frontend debugging |
+| WSL2 native dev | Postgres + Qdrant + `uv` sidecars inside WSL2 | Browser on the Windows host | Windows machine without Docker |
 | Local full | Docker Compose (infra + app) | Electron connects to `http://127.0.0.1:8080` | Demo on a laptop |
 | Remote | Docker Compose on a server + TLS | Electron connects to a URL | Shared demo |
 | Agent-only | dsh + `occ mcp` against the API | dsh web UI | Power users / CI |
@@ -245,6 +250,14 @@ flowchart LR
 **Desktop backend = Docker/remote (confirmed).** The Electron app never embeds Postgres,
 Qdrant, or a browser crawler. It connects to the Compose stack locally or to a remote URL.
 There is no PGlite/LanceDB "lite mode" in v1; that would be a separate product.
+
+**Cross-platform is a v1 requirement, independent of Docker.** The current macOS VM cannot
+run Docker, so Docker packaging is deferred, but the code and UI must keep working on
+macOS and WSL2/Linux. The WSL2 path runs the native services (`scripts/dev-db.sh`,
+`scripts/dev-qdrant.sh`, `scripts/dev-embeddings.sh`) inside the Linux distribution;
+the Windows host reaches the web UI/API via WSL2 localhost forwarding. Do not introduce
+OS-specific branches in the renderer, shell-specific npm scripts, or absolute
+platform paths.
 
 **Phase 0 shortcut:** batch document generation uses `dsh --profile headless` (one process per
 company, stdout final answer, `--json` event stream), not ACP. ACP remains the runtime for the
@@ -905,6 +918,13 @@ Renderer (web app)
 The main process is a **supervisor**, not a business-logic layer. It owns windows, the dsh
 child, secrets, updates, and logs. Everything else goes through the API.
 
+**Cross-platform UI rule:** the renderer is browser-standard. It must run identically in
+Chrome on macOS, Windows, WSL2, and Linux; no `navigator.platform` branches, no
+`node:path`, no direct filesystem access, no native modules. OS-specific capabilities
+(keychain, file dialogs, process spawning, updates) live in Electron main/preload behind
+the narrow `window.occ` typed IPC boundary. WSL2 users run the web app in the Windows
+browser against services inside the Linux distro.
+
 ### 10.2 Dev workflow
 
 ```bash
@@ -972,15 +992,30 @@ no way to see IPC/API/agent state". The answer is:
   another Mac" bug.
 - **Secrets**: OS keychain via `safeStorage`; never in `localStorage` or logs.
 
-### 10.5 Windows/macOS gotchas
+### 10.5 Cross-platform gotchas (Windows / macOS / WSL2 / Linux)
 
+Cross-platform support is a hard requirement even while Docker is deferred. The UI is
+web-first: it must behave identically in a browser on macOS, Windows, and WSL2, and must
+not branch on `navigator.platform` or assume a filesystem path separator.
+
+- **WSL2 (first-class dev/runtime target)**: run Postgres/Qdrant/`uv` sidecars inside the
+  Linux distro, keep the repo on the Linux filesystem (e.g. `~/OpenCorpCheck`, not
+  `/mnt/c/...` — cross-filesystem I/O breaks file watching and is slow); reach the web
+  app and API from the Windows host through WSL2 localhost forwarding. Use `127.0.0.1`,
+  not `host.docker.internal`, when both ends are inside WSL2.
 - Windows: path spaces, CRLF, Defender/firewall prompts for localhost, Docker Desktop/WSL2;
   test on `windows-2022` CI.
 - macOS: notarization, hardened runtime, Apple Silicon vs Intel; test on `macos-14` (arm64)
   and `macos-13` (x64).
+- Linux/WSL parity: include `ubuntu-latest` in CI; `scripts/dev-qdrant.sh` selects the
+  matching Qdrant binary (Darwin or Linux, x86_64/aarch64), and `scripts/dev-db.sh`
+  discovers `pg_ctl` from `PATH` unless `PGBIN` is set.
 - Avoid shell-specific scripts (`&&`, `rm -rf`) in package scripts; use Node scripts or
-  `zx` for cross-platform tasks.
+  `zx` for cross-platform tasks. Always build paths with `node:path`/`URL`, never string
+  concatenation with `/`.
 - Use `host.docker.internal` only where needed; prefer `127.0.0.1` port mapping.
+- Keep text files UTF-8; add `.gitattributes` if CRLF churn appears. Do not make the
+  renderer depend on native modules or OS keychain APIs; Electron owns platform integration.
 
 ---
 
