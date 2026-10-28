@@ -1,0 +1,14 @@
+{
+  "name": "opencorpcheck",
+  "private": true,
+  "packageManager": "pnpm@12.15.0",
+  "engines": {
+    "node": ">=24.9"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "mcp:f10": "node apps/cli/dist/mcp.js"
+  }
+}

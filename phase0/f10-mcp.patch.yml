@@ -1,0 +1,25 @@
+# Optional dsh overlay: expose the OpenCorpCheck F10 MCP server.
+#
+# Prerequisites:
+#   1. `corepack pnpm -r build` at the repo root (builds apps/cli/dist/mcp.js)
+#   2. `cd services/finance-analyst && uv run occ-f10 serve` (sidecar on :8090)
+#
+# Run Phase 0 with: npm run research -- --f10
+# dsh cwd must be the repo root so the relative entry path resolves.
+#
+# Patch-list semantics: existing entries are patched by id; new entries are
+# appended with `insert`. A patch targeting a missing id is warned and skipped.
+
+- insert:
+    - id: mcp-finance-analyst
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: occ
+        transport: stdio
+        command: node
+        args: ['apps/cli/dist/mcp.js']
+        env:
+          OCC_FINANCE_ANALYST_URL: !!js >-
+            process.env.OCC_FINANCE_ANALYST_URL || 'http://127.0.0.1:8090'
+        toolCallTimeoutMs: 180000
+        failOnStartupError: true

@@ -73,7 +73,21 @@ npm run validate
 | `--mock` | 用 fixture 跑完整流水线，不调 API |
 | `--concurrency N` | 并发公司数，默认 **4**；遇到 429/限流降到 1–2 |
 | `--search-api` | 附加 `search-api.patch.yml`，切到直接 Search API |
+| `--f10` | 附加 `f10-mcp.patch.yml`，把 F10 MCP 工具挂给 dsh（需先构建 MCP server 并启动 sidecar） |
 | `--synthesize` | 额外跑一次摘要/跨公司主题；会增加一次模型调用 |
+
+`--f10` 的前置步骤：
+
+```bash
+# 仓库根目录
+corepack pnpm -r build
+
+# 另一个终端
+cd services/finance-analyst && uv run occ-f10 serve --port 8090
+```
+
+挂载后 dsh 会看到 `mcp__occ__f10_scrape` / `mcp__occ__f10_pages`，配套 skill 是
+`.dsh/skills/f10-financials/SKILL.md`。
 
 ## 验收标准
 

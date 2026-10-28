@@ -30,6 +30,7 @@ const mock = argv.includes("--mock");
 const force = argv.includes("--force");
 const synthesize = argv.includes("--synthesize");
 const searchApi = argv.includes("--search-api");
+const f10 = argv.includes("--f10");
 const onlyArg = argv.includes("--only") ? argv[argv.indexOf("--only") + 1] : null;
 const concurrencyArg = argv.includes("--concurrency")
   ? Number(argv[argv.indexOf("--concurrency") + 1])
@@ -69,6 +70,7 @@ if (!mock && !process.env.DEEPSEEK_API_KEY) {
 
 const patchPaths = [path.join(moduleDir, "dsh.patch.yml")];
 if (searchApi) patchPaths.push(path.join(moduleDir, "search-api.patch.yml"));
+if (f10) patchPaths.push(path.join(moduleDir, "f10-mcp.patch.yml"));
 
 function readIfExists(file) {
   return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
@@ -297,7 +299,7 @@ function writeRunLog({ runResults, validation, synthesisPath }) {
   const text = `# Phase 0 Run Log
 
 - 生成时间：${new Date().toISOString()}
-- 模式：${mock ? "mock" : "live"}${searchApi ? " · search-api" : ""}
+- 模式：${mock ? "mock" : "live"}${searchApi ? " · search-api" : ""}${f10 ? " · f10-mcp" : ""}
 - dsh：${DSH_VERSION}
 - 模型：${model}
 - skill：${skillHash}
@@ -320,8 +322,11 @@ ${rows.join("\n")}
 }
 
 async function main() {
+  const mode = `${mock ? "MOCK" : "LIVE"}${searchApi ? " · search-api" : ""}${
+    f10 ? " · f10-mcp" : ""
+  }`;
   console.log(
-    `Phase 0: ${mock ? "MOCK" : "LIVE"} · ${selected.length} companies · dsh ${DSH_VERSION} · model ${model} · concurrency ${concurrency}`,
+    `Phase 0: ${mode} · ${selected.length} companies · dsh ${DSH_VERSION} · model ${model} · concurrency ${concurrency}`,
   );
   const runResults = await mapLimit(selected, concurrency, runCompany);
 

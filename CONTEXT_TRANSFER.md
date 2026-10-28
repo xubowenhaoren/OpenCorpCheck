@@ -250,6 +250,27 @@ npm run validate
 
 ## 6. 下一步任务清单（给下个 agent）
 
+### P1 进度（2026-10-27）
+
+- [x] `services/finance-analyst/` 已落地：FastAPI sidecar + 结构化 scraper
+  （表格抽取、XHR JSON 捕获、2 次重试 + jitter、每域 5 req/s、并发上限 2、
+  去掉 8k 截断、2 MB 安全上限、`html_sha256` / `storage_key`）。
+- [x] 本地工具链：`uv` + Python 3.12 venv + Playwright Chromium（本机无 Docker，
+  开发走 uv；容器镜像留到 P5）。
+- [x] 验收通过（`uv run python scripts/acceptance.py`）：AAPL(US) / 600519(A) /
+  00700(HK) 均返回结构化 JSON；每页 4–10 张表、7–17 个 XHR JSON；
+  HK 财务页 10,372 字符，A 股财务页曾达 9,332 字符——8k 截断确认已移除。
+- [x] 单测/接口测试：`uv run pytest`（19 passed，无网络）。
+- [x] TS 侧：`packages/sources/eastmoney-f10` adapter（Zod 校验、typed error、
+  summary/full 投影）+ `apps/cli` MCP stdio server（`f10_scrape`、`f10_pages`）。
+- [x] dsh 接入：`phase0/f10-mcp.patch.yml`（`insert` 语法）+ `npm run research -- --f10`；
+  skill `.dsh/skills/f10-financials/SKILL.md` 规定 F10 的来源层级与引用纪律。
+- [x] dsh 端到端实测：headless 调用 `mcp__occ__f10_pages` 返回 US 页面表；
+  调用 `mcp__occ__f10_scrape` 抓 AAPL `gsgk`（2,976 字符）并由模型正确总结。
+  `apps/cli` 集成测试 3 passed（stdio handshake + 工具调用 + 投影，无网络）。
+- [ ] 待办：MinIO 快照上传、pg-boss 队列驱动的并行 backfill、worker/API 复用 adapter。
+- 运行方式见 [`services/finance-analyst/README.md`](services/finance-analyst/README.md)。
+
 ### P1 — 东方财富 F10 sidecar（用户明确要求优先）
 
 **背景**：`finance_analyst`（private repo：`xubowenhaoren/finance_analyst`，Apache-2.0）
@@ -384,11 +405,13 @@ npm run validate
 |---|---|
 | dsh 是 developer preview，接口会变 | 固定 `0.2.1-rc.3`；spawn/解析集中在 `lib/dsh.mjs`；异常试 rc.4 |
 | npm `~/.npm/_cacache` 不可写 | `lib/dsh.mjs` 用 `OCC_NPM_CACHE` / `$TMPDIR/occ-npm-cache`；不要继承 `npm_config_cache` |
-| Python 3.9 vs F10 的 3.10+ | 用 `uv` 装 Python 3.12，或用 Playwright Python Docker 镜像 |
+| Python 3.9 vs F10 的 3.10+ | 已用 `uv` 装 Python 3.12（`services/finance-analyst/.python-version`）；Docker 镜像留到 P5 |
 | 串行 backfill 太慢（Phase 0 的 7 家约 20 分钟） | `--concurrency 4`；Phase 1 用 pg-boss + worker 池 + per-domain 限流 + checkpoint |
 | API key 泄露风险 | 不要 `pgrep -fl`（会打印 env）；用 `pgrep -f` 只看 PID；key 只放 `.env`/环境变量，绝不提交 |
 | Eastmoney 反爬/ToS | 限流、重试、robots、attribution；不批量重分发 |
 | dsh `--json` 8 KiB 截断 | 完整结果读 `phase0/.dsh-home/sessions` 明文 JSONL |
+| 直接跑 dsh 时 `~/.dsh` 里已有 zstd session | 本项目 patch 用 `compression: none`，会报 backend 不匹配；设 `DSH_HOME=phase0/.dsh-home` 或临时目录 |
+| MCP 工具不出现 | 先 `corepack pnpm -r build`；sidecar 要在 `:8090`；检查 `--dump-config` 里 `mcp-finance-analyst` 是否被 `insert` 进去 |
 | 没有 `--approval-policy`（rc.3） | 用 `DSH_PERMISSION_MODE=read-only`；不要在命令里加不存在的 flag |
 | `deepseek-official` 搜索每次是一次模型 turn | 预算控制；必要时用 `search-api.patch.yml` 切直接 HTTP |
 | 来源偏 stockanalysis、SEC 少 | Phase 1 接 F10 + SEC XBRL；profile 标注未验证项 |

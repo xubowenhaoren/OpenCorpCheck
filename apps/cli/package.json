@@ -1,0 +1,28 @@
+{
+  "name": "@occ/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCorpCheck MCP stdio server (F10 tools)",
+  "type": "module",
+  "bin": {
+    "occ-f10-mcp": "./dist/mcp.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/mcp.js",
+    "test": "tsc -p ../../packages/sources/eastmoney-f10/tsconfig.json && tsc -p tsconfig.json && vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/node": "^2.1.2",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "@occ/sources-eastmoney-f10": "workspace:*",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.4.0",
+    "@types/node": "24.19.2",
+    "typescript": "5.9.3",
+    "vitest": "^5.0.5"
+  }
+}

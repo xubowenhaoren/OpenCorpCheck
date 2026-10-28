@@ -17,5 +17,9 @@ phase0/out/live-*.log
 
 # Node / OS
 node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+.pnpm-store/
 npm-debug.log*
 .DS_Store
