@@ -186,7 +186,7 @@ npm run validate
 | `--only AAPL,MSFT` | 只跑指定公司 |
 | `--force` | 已有 section 也重跑（会先删旧 section 和旧事件） |
 | `--mock` | 用 fixture 跑完整流水线，不调 API |
-| `--concurrency N` | 并发公司数，默认 1 |
+| `--concurrency N` | 并发公司数，默认 **4**；遇到 429/限流降到 1–2 |
 | `--search-api` | 附加 `search-api.patch.yml`，切直接 Search API |
 | `--synthesize` | 额外跑一次摘要/跨公司主题 |
 
