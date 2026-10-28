@@ -4,8 +4,10 @@ import { config } from "./config.js";
 
 export const QUEUES = {
   RESEARCH: "research.company",
+  INGEST: "ingest.company",
   F10: "f10.page",
   RESEARCH_DEAD: "research.company.dead",
+  INGEST_DEAD: "ingest.company.dead",
   F10_DEAD: "f10.page.dead",
 } as const;
 
@@ -37,11 +39,17 @@ async function ensureQueue(
 /**
  * Queue policies:
  *  - research: 2 retries with exponential backoff (30s base, 10m cap), 40m expiry.
+ *  - ingest: 3 retries (15s base, 5m cap), 10m expiry; fast once embeddings are up.
  *  - f10: 3 retries (15s base, 5m cap), 5m expiry.
  *  - dead queues receive exhausted jobs; a worker marks them dead in our tables.
  */
 export async function ensureQueues(boss: PgBoss): Promise<void> {
   await ensureQueue(boss, QUEUES.RESEARCH_DEAD, {
+    retryLimit: 0,
+    expireInSeconds: 300,
+    deleteAfterSeconds: 604_800,
+  });
+  await ensureQueue(boss, QUEUES.INGEST_DEAD, {
     retryLimit: 0,
     expireInSeconds: 300,
     deleteAfterSeconds: 604_800,
@@ -58,6 +66,15 @@ export async function ensureQueues(boss: PgBoss): Promise<void> {
     retryDelayMax: 600,
     expireInSeconds: 2_400,
     deadLetter: QUEUES.RESEARCH_DEAD,
+    deleteAfterSeconds: 604_800,
+  });
+  await ensureQueue(boss, QUEUES.INGEST, {
+    retryLimit: 3,
+    retryDelay: 15,
+    retryBackoff: true,
+    retryDelayMax: 300,
+    expireInSeconds: 600,
+    deadLetter: QUEUES.INGEST_DEAD,
     deleteAfterSeconds: 604_800,
   });
   await ensureQueue(boss, QUEUES.F10, {
@@ -81,7 +98,7 @@ export async function startBoss(): Promise<PgBoss> {
 export async function sendJob(
   boss: PgBoss,
   queue: string,
-  data: Record<string, unknown>,
+  data: object,
   options: { key: string; priority: number },
 ): Promise<string | null> {
   return boss.send(queue, data, {

@@ -52,8 +52,15 @@ export async function ensureCollections(
   collections: RetrievalCollections,
   denseDim: number,
 ): Promise<void> {
-  await qdrant.createCollection(collections.companies, { denseDim });
-  await qdrant.createCollection(collections.documents, { denseDim });
+  for (const name of [collections.companies, collections.documents]) {
+    try {
+      await qdrant.createCollection(name, { denseDim });
+    } catch (error) {
+      // Parallel workers can race on first use; if the collection now exists,
+      // the other writer won and this is not a failure.
+      if (!(await qdrant.collectionExists(name))) throw error;
+    }
+  }
 }
 
 export function companyIndexText(company: IndexableCompany): string {

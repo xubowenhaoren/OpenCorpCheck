@@ -2,6 +2,7 @@
 import { parseArgs } from "node:util";
 
 import { config } from "./config.js";
+import { ingestCommand, USAGE_OPTIONS as INGEST_OPTIONS } from "./ingest-command.js";
 import { seed } from "./seed.js";
 
 const USAGE = `occ — OpenCorpCheck CLI
@@ -9,17 +10,19 @@ const USAGE = `occ — OpenCorpCheck CLI
 Usage:
   occ migrate
   occ seed [--reset] [--skip-index]
+  occ ingest [options]
   occ search <query> [--mode hybrid|keyword|semantic] [--limit N] [--explain] [--json]
   occ documents <query> [--mode ...] [--limit N] [--company ID] [--json]
   occ company <id-or-slug> [--json]
   occ health
   occ config
-
+${INGEST_OPTIONS}
 Environment:
   OCC_API_URL           default http://127.0.0.1:8787
   DATABASE_URL          default postgres://occ@127.0.0.1:5432/occdb
   OCC_QDRANT_URL        default http://127.0.0.1:6333
   OCC_EMBEDDING_URL     default http://127.0.0.1:8080
+  OCC_SECTIONS_DIR      default phase0/out/sections
 `;
 
 async function main(): Promise<void> {
@@ -46,6 +49,9 @@ async function main(): Promise<void> {
       console.log(JSON.stringify(result, null, 2));
       return;
     }
+    case "ingest":
+      await ingestCommand(rest);
+      return;
     case "search":
       await searchCommand(rest, "companies");
       return;

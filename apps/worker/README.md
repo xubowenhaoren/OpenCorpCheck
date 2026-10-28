@@ -9,15 +9,20 @@ the Phase 0 pattern of running companies one at a time in one process.
 | Queue | Job | Handler |
 |---|---|---|
 | `research.company` | one company → one dsh headless turn | [jobs/research.ts](src/jobs/research.ts) |
+| `ingest.company` | one finished section → documents/chunks + Qdrant | [jobs/ingest.ts](src/jobs/ingest.ts) |
 | `f10.page` | one company × one F10 page | [jobs/f10.ts](src/jobs/f10.ts) |
-| `research.company.dead` / `f10.page.dead` | exhausted jobs | marks the DB row `dead` |
+| `*.dead` | exhausted jobs | marks the DB row `dead` |
 
 - **Granularity**: research is one job per company; F10 is one job per page, so a
-  failed page retries without re-crawling the company.
-- **Concurrency**: pg-boss `localConcurrency` — research defaults to 4, F10 to 4
-  (`OCC_RESEARCH_CONCURRENCY`, `OCC_F10_CONCURRENCY`). The sidecar still caps
-  Playwright at 2 pages globally and 5 req/s per domain, so F10 jobs queue behind
-  that limit instead of hammering Eastmoney.
+  failed page retries without re-crawling the company. Ingestion is one job per
+  company, enqueued automatically when a research section is written (including
+  cache hits). Use `--no-ingest` to disable it for a run.
+- **Concurrency**: pg-boss `localConcurrency` — research defaults to 4, ingest to
+  4, F10 to 4 (`OCC_RESEARCH_CONCURRENCY`, `OCC_INGEST_CONCURRENCY`,
+  `OCC_F10_CONCURRENCY`). The sidecar still caps Playwright at 2 pages globally
+  and 5 req/s per domain, so F10 jobs queue behind that limit instead of
+  hammering Eastmoney. Ingestion calls the embedding sidecar; if it is down,
+  ingest jobs retry and eventually dead-letter without re-running the LLM.
 - **Retries**: research 2 retries (30s exponential backoff, 10m cap); F10 3
   retries (15s base, 5m cap). Exhausted jobs move to a dead-letter queue and the
   DB records `dead` + the last error.
@@ -61,8 +66,11 @@ Environment:
 |---|---|
 | `DATABASE_URL` | `postgres://occ@127.0.0.1:5432/occdb` |
 | `OCC_RESEARCH_CONCURRENCY` | `4` |
+| `OCC_INGEST_CONCURRENCY` | `4` |
 | `OCC_F10_CONCURRENCY` | `4` |
 | `OCC_FINANCE_ANALYST_URL` | `http://127.0.0.1:8090` |
+| `OCC_QDRANT_URL` | `http://127.0.0.1:6333` |
+| `OCC_EMBEDDING_URL` | `http://127.0.0.1:8080` |
 | `OCC_DSH_HOME` | `phase0/.dsh-home` |
 | `OCC_RUNS_DIR` | `phase0/runs` |
 | `OCC_SECTIONS_DIR` | `phase0/out/sections` |
@@ -76,13 +84,20 @@ Environment:
 node apps/worker/dist/cli.js enqueue research --universe mag7
 node apps/worker/dist/cli.js work --queues research --drain
 
+# research + ingest: NASDAQ-100 snapshot, 4 companies in parallel
+node apps/worker/dist/cli.js enqueue research --universe ndx --limit 5
+node apps/worker/dist/cli.js work --queues research,ingest --drain
+
 # research: A/HK companies with the F10 data layer attached (sidecar must be up)
 node apps/worker/dist/cli.js enqueue research --tickers 600519:A,00700:HK --include-f10
-node apps/worker/dist/cli.js work --queues research --drain
+node apps/worker/dist/cli.js work --queues research,ingest --drain
 
 # research without an API key (fixture sections; exercises the queue)
 node apps/worker/dist/cli.js enqueue research --tickers AAPL,MSFT --mock
 node apps/worker/dist/cli.js work --queues research --drain
+
+# ingest mock sections too (local pipeline test; do not mix into real search data)
+node apps/worker/dist/cli.js enqueue research --tickers AAPL --mock --ingest-mock
 
 # F10: 600519 preset default, or an explicit page list
 node apps/worker/dist/cli.js enqueue f10 --tickers 600519:A --preset default
@@ -118,6 +133,8 @@ pg-boss owns its own `pgboss` schema.
 | Research mock ×2 | second run: both jobs `cache_hit`, no work |
 | Live research AAPL + MSFT, concurrency 4 | wall **147s** vs ~273s serial; 2/2 completed |
 | Live A/HK research 600519 + 00700, `--include-f10` | 2/2 completed (202s / 219s, wall 221s); full names resolved, 13 sections, F10 cited with `fetched_at` |
+| NDX pilot AAPL/ABNB/ADBE/ADI/ADP, research + ingest, concurrency 4 | 5/5 research + 5/5 ingest, wall **281s**; research p50 131s / p95 234s, ingest p50 13s; 285k input / 78k output tokens; 70 chunks indexed, 0 retries |
+| `occ ingest` rerun | unchanged sections skipped without embeddings; `--force` reindexes |
 | Sidecar down | 4 attempts over ~151s → dead-letter; run `failed`, error recorded |
 
 ## Skill selection
@@ -133,9 +150,11 @@ must be running, or dsh startup fails).
 
 ## Known limits
 
-- `config/universe.yaml` has index metadata but no constituents yet; use
-  `--universe mag7|ai-watchlist` or explicit `--tickers` until P4 loads the
-  index snapshots.
+- `config/universe.yaml` covers the AI watchlist; `config/indices/ndx.yaml` is
+  the NASDAQ-100 constituent snapshot (100 primary listings, official Nasdaq
+  source, `as_of` recorded). A500/HSI/SPX constituent snapshots are still P4.
 - Live queue counts query `pgboss.job` directly, assuming the default schema.
 - Token/cost is logged per job but not summed per run.
 - Snapshots are referenced by `storage_key`; MinIO upload is still P2.
+- Ingest writes section markdown to `documents`/`chunks`; it does not yet
+  extract facts/products/relations or upload raw snapshots.

@@ -43,6 +43,9 @@ export const config = {
   embeddingDim: intEnv("OCC_EMBEDDING_DIM", 1024),
   embeddingVersion: process.env.OCC_EMBEDDING_VERSION ?? "bge-m3@1024",
   embeddingTimeoutMs: intEnv("OCC_EMBEDDING_TIMEOUT_MS", 600_000),
+  sectionsDir:
+    process.env.OCC_SECTIONS_DIR ?? path.join(repoRoot, "phase0", "out", "sections"),
+  ndxFile: path.join(repoRoot, "config", "indices", "ndx.yaml"),
   collections: {
     companies: process.env.OCC_QDRANT_COMPANIES ?? "occ_companies",
     documents: process.env.OCC_QDRANT_DOCUMENTS ?? "occ_documents",

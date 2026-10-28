@@ -48,8 +48,20 @@ export const config = {
     process.env.DATABASE_URL ?? "postgres://occ@127.0.0.1:5432/occdb",
   financeAnalystUrl:
     process.env.OCC_FINANCE_ANALYST_URL ?? "http://127.0.0.1:8090",
+  qdrantUrl: process.env.OCC_QDRANT_URL ?? "http://127.0.0.1:6333",
+  qdrantApiKey: process.env.OCC_QDRANT_API_KEY,
+  embeddingUrl: process.env.OCC_EMBEDDING_URL ?? "http://127.0.0.1:8080",
+  embeddingModel: process.env.OCC_EMBEDDING_MODEL ?? "BAAI/bge-m3",
+  embeddingDim: intEnv("OCC_EMBEDDING_DIM", 1024),
+  embeddingVersion: process.env.OCC_EMBEDDING_VERSION ?? "bge-m3@1024",
+  embeddingTimeoutMs: intEnv("OCC_EMBEDDING_TIMEOUT_MS", 600_000),
+  collections: {
+    companies: process.env.OCC_QDRANT_COMPANIES ?? "occ_companies",
+    documents: process.env.OCC_QDRANT_DOCUMENTS ?? "occ_documents",
+  },
   researchConcurrency: intEnv("OCC_RESEARCH_CONCURRENCY", 4),
   f10Concurrency: intEnv("OCC_F10_CONCURRENCY", 4),
+  ingestConcurrency: intEnv("OCC_INGEST_CONCURRENCY", 4),
   dshHome: pathEnv("OCC_DSH_HOME", "phase0/.dsh-home"),
   runsDir: pathEnv("OCC_RUNS_DIR", "phase0/runs"),
   sectionsDir: pathEnv("OCC_SECTIONS_DIR", "phase0/out/sections"),
@@ -62,6 +74,7 @@ export const config = {
   basePatch: path.join(repoRoot, "phase0", "dsh.patch.yml"),
   f10Patch: path.join(repoRoot, "phase0", "f10-mcp.patch.yml"),
   universeFile: path.join(repoRoot, "config", "universe.yaml"),
+  ndxFile: path.join(repoRoot, "config", "indices", "ndx.yaml"),
 };
 
 export function ensureDir(dir: string): void {
@@ -74,9 +87,12 @@ export function publicConfig(): Record<string, unknown> {
     financeAnalystUrl: config.financeAnalystUrl,
     researchConcurrency: config.researchConcurrency,
     f10Concurrency: config.f10Concurrency,
+    ingestConcurrency: config.ingestConcurrency,
     dshHome: config.dshHome,
     runsDir: config.runsDir,
     sectionsDir: config.sectionsDir,
     model: config.model,
+    qdrantUrl: config.qdrantUrl,
+    embeddingUrl: config.embeddingUrl,
   };
 }

@@ -167,6 +167,19 @@ export class QdrantClient {
     return Number(json.result?.count ?? 0);
   }
 
+  /** Delete points matching a payload filter (e.g. one document's chunks). */
+  async deleteByFilter(name: string, filter: QdrantFilter): Promise<void> {
+    const response = await this.request(
+      `/collections/${encodeURIComponent(name)}/points/delete?wait=true`,
+      {
+        method: "POST",
+        body: JSON.stringify({ filter }),
+      },
+      60_000,
+    );
+    if (!response.ok) await this.fail(response, "delete points");
+  }
+
   private async request(
     path: string,
     init: RequestInit,

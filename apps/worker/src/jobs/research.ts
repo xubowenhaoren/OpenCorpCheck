@@ -3,6 +3,8 @@ import path from "node:path";
 
 import type { Job } from "pg-boss";
 
+import type { CoverageTier } from "@occ/core";
+
 import { config, ensureDir } from "../config.js";
 import {
   getJobRow,
@@ -22,6 +24,7 @@ import {
   today,
 } from "../research/profiler.js";
 import type { CompanyTarget } from "../universe.js";
+import type { IngestJobData } from "./ingest.js";
 
 export interface ResearchJobData {
   runId: string;
@@ -34,17 +37,30 @@ export interface ResearchJobData {
   force?: boolean;
   mock?: boolean;
   includeF10?: boolean;
+  /** Follow-up ingestion after the section is written (default: live only). */
+  ingest?: boolean;
+  indexCode?: string;
+  indexAsOf?: string;
+  coverageTier?: CoverageTier;
+}
+
+export interface ResearchJobContext {
+  enqueueIngest?: (data: IngestJobData) => Promise<void>;
 }
 
 export async function handleResearchJobs(
   jobs: Job<ResearchJobData>[],
+  context: ResearchJobContext = {},
 ): Promise<void> {
   for (const job of jobs) {
-    await processResearchJob(job);
+    await processResearchJob(job, context);
   }
 }
 
-async function processResearchJob(job: Job<ResearchJobData>): Promise<void> {
+async function processResearchJob(
+  job: Job<ResearchJobData>,
+  context: ResearchJobContext,
+): Promise<void> {
   const data = job.data;
   const queue = QUEUES.RESEARCH;
   const row = await getJobRow(data.runId, queue, data.key);
@@ -88,6 +104,7 @@ async function processResearchJob(job: Job<ResearchJobData>): Promise<void> {
         key: data.key,
         section: cached.section_path,
       });
+      await enqueueIngest(context, data, cached.section_path);
       return;
     }
   }
@@ -139,6 +156,7 @@ async function processResearchJob(job: Job<ResearchJobData>): Promise<void> {
       inputTokens,
       outputTokens,
     });
+    await enqueueIngest(context, data, sectionPath);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await markJobFailed(data.runId, queue, data.key, message);
@@ -160,6 +178,31 @@ function sectionMatches(filePath: string, expectedSha: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Queue ingestion for a finished section. `--no-ingest` disables it; mock
+ * sections are skipped unless explicitly opted in (`--ingest-mock`).
+ */
+async function enqueueIngest(
+  context: ResearchJobContext,
+  data: ResearchJobData,
+  sectionPath: string,
+): Promise<void> {
+  const shouldIngest = data.ingest ?? !data.mock;
+  if (!shouldIngest || !context.enqueueIngest) return;
+  await context.enqueueIngest({
+    runId: data.runId,
+    key: data.key,
+    ticker: data.ticker,
+    name: data.name,
+    ...(data.market ? { market: data.market } : {}),
+    sectionPath,
+    ...(data.indexCode ? { indexCode: data.indexCode } : {}),
+    ...(data.indexAsOf ? { indexAsOf: data.indexAsOf } : {}),
+    ...(data.coverageTier ? { coverageTier: data.coverageTier } : {}),
+    force: Boolean(data.force),
+  });
 }
 
 function writeSection(ticker: string, text: string): string {

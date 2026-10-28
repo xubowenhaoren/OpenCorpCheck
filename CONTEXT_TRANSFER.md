@@ -150,6 +150,7 @@ OpenCorpCheck/
     company-profile/SKILL.md       # 通用 A/HK/US profile skill（市场感知来源层级 + F10 纪律）
     f10-financials/SKILL.md        # F10 来源层级、页面选择、引用纪律
   config/universe.yaml             # 4 个指数 + 24 家 AI watchlist
+  config/indices/ndx.yaml          # NASDAQ-100 成分股快照（官方 Nasdaq，带 as_of/license）
   docs/
     ARCHITECTURE.md                # 完整平台设计（Phase 1+ 的主要参考）
     DATA_SOURCES.md                # 数据源矩阵 + F10 复用方案
@@ -158,6 +159,10 @@ OpenCorpCheck/
     cli/                           # MCP stdio server（f10_scrape / f10_pages）
     worker/                        # pg-boss 并行 backfill（research / f10）
   packages/
+    core/                          # Zod 契约、类型、ULID
+    db/                            # Drizzle schema + migrations
+    ingest/                        # section markdown → documents/chunks → Qdrant
+    retrieval/                     # tokenizer / BM25 / BGE-M3 / Qdrant / RRF-DBSF
     sources/eastmoney-f10/         # TS adapter：Zod 校验 + summary/full 投影
   services/
     finance-analyst/               # Python sidecar：A/HK/US F10（uv + Playwright）
@@ -322,8 +327,7 @@ npm run validate
   缺口处写“未验证”。注意：模型会用 bash grep dsh spill 文件读被 `--json` 8KiB 截断的
   完整 F10 结果——这是特性不是 bug。
 - [x] P2 数据层（Drizzle/Qdrant）已完成，见 §6 P2。
-- [ ] 待办：index constituent 快照（P4）、MinIO 快照上传、真实 backfill 输出写入
-      `documents/chunks` 并索引（P2.5）。
+- [ ] 待办：A500/HSI/SPX 成分股快照（P4；NDX 已完成）、MinIO 快照上传。
 - 运行方式见 [`services/finance-analyst/README.md`](services/finance-analyst/README.md)。
 
 ### P1 — 东方财富 F10 sidecar（用户明确要求优先）
@@ -408,7 +412,7 @@ npm run validate
       `scripts/dev-embeddings.sh`、`scripts/e2e-search.sh`。
 - [x] 合成 fixture 语料：24 家公司、31 篇文档；全部 `fixture://` + `trust_tier='fixture'`，
       不是真实研究数据。
-- [ ] MinIO 快照上传、真实 F10/worker → documents/chunks 的写入管道。
+- [ ] MinIO 快照上传。（worker/F10 → documents/chunks 已由 `packages/ingest` 打通）
 - [ ] index constituent 快照（P4）与实体解析。
 
 以下是原始 P2 设计（已完成部分以上方进度为准）：
@@ -425,30 +429,53 @@ npm run validate
 
 ### P2.5 — 下一步（2026-10-28 用户指定）：QQQ/NDX 100 家 backfill + 质量评测
 
+**进度（2026-10-28）：**
+
+- [x] **成分股快照**：`config/indices/ndx.yaml`，来源为官方 Nasdaq quote API
+  （`api.nasdaq.com/api/quote/list-type/nasdaq100`），`as_of: 2026-10-28`，
+  101 个证券 / 100 家公司；GOOG/GOOGL 双 class 只回填 GOOGL（`primary` 标记）。
+  worker 新增 `--universe ndx`（也接受 `nasdaq100`），priority 70。
+- [x] **Ingestion bridge**：新包 `packages/ingest`
+  - `parseSectionMarkdown` + `buildChunks`：按 `###` 章节解析，目标 500–800 tokens、
+    ~15% overlap，表格按行切分不丢失；
+  - 实体解析：先按 `securities(ticker+exchange)`，再按 `company_ids` / slug，
+    复用 seed 里已有的 Apple / 茅台 / 腾讯，不重复建公司；
+  - 写 `sources` / `documents`（`doc_type=company_profile`）/ `chunks`，
+    再删旧 Qdrant points → `indexChunks` → 重新索引 company point；
+  - `sha256(section)` 幂等：内容没变时 DB 不写、embedding 不调；
+  - 并发安全：Postgres advisory lock + `ON CONFLICT` + `ensureCollections` 容错。
+- [x] **CLI**：`occ ingest --sections ... [--index NDX|none] [--tickers ...]
+  [--concurrency N] [--force] [--skip-index] [--json]`。实测 600519/00700：
+  每家 14 chunks / ~2.3–2.7k tokens，重跑全部 `skipped`，且能按公司/文档搜到。
+- [x] **并行 backfill 接入**：新队列 `ingest.company`（默认并发 4，
+  3 次 retry + 指数退避 + 死信）。research 完成或 cache-hit 后自动 enqueue；
+  `--no-ingest` 关闭，`--ingest-mock` 才 ingest mock section；run 的
+  `backfill_jobs` 会追加 ingest 行，`status --run` 一并统计。
+- [x] Pilot 5 家（AAPL/ABNB/ADBE/ADI/ADP）live：5/5 research + 5/5 ingest，
+  wall **281s**；research p50 131s / p95 234s，ingest p50 13s；285k input /
+  78k output tokens；70 chunks 入 Qdrant，0 retry。搜索验收：ticker/英文名 top1，
+  “模拟芯片” → ADI top1，“人力资源 薪酬外包” → ADP top1。
+- [ ] 100 家 backfill 与 wall time / token 成本记录。
+- [ ] Golden query 评测（MRR/nDCG/Recall/p95）。
+
 **目标**：跑通真实数据闭环，测 backfill pipeline 速度 + hybrid search 质量。
 
 关键事实 / 前置：
 
-- QQQ 跟踪 NASDAQ-100，约 100 家成分股；需要一份带 `as_of` 的成分股快照（官方/可信
-  来源，记录 license），不要把成分股写死。
-- 现有 P2 搜索用的是 synthetic fixture（24 家）。**worker 的 research 输出还没有自动写入
-  `documents/chunks`**，这是本阶段第一优先级：写 ingestion bridge，把
-  `phase0/out/sections/{TICKER}.md`（或 worker section 输出）解析成
-  `documents` + `chunks`（按章节/段落，500–800 tokens），写入 Postgres，再调用
-  `indexChunks` 写 Qdrant。没有这一步，backfill 出来的 profile 搜不到。
+- QQQ 跟踪 NASDAQ-100，约 100 家成分股；快照已落在 `config/indices/ndx.yaml`，
+  带 `as_of`、官方来源 URL 和 license，不要手抄成分股。
+- P2 搜索原先用 synthetic fixture（24 家）；现在 `packages/ingest` 已把
+  section markdown 写进 `documents/chunks` 并索引，worker 会自动调用。
 - 可选：把 company profile 写入 `companies.profile` / `facts`，并重新索引 company 文本。
 - 现有入口：`node apps/cli/dist/occ.js ...`、`node apps/worker/dist/cli.js ...`、
   `node apps/api/dist/server.js`。模型固定 `deepseek-flash`，不要用 Pro。
 
 实施顺序：
 
-1. **成分股快照**：新增/扩展 `config/universe.yaml`（或 `config/indices/ndx.yaml`），
-   存 100 家 ticker + 名称 + `as_of` + 来源 URL；先核对 ticker/交易所格式（如 BRK.B），
-   再做实体解析。
-2. **Ingestion bridge**：research 完成后读 section markdown → `sources` → `documents`
-   （`doc_type=company_profile`）→ `chunks` → `indexChunks`。必须幂等（content hash /
-   document id），失败可单家重跑。可先实现 `occ ingest --sections phase0/out/sections`，
-   再接 worker 回调。
+1. **成分股快照（已完成）**：`config/indices/ndx.yaml`（官方 Nasdaq API，101 证券 /
+   100 公司，`as_of` + license）；`--universe ndx` 已接入 worker。
+2. **Ingestion bridge（已完成）**：`packages/ingest` + `occ ingest` + `ingest.company`
+   队列；按章节 500–800 token 切块，sha256 幂等，失败可单家重跑。
 3. **Pilot 5 家**：先跑 5 家（如 AAPL/MSFT/NVDA/AMZN/META），验证 ingestion + 搜索 +
    引用；`--concurrency 4`。
 4. **100 家 backfill**：`--concurrency 4–8`（LLM 全局 4–6，搜索 provider 2–4），记录

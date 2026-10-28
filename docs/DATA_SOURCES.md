@@ -30,6 +30,20 @@ must change before it becomes a database source, and the licensing constraints.
 | Entity spine | GLEIF (LEI, parent relationships), Wikidata | OpenCorporates (BYO token) | GLEIF is CC0; use it for ownership edges |
 | News | Company IR RSS, GDELT, credible outlets | dsh `web_search` | Dedupe + entity link |
 
+### 2.1 Index constituent snapshots
+
+- `config/indices/ndx.yaml` is the NASDAQ-100 snapshot used by
+  `occ-backfill --universe ndx` and `occ ingest --index NDX`.
+- Source: the official Nasdaq quote API
+  (`https://api.nasdaq.com/api/quote/list-type/nasdaq100`), fetched **2026-10-28**.
+  The file records `as_of`, `fetched_at`, the source URL and a license note.
+- It contains 101 securities / 100 companies. GOOG and GOOGL are two share classes of
+  Alphabet; only GOOGL is marked `primary: true` and used for backfills.
+- Nasdaq index data is proprietary. Keep the snapshot for internal demo/research with
+  attribution; do **not** redistribute it as a licensed dataset. Refresh by re-fetching
+  and replacing the file (new `as_of`), never by editing tickers by hand.
+- A500 / HSI / S&P 500 snapshots are still P4.
+
 ## 3. Reused assets from `finance_analyst`
 
 The private repo ([xubowenhaoren/finance_analyst](https://github.com/xubowenhaoren/finance_analyst),

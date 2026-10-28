@@ -52,6 +52,19 @@ describe("resolveTargets", () => {
     expect(targets.every((target) => target.market && target.code)).toBe(true);
     expect(targets.some((target) => target.key === "HK:02513")).toBe(true);
   });
+
+  it("loads the NDX snapshot's 100 primary listings", async () => {
+    const targets = await resolveTargets({ universe: "ndx" });
+    expect(targets).toHaveLength(100);
+    expect(targets.every((target) => target.market === "US")).toBe(true);
+    expect(targets.every((target) => target.coverageTier === "index_member")).toBe(
+      true,
+    );
+    expect(targets.every((target) => target.indexCode === "NDX")).toBe(true);
+    expect(targets.some((target) => target.ticker === "AAPL")).toBe(true);
+    expect(targets.some((target) => target.ticker === "GOOG")).toBe(false);
+    expect(targets.some((target) => target.ticker === "GOOGL")).toBe(true);
+  });
 });
 
 describe("sharding", () => {

@@ -36,6 +36,10 @@ export interface EnqueueResearchOptions {
   force?: boolean;
   mock?: boolean;
   includeF10?: boolean;
+  /** Ingest finished sections after research (default: true for live runs). */
+  ingest?: boolean;
+  /** Also ingest mock sections (default: false). */
+  ingestMock?: boolean;
 }
 
 export interface EnqueueResult {
@@ -65,6 +69,8 @@ export async function enqueueResearch(
   }
 
   const runId = randomUUID();
+  const shouldIngest =
+    options.ingest ?? (!options.mock ? true : Boolean(options.ingestMock));
   const runOptions = {
     universe: options.universe ?? null,
     tickers: options.tickers ?? null,
@@ -73,8 +79,10 @@ export async function enqueueResearch(
     force: Boolean(options.force),
     mock: Boolean(options.mock),
     includeF10: Boolean(options.includeF10),
+    ingest: shouldIngest,
     model: config.model,
     concurrency: config.researchConcurrency,
+    ingestConcurrency: config.ingestConcurrency,
   };
 
   const specs: JobSpec[] = targets.map((target) => ({
@@ -87,11 +95,17 @@ export async function enqueueResearch(
       ticker: target.ticker,
       name: target.name,
       ...(target.market ? { market: target.market } : {}),
+      ...(target.code ? { code: target.code } : {}),
+      ...(target.exchange ? { exchange: target.exchange } : {}),
       skill: skillForTarget(target),
       ...(target.focus ? { focus: target.focus } : {}),
       force: Boolean(options.force),
       mock: Boolean(options.mock),
       includeF10: Boolean(options.includeF10),
+      ingest: shouldIngest,
+      ...(target.indexCode ? { indexCode: target.indexCode } : {}),
+      ...(target.indexAsOf ? { indexAsOf: target.indexAsOf } : {}),
+      ...(target.coverageTier ? { coverageTier: target.coverageTier } : {}),
     },
   }));
 

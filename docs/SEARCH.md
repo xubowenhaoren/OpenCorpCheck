@@ -9,9 +9,10 @@
 |---|---|---|
 | Domain | [`packages/core`](../packages/core) | Zod query schemas, types, errors, ULIDs |
 | Truth store | [`packages/db`](../packages/db) | Postgres 17 schema, migration runner, repositories |
+| Ingestion | [`packages/ingest`](../packages/ingest) | Section markdown → companies/documents/chunks → Qdrant |
 | Retrieval | [`packages/retrieval`](../packages/retrieval) | jieba/Intl tokenizer, BM25 sparse encoder, BGE-M3 client, Qdrant, RRF/DBSF, indexer |
 | API | [`apps/api`](../apps/api) | Hono search API + OpenAPI |
-| CLI | [`apps/cli`](../apps/cli) | `occ migrate/seed/search/documents/company/health` |
+| CLI | [`apps/cli`](../apps/cli) | `occ migrate/seed/ingest/search/documents/company/health` |
 | Embeddings | [`services/embeddings`](../services/embeddings) | Local BGE-M3 / reranker sidecar (TEI-compatible `/embed`, `/rerank`) |
 
 Postgres is the **truth store and job queue**; Qdrant is the **retrieval engine**.
@@ -135,6 +136,9 @@ node apps/cli/dist/occ.js seed --reset
 node apps/api/dist/server.js
 node apps/cli/dist/occ.js search "宁德时代" --explain
 node apps/cli/dist/occ.js documents "云 业务 增长"
+
+# 5. real research sections → documents/chunks + Qdrant
+node apps/cli/dist/occ.js ingest --sections phase0/out/sections --concurrency 4
 ```
 
 Or run the whole thing:
@@ -173,7 +177,11 @@ branch ranks are all present.
 ## Known limits / next
 
 - The seed corpus is **synthetic fixtures** (`fixture://` URLs,
-  `trust_tier = 'fixture'`). Real profiles come from the F10/worker pipeline.
+  `trust_tier = 'fixture'`). Real profiles enter through `occ ingest` or the
+  worker's `ingest.company` queue; they are content-hashed and idempotent.
+- Ingestion currently writes section markdown as one `company_profile` document
+  per company (14 chunks for the A/HK profiles). Fact/product/relation
+  extraction is still P3.
 - MinIO snapshot upload is still pending; `documents.storage_key` is populated
   by ingestion but no object is written.
 - Rerank is implemented and wired, but the E2E run uses `OCC_RERANK_ENABLED=false`

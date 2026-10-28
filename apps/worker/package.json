@@ -11,9 +11,11 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/cli.js work",
-    "test": "tsc -p ../../packages/sources/eastmoney-f10/tsconfig.json && tsc -p tsconfig.json && vitest run"
+    "test": "tsc -p ../../packages/core/tsconfig.json && tsc -p ../../packages/db/tsconfig.json && tsc -p ../../packages/retrieval/tsconfig.json && tsc -p ../../packages/ingest/tsconfig.json && tsc -p ../../packages/sources/eastmoney-f10/tsconfig.json && tsc -p tsconfig.json && vitest run"
   },
   "dependencies": {
+    "@occ/core": "workspace:*",
+    "@occ/ingest": "workspace:*",
     "@occ/sources-eastmoney-f10": "workspace:*",
     "pg": "^8.23.1",
     "pg-boss": "^12.38.0",

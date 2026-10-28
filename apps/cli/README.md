@@ -1,10 +1,42 @@
-# @occ/cli — MCP stdio server
+# @occ/cli — CLI and MCP stdio server
 
-Exposes the Python [finance-analyst sidecar](../../services/finance-analyst/README.md)
-to any MCP client, primarily dsh. It is a thin bridge: argument validation,
-response projection for an agent context, and JSON text results.
+Two jobs:
 
-## Tools
+- `occ` — migrate, seed, ingest research sections, search, company lookup.
+- `occ-f10-mcp` — bridge the Python [finance-analyst sidecar](../../services/finance-analyst/README.md)
+  to any MCP client, primarily dsh.
+
+## Ingest
+
+`occ ingest` turns research section markdown into `companies` / `documents` / `chunks`
+rows, then indexes them into Qdrant:
+
+```bash
+# existing A/HK sections
+node apps/cli/dist/occ.js ingest \
+  --sections phase0/out/sections --tickers 600519:A,00700:HK
+
+# NDX sections (ticker names, exchange and index membership come from the snapshot)
+node apps/cli/dist/occ.js ingest --sections phase0/out/sections --index NDX --concurrency 4
+```
+
+| Flag | Effect |
+|---|---|
+| `--sections <dir>` | Section directory (default `phase0/out/sections`) |
+| `--index NDX` | Snapshot metadata for tickers; default `NDX`, `none` disables |
+| `--tickers A,B:C` | Only these sections |
+| `--market A\|HK\|US` | Default market for bare filenames (default US) |
+| `--concurrency N` | Parallel companies (default 4) |
+| `--force` | Rewrite unchanged sections and re-index |
+| `--skip-index` | Postgres only; no Qdrant writes |
+| `--json` | Machine-readable summary |
+
+Ingestion is idempotent by section SHA-256: an unchanged rerun writes nothing and
+makes no embedding call. Entity resolution matches an existing `securities`
+(ticker + exchange) or company slug first, so NDX/A/HK profiles attach to the
+seeded companies instead of creating duplicates.
+
+## MCP tools
 
 | Tool | Purpose |
 |---|---|

@@ -2,8 +2,9 @@
 
 **Open, agentic company intelligence for A500 · Hang Seng Index · S&P 500 · NASDAQ-100.**
 
-> Status: Phase 2 data layer + hybrid search working — Postgres truth store, Qdrant
-> dense+sparse retrieval, Hono search API, local BGE-M3 sidecar · 2026-10-28
+> Status: Phase 2 data layer + hybrid search + research-section ingestion working —
+> Postgres truth store, Qdrant dense+sparse retrieval, Hono search API, local BGE-M3
+> sidecar, NASDAQ-100 constituent snapshot · 2026-10-28
 
 OpenCorpCheck is an open-source, AI-native alternative to commercial company-intelligence
 products (the "企查查" category). It builds a cited, queryable profile for every company in
@@ -49,6 +50,7 @@ skill that produces cited company profiles. No UI, no database. See
 - [MCP server — F10 tools](apps/cli/README.md)
 - [Parallel backfill worker](apps/worker/README.md)
 - [Data layer + hybrid search (P2)](docs/SEARCH.md)
+- [NASDAQ-100 constituent snapshot](config/indices/ndx.yaml)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Prior art & competitive scan](docs/PRIOR_ART.md)
 - [Data sources & the finance_analyst reuse plan](docs/DATA_SOURCES.md)

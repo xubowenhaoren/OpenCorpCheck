@@ -163,6 +163,32 @@ export async function getJobRow(
   return rows[0] ?? null;
 }
 
+/**
+ * Add a follow-up job (currently ingest) to an existing run. Runs are created
+ * with research/F10 jobs only; ingest rows are appended when research finishes.
+ */
+export async function createFollowUpJob(input: {
+  runId: string;
+  queue: string;
+  jobKey: string;
+  companyId: string;
+  payload: object;
+}): Promise<void> {
+  await query(
+    `INSERT INTO backfill_jobs (run_id, queue, job_key, company_id, payload)
+     VALUES ($1, $2, $3, $4, $5::jsonb)
+     ON CONFLICT (run_id, queue, job_key) DO NOTHING`,
+    [
+      input.runId,
+      input.queue,
+      input.jobKey,
+      input.companyId,
+      JSON.stringify(input.payload),
+    ],
+  );
+  await refreshRun(input.runId);
+}
+
 export async function markJobActive(
   runId: string,
   queue: string,
@@ -252,6 +278,7 @@ export async function refreshRun(runId: string): Promise<void> {
     `UPDATE backfill_runs r
      SET completed_jobs = c.completed,
          failed_jobs = c.dead,
+         total_jobs = c.total,
          status = CASE
            WHEN c.pending > 0 THEN 'running'
            WHEN c.completed = c.total AND c.dead = 0 THEN 'completed'

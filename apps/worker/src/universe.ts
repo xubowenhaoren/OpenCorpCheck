@@ -3,8 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { primaryConstituents, loadIndexSnapshot } from "@occ/ingest";
 import { parse as parseYaml } from "yaml";
 
+import type { CoverageTier } from "@occ/core";
 import type { Market } from "@occ/sources-eastmoney-f10";
 
 import { config } from "./config.js";
@@ -16,13 +18,18 @@ export interface CompanyTarget {
   name: string;
   market?: Market;
   code?: string;
+  exchange?: string;
   focus?: string;
   priority: number;
-  source: "mag7" | "ai-watchlist" | "explicit";
+  source: "mag7" | "ai-watchlist" | "index" | "explicit";
+  coverageTier?: CoverageTier;
+  indexCode?: string;
+  indexAsOf?: string;
 }
 
 const PRIORITY = {
   ai: 100,
+  index: 70,
   mag7: 60,
   explicit: 50,
 } as const;
@@ -47,6 +54,7 @@ export async function loadMag7Targets(): Promise<CompanyTarget[]> {
     focus: entry.focus,
     priority: PRIORITY.mag7,
     source: "mag7",
+    coverageTier: "index_member",
   }));
 }
 
@@ -71,6 +79,7 @@ export async function loadAiWatchlistTargets(): Promise<CompanyTarget[]> {
       name: entry.name,
       priority: PRIORITY.ai,
       source: "ai-watchlist",
+      coverageTier: "ai_watchlist",
     };
     if (identifier?.value) {
       const parsed = parseTicker(identifier.value);
@@ -88,6 +97,24 @@ export async function loadAiWatchlistTargets(): Promise<CompanyTarget[]> {
     targets.push(base);
   }
   return targets;
+}
+
+/** Primary listings from an index snapshot (`config/indices/ndx.yaml`). */
+export async function loadIndexTargets(): Promise<CompanyTarget[]> {
+  const snapshot = loadIndexSnapshot(config.ndxFile);
+  return primaryConstituents(snapshot).map((entry) => ({
+    key: `US:${entry.ticker}`,
+    ticker: entry.ticker,
+    name: entry.name,
+    market: "US" as Market,
+    code: entry.ticker,
+    exchange: entry.exchange,
+    priority: PRIORITY.index,
+    source: "index" as const,
+    coverageTier: "index_member" as CoverageTier,
+    indexCode: snapshot.index.code,
+    indexAsOf: snapshot.index.as_of,
+  }));
 }
 
 export interface ParsedTicker {
@@ -192,8 +219,12 @@ export async function resolveTargets(
       for (const target of await loadMag7Targets()) known.set(target.key, target);
     } else if (universe === "ai" || universe === "ai-watchlist") {
       for (const target of await loadAiWatchlistTargets()) known.set(target.key, target);
+    } else if (universe === "ndx" || universe === "nasdaq100") {
+      for (const target of await loadIndexTargets()) known.set(target.key, target);
     } else {
-      throw new Error(`unknown universe ${options.universe}; use mag7 or ai-watchlist`);
+      throw new Error(
+        `unknown universe ${options.universe}; use mag7, ai-watchlist or ndx`,
+      );
     }
   }
 

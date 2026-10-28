@@ -20,25 +20,30 @@ Usage:
   occ-backfill migrate
   occ-backfill enqueue research [options]
   occ-backfill enqueue f10 [options]
-  occ-backfill work [--queues research,f10] [--drain]
+  occ-backfill work [--queues research,ingest,f10] [--drain]
   occ-backfill status [--run <uuid>] [--json]
   occ-backfill config
 
 Enqueue options:
-  --universe mag7|ai-watchlist   Preset target list
+  --universe mag7|ai-watchlist|ndx
   --tickers AAPL,600519:A,00700:HK
   --limit N                      Cap targets after priority sort
   --shard I/N                    Only targets where hash(key) % N === I
   --force                        Ignore completed checkpoints / cache
   --mock                         Research only: write fixture sections, no LLM
   --include-f10                  Research only: attach the F10 MCP tools
+  --no-ingest                    Research only: skip section ingestion
+  --ingest-mock                  Research only: ingest mock sections too
   --preset default|minimal       F10 only (default: default)
   --pages cwfx,gsgk              F10 only: explicit page hashes
 
 Environment:
   DATABASE_URL (default postgres://occ@127.0.0.1:5432/occdb)
   OCC_RESEARCH_CONCURRENCY (default 4)
+  OCC_INGEST_CONCURRENCY (default 4)
   OCC_F10_CONCURRENCY (default 4)
+  OCC_QDRANT_URL (default http://127.0.0.1:6333)
+  OCC_EMBEDDING_URL (default http://127.0.0.1:8080)
   OCC_FINANCE_ANALYST_URL (default http://127.0.0.1:8090)
   DEEPSEEK_API_KEY (required for live research)
 `;
@@ -110,6 +115,8 @@ async function enqueueCommand(kind: "research" | "f10", args: string[]): Promise
       force: { type: "boolean" },
       mock: { type: "boolean" },
       "include-f10": { type: "boolean" },
+      "no-ingest": { type: "boolean" },
+      "ingest-mock": { type: "boolean" },
       preset: { type: "string" },
       pages: { type: "string" },
     },
@@ -134,6 +141,8 @@ async function enqueueCommand(kind: "research" | "f10", args: string[]): Promise
         force: values.force,
         mock: values.mock,
         includeF10: values["include-f10"],
+        ingest: values["no-ingest"] ? false : undefined,
+        ingestMock: values["ingest-mock"],
       });
     } else {
       result = await enqueueF10(boss, {
@@ -161,13 +170,13 @@ async function workCommand(args: string[]): Promise<void> {
       drain: { type: "boolean" },
     },
   });
-  const queues = (values.queues ?? "research,f10")
+  const queues = (values.queues ?? "research,ingest,f10")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean) as QueueKind[];
   for (const queue of queues) {
-    if (queue !== "research" && queue !== "f10") {
-      throw new Error(`unknown queue ${queue}; use research or f10`);
+    if (queue !== "research" && queue !== "ingest" && queue !== "f10") {
+      throw new Error(`unknown queue ${queue}; use research, ingest or f10`);
     }
   }
   await migrate();
