@@ -56,12 +56,22 @@ function q(params) {
   return new URLSearchParams(params).toString();
 }
 
-async function companySearch(params) {
-  return api(`/v1/search/companies?${q(params)}`);
+async function companySearch(params, includeFixtures = true) {
+  return api(
+    `/v1/search/companies?${q({
+      ...(includeFixtures ? { include_fixtures: "true" } : {}),
+      ...params,
+    })}`,
+  );
 }
 
-async function documentSearch(params) {
-  return api(`/v1/search/documents?${q(params)}`);
+async function documentSearch(params, includeFixtures = true) {
+  return api(
+    `/v1/search/documents?${q({
+      ...(includeFixtures ? { include_fixtures: "true" } : {}),
+      ...params,
+    })}`,
+  );
 }
 
 function slugs(body) {
@@ -93,12 +103,17 @@ try {
   const health = await waitForHealth();
   console.log("health:", JSON.stringify(health));
 
+  const realProbe = await companySearch({ q: "AAPL", limit: 1 }, false);
+  const hasRealCorpus = realProbe.data.hits.length > 0;
+  console.log(`real corpus present: ${hasRealCorpus}`);
+
   // ── identifier / alias paths ───────────────────────────────────────────
   console.log("\n== company search: exact and fuzzy ==");
   const cases = [
     { label: "Chinese official name", query: "宁德时代", top1: "catl" },
     { label: "Chinese brand alias", query: "茅台", top1: "kweichow-moutai" },
     { label: "Pinyin initials", query: "gzmt", top1: "kweichow-moutai" },
+    { label: "Pinyin initials (NDX)", query: "ywd", top1: "nvidia" },
     { label: "Ticker", query: "NVDA", top1: "nvidia" },
     { label: "A-share code", query: "600519", top1: "kweichow-moutai" },
     { label: "HK code", query: "00700.HK", top1: "tencent" },
@@ -119,16 +134,26 @@ try {
 
   // ── hybrid / semantic paths ────────────────────────────────────────────
   console.log("\n== company search: hybrid semantics ==");
-  const aiChips = await companySearch({ q: "AI 芯片", limit: 8 });
-  printHits('"AI 芯片"', aiChips);
+  if (hasRealCorpus) {
+    const aiChipsReal = await companySearch(
+      { q: "GPU 加速计算", limit: 8 },
+      false,
+    );
+    printHits('"GPU 加速计算" (real corpus)', aiChipsReal);
+    assert(
+      slugs(aiChipsReal).slice(0, 5).includes("nvidia"),
+      `"GPU 加速计算" real corpus → NVIDIA in top5 (got ${slugs(aiChipsReal).slice(0, 5).join(", ")})`,
+    );
+  } else {
+    console.log("  (skipping real-corpus assertion: fixture-only database)");
+  }
+
+  const aiChips = await companySearch({ q: "AI 芯片", limit: 8 }, true);
+  printHits('"AI 芯片" (with fixtures)', aiChips);
   const chipSlugs = slugs(aiChips);
   assert(
-    chipSlugs.slice(0, 5).includes("nvidia"),
-    `"AI 芯片" → NVIDIA in top5 (got ${chipSlugs.slice(0, 5).join(", ")})`,
-  );
-  assert(
     chipSlugs.slice(0, 5).includes("cambricon"),
-    `"AI 芯片" → Cambricon in top5 (got ${chipSlugs.slice(0, 5).join(", ")})`,
+    `"AI 芯片" fixture corpus → Cambricon in top5 (got ${chipSlugs.slice(0, 5).join(", ")})`,
   );
 
   const modelLabs = await companySearch({ q: "大模型 公司", limit: 8 });
@@ -156,6 +181,43 @@ try {
   assert(
     socialSlugs.includes("tencent") || socialSlugs.includes("meta"),
     `"社交 平台" → Tencent or Meta in top4 (got ${socialSlugs.join(", ")})`,
+  );
+
+  // ── fixture isolation ──────────────────────────────────────────────────
+  console.log("\n== fixture isolation ==");
+  const hidden = await companySearch({ q: "OpenAI", limit: 5 }, false);
+  printHits('"OpenAI" default (fixtures hidden)', hidden);
+  assert(
+    !slugs(hidden).includes("openai"),
+    `fixture-only company hidden by default (got ${slugs(hidden).join(", ")})`,
+  );
+  assert(
+    hidden.data.hits.every((hit) => hit.isFixture !== true),
+    "default company hits contain no fixture entities",
+  );
+
+  const shown = await companySearch({ q: "OpenAI", limit: 5 }, true);
+  printHits('"OpenAI" include_fixtures', shown);
+  assert(
+    slugs(shown)[0] === "openai",
+    `include_fixtures reveals the fixture company (got ${slugs(shown)[0]})`,
+  );
+  assert(shown.data.hits[0]?.isFixture === true, "fixture hit is labelled");
+
+  const fixtureDocs = await documentSearch(
+    { q: "Anthropic", limit: 5 },
+    false,
+  );
+  printHits('documents "Anthropic" default', fixtureDocs);
+  assert(
+    fixtureDocs.data.hits.every((hit) => hit.isFixture !== true),
+    "default document hits contain no fixture chunks",
+  );
+  assert(
+    fixtureDocs.data.hits.every(
+      (hit) => !String(hit.source?.url ?? "").startsWith("fixture://"),
+    ),
+    "default document hits never cite fixture:// sources",
   );
 
   // ── modes ──────────────────────────────────────────────────────────────

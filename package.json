@@ -14,6 +14,7 @@
     "backfill": "node apps/worker/dist/cli.js",
     "worker": "node apps/worker/dist/cli.js work",
     "seed": "node apps/cli/dist/occ.js seed",
+    "sync:fixtures": "node apps/cli/dist/occ.js sync-fixtures",
     "dev:api": "node apps/api/dist/server.js",
     "dev:qdrant": "scripts/dev-qdrant.sh start",
     "dev:embeddings": "scripts/dev-embeddings.sh start",

@@ -21,6 +21,9 @@ echo "== migrating =="
 node apps/cli/dist/occ.js migrate
 
 echo "== seeding synthetic corpus =="
+# WARNING: --reset truncates the target DATABASE_URL and Qdrant collections.
+# Never point this at the research corpus; use `node scripts/e2e-search.mjs`
+# against live data instead.
 node apps/cli/dist/occ.js seed --reset
 
 echo "== running E2E =="

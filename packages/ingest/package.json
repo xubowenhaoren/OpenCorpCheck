@@ -25,6 +25,7 @@
     "@occ/db": "workspace:*",
     "@occ/retrieval": "workspace:*",
     "drizzle-orm": "^0.45.4",
+    "pinyin-pro": "^3.29.5",
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
   },

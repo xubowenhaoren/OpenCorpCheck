@@ -27,6 +27,8 @@ export interface IndexableCompany {
   markets: string[];
   indices: string[];
   marketCapBucket?: string | null;
+  /** Synthetic fixture entity; hidden from default search. */
+  isFixture?: boolean;
   /** Titles/snippets of the company's documents, for company-level recall. */
   documentText?: string | null;
   updatedAt?: string | null;
@@ -45,6 +47,8 @@ export interface IndexableChunk {
   page?: number | null;
   section?: string | null;
   publishedAt?: string | null;
+  /** Synthetic fixture content; hidden from default search. */
+  isFixture?: boolean;
 }
 
 export async function ensureCollections(
@@ -111,6 +115,7 @@ export async function indexCompanies(
       markets: company.markets,
       indices: company.indices,
       market_cap_bucket: company.marketCapBucket ?? null,
+      is_fixture: Boolean(company.isFixture),
       updated_at: company.updatedAt ?? new Date().toISOString(),
       embedding_version: embeddings.version,
     },
@@ -146,6 +151,7 @@ export async function indexChunks(
       page: chunk.page ?? null,
       section: chunk.section ?? null,
       published_at: chunk.publishedAt ?? null,
+      is_fixture: Boolean(chunk.isFixture),
       text: chunk.text,
       embedding_version: embeddings.version,
     },

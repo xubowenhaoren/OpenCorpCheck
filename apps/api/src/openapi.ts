@@ -48,6 +48,13 @@ const searchCommonParameters = [
     schema: { type: "boolean", default: false },
     description: "Run BM25 and dense branches separately and return rank explanations.",
   },
+  {
+    name: "include_fixtures",
+    in: "query",
+    schema: { type: "boolean", default: false },
+    description:
+      "Include the synthetic development corpus (fixture:// sources). Hidden by default.",
+  },
 ];
 
 export function openApiDocument() {

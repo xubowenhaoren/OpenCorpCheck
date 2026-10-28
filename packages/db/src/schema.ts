@@ -26,6 +26,12 @@ export const companies = pgTable(
     description: text("description"),
     sector: text("sector"),
     marketCapBucket: text("market_cap_bucket"),
+    /**
+     * True when the company exists only in the synthetic development corpus.
+     * Search excludes these rows unless `include_fixtures=true`; a real ingest
+     * flips the flag off so the entity stays visible.
+     */
+    isFixture: boolean("is_fixture").notNull().default(false),
     profile: jsonb("profile")
       .$type<Record<string, unknown>>()
       .notNull()
@@ -180,6 +186,8 @@ export const documents = pgTable(
     extractorVersion: text("extractor_version"),
     title: text("title"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
+    /** Synthetic fixture document; hidden from default search. */
+    isFixture: boolean("is_fixture").notNull().default(false),
     metadata: jsonb("metadata")
       .$type<Record<string, unknown>>()
       .notNull()

@@ -35,6 +35,7 @@ import {
   parseSectionMarkdown,
   type ParsedSection,
 } from "./sections.js";
+import { pinyinAliasForms, pinyinVariants } from "./pinyin.js";
 import {
   countryForMarket,
   currencyForMarket,
@@ -296,6 +297,7 @@ export async function ingestSection(
         extractorVersion: `research-${options.model ?? "deepseek-flash"}`,
         title: `${company.displayName} — 公司研究 profile`,
         publishedAt: now,
+        isFixture: false,
         metadata: {
           source: "backfill",
           ticker: target.ticker,
@@ -322,6 +324,7 @@ export async function ingestSection(
           extractorVersion: `research-${options.model ?? "deepseek-flash"}`,
           title: `${company.displayName} — 公司研究 profile`,
           publishedAt: now,
+          isFixture: false,
           metadata: {
             source: "backfill",
             ticker: target.ticker,
@@ -353,6 +356,7 @@ export async function ingestSection(
         page: null,
         section: chunk.section,
         publishedAt: now.toISOString(),
+        isFixture: false,
       };
     });
 
@@ -616,6 +620,7 @@ async function resolveCompany(
         website: sql`coalesce(${companies.website}, ${website})`,
         description: sql`coalesce(${companies.description}, ${description})`,
         coverageTier: higherCoverage(existing.coverageTier, coverageTier),
+        isFixture: false,
         profile: sql`${companies.profile} || ${JSON.stringify(profile)}::jsonb`,
         updatedAt: now,
       })
@@ -647,6 +652,7 @@ async function resolveCompany(
       coverageTier,
       description,
       sector: null,
+      isFixture: false,
       profile,
     })
     .onConflictDoNothing({ target: companies.slug })
@@ -701,13 +707,39 @@ async function writeCompanyRelations(
 
   const aliasRows = new Map<
     string,
-    { companyId: string; alias: string; lang: string; kind: string }
+    {
+      companyId: string;
+      alias: string;
+      lang: string;
+      kind: string;
+      pinyin: string | null;
+      initials: string | null;
+    }
   >();
   const addAlias = (value: string | undefined | null, kind: string): void => {
     const alias = value?.trim();
     if (!alias) return;
     const lang = langOf(alias);
-    aliasRows.set(`${alias}\0${lang}`, { companyId, alias, lang, kind });
+    const variants = pinyinVariants(alias);
+    aliasRows.set(`${alias}\0${lang}`, {
+      companyId,
+      alias,
+      lang,
+      kind,
+      pinyin: variants?.full ?? null,
+      initials: variants?.initials ?? null,
+    });
+    // Exact-match support for users typing full pinyin or initials.
+    for (const form of pinyinAliasForms(alias)) {
+      aliasRows.set(`${form}\0zh`, {
+        companyId,
+        alias: form,
+        lang: "zh",
+        kind: "pinyin",
+        pinyin: null,
+        initials: null,
+      });
+    }
   };
   addAlias(parsed.legalName, "legal");
   addAlias(parsed.displayName, "brand");
@@ -797,7 +829,9 @@ async function loadIndexableCompany(
   const documentRows = await db
     .select({ title: documents.title })
     .from(documents)
-    .where(eq(documents.companyId, companyId))
+    .where(
+      and(eq(documents.companyId, companyId), eq(documents.isFixture, false)),
+    )
     .limit(5);
 
   const markets = [
@@ -818,6 +852,7 @@ async function loadIndexableCompany(
     sector: company.sector,
     country: company.country,
     coverageTier: company.coverageTier,
+    isFixture: company.isFixture,
     tickers: securityRows.map((row) => row.ticker),
     markets,
     indices: [...new Set(indexRows.map((row) => row.indexCode))],

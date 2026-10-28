@@ -16,6 +16,7 @@ export interface ChunkWithSource {
   docType: string | null;
   lang: string | null;
   publishedAt: Date | null;
+  isFixture: boolean;
   sourceId: string | null;
   sourceUrl: string | null;
   sourceTitle: string | null;
@@ -42,6 +43,7 @@ export async function getChunksWithSources(
       docType: documents.docType,
       lang: documents.language,
       publishedAt: documents.publishedAt,
+      isFixture: documents.isFixture,
       sourceId: sources.id,
       sourceUrl: sources.url,
       sourceTitle: sources.title,

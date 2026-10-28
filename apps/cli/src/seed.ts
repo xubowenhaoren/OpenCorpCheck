@@ -24,6 +24,7 @@ import {
   type IndexableChunk,
   type IndexableCompany,
 } from "@occ/retrieval";
+import { pinyinAliasForms, pinyinVariants } from "@occ/ingest";
 
 import { config } from "./config.js";
 import { SEED_COMPANIES, type SeedCompany } from "./seed-data.js";
@@ -93,6 +94,7 @@ export async function seed(options: SeedOptions = {}): Promise<SeedResult> {
         sector: seedCompany.sector,
         country: seedCompany.country,
         coverageTier: seedCompany.coverageTier,
+        isFixture: true,
         tickers: seedCompany.securities.map((security) => security.ticker),
         markets: bundle.markets,
         indices: seedCompany.indices,
@@ -142,6 +144,7 @@ export async function seed(options: SeedOptions = {}): Promise<SeedResult> {
             extractorVersion: "fixture-v1",
             title: doc.title,
             publishedAt,
+            isFixture: true,
             metadata: { fixture: true, synthetic: true },
           })
           .onConflictDoUpdate({
@@ -152,6 +155,7 @@ export async function seed(options: SeedOptions = {}): Promise<SeedResult> {
               title: doc.title,
               language: doc.lang,
               publishedAt,
+              isFixture: true,
             },
           });
 
@@ -172,6 +176,7 @@ export async function seed(options: SeedOptions = {}): Promise<SeedResult> {
             page: null,
             section: doc.docType,
             publishedAt: publishedAt.toISOString(),
+            isFixture: true,
           });
           await db.insert(chunks).values({
             id: chunkId,
@@ -238,6 +243,7 @@ async function upsertCompany(
     coverageTier: seedCompany.coverageTier,
     description: seedCompany.description,
     sector: seedCompany.sector,
+    isFixture: true,
     profile: { fixture: true },
     updatedAt: new Date(),
   };
@@ -270,16 +276,39 @@ async function writeCompanyRelations(
   await db.delete(indexMemberships).where(eq(indexMemberships.companyId, companyId));
 
   if (seedCompany.aliases.length > 0) {
-    await db.insert(aliases).values(
-      seedCompany.aliases.map((alias) => ({
+    const rows = new Map<
+      string,
+      {
+        companyId: string;
+        alias: string;
+        lang: string;
+        pinyin: string | null;
+        initials: string | null;
+        kind: string;
+      }
+    >();
+    for (const alias of seedCompany.aliases) {
+      const variants = pinyinVariants(alias.alias);
+      rows.set(`${alias.alias}\0${alias.lang}`, {
         companyId,
         alias: alias.alias,
         lang: alias.lang,
-        pinyin: alias.pinyin ?? null,
-        initials: alias.initials ?? null,
+        pinyin: alias.pinyin ?? variants?.full ?? null,
+        initials: alias.initials ?? variants?.initials ?? null,
         kind: alias.kind,
-      })),
-    );
+      });
+      for (const form of pinyinAliasForms(alias.alias)) {
+        rows.set(`${form}\0zh`, {
+          companyId,
+          alias: form,
+          lang: "zh",
+          pinyin: null,
+          initials: null,
+          kind: "pinyin",
+        });
+      }
+    }
+    await db.insert(aliases).values([...rows.values()]);
   }
   if (seedCompany.ids.length > 0) {
     await db.insert(companyIds).values(

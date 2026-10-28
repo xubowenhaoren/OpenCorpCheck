@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import { config } from "./config.js";
 import { ingestCommand, USAGE_OPTIONS as INGEST_OPTIONS } from "./ingest-command.js";
 import { seed } from "./seed.js";
+import { syncFixtures } from "./sync-fixtures.js";
 
 const USAGE = `occ — OpenCorpCheck CLI
 
@@ -11,6 +12,7 @@ Usage:
   occ migrate
   occ seed [--reset] [--skip-index]
   occ ingest [options]
+  occ sync-fixtures [--dry-run]
   occ search <query> [--mode hybrid|keyword|semantic] [--limit N] [--explain] [--json]
   occ documents <query> [--mode ...] [--limit N] [--company ID] [--json]
   occ company <id-or-slug> [--json]
@@ -52,6 +54,15 @@ async function main(): Promise<void> {
     case "ingest":
       await ingestCommand(rest);
       return;
+    case "sync-fixtures": {
+      const { values } = parseArgs({
+        args: rest,
+        options: { "dry-run": { type: "boolean" } },
+      });
+      const result = await syncFixtures({ dryRun: Boolean(values["dry-run"]) });
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
     case "search":
       await searchCommand(rest, "companies");
       return;
@@ -130,6 +141,7 @@ async function searchCommand(
       mode: { type: "string", default: "hybrid" },
       limit: { type: "string", default: "10" },
       explain: { type: "boolean" },
+      "include-fixtures": { type: "boolean" },
       json: { type: "boolean" },
       company: { type: "string" },
     },
@@ -141,6 +153,7 @@ async function searchCommand(
   url.searchParams.set("mode", values.mode!);
   url.searchParams.set("limit", values.limit!);
   if (values.explain) url.searchParams.set("explain", "true");
+  if (values["include-fixtures"]) url.searchParams.set("include_fixtures", "true");
   if (values.company) url.searchParams.set("company_id", values.company);
 
   const body = await api(`${url.pathname}${url.search}`);

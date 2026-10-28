@@ -72,12 +72,17 @@ export class SearchService {
     const indices = parseList(query.index).map((index) => index.toUpperCase());
 
     const [exact, retrieval] = await Promise.all([
-      findExactCompanyMatches(this.deps.db, query.q),
+      findExactCompanyMatches(this.deps.db, query.q, query.include_fixtures),
       this.deps.engine.searchCompanies({
         q: query.q,
         mode: query.mode,
         limit: Math.max(query.limit * 3, 20),
-        filter: buildCompanyFilter(query, markets, indices),
+        filter: buildCompanyFilter(
+          query,
+          markets,
+          indices,
+          query.include_fixtures,
+        ),
         explain: query.explain,
       }),
     ]);
@@ -132,7 +137,13 @@ export class SearchService {
       .filter(
         (entry): entry is { bundle: CompanyBundle; candidate: NeutralHit } =>
           Boolean(entry.bundle) &&
-          matchesCompanyFilters(entry.bundle!, markets, indices, query.coverage),
+          matchesCompanyFilters(
+            entry.bundle!,
+            markets,
+            indices,
+            query.coverage,
+            query.include_fixtures,
+          ),
       )
       .map(({ bundle, candidate }) => ({
         bundle,
@@ -231,7 +242,7 @@ export class SearchService {
       q: query.q,
       mode: query.mode,
       limit: Math.max(query.limit * 3, 20),
-      filter: buildDocumentFilter(query),
+      filter: buildDocumentFilter(query, query.include_fixtures),
       explain: query.explain,
     });
 
@@ -258,7 +269,11 @@ export class SearchService {
           score: hit.score,
         };
       })
-      .filter((entry): entry is HydratedHit => Boolean(entry.row));
+      .filter(
+        (entry): entry is HydratedHit =>
+          Boolean(entry.row) &&
+          (query.include_fixtures || !entry.row!.isFixture),
+      );
 
     let rerankUsed = false;
     let rerankMs = 0;
@@ -304,6 +319,7 @@ export class SearchService {
         documentId: entry.row.documentId,
         companyId: entry.row.companyId ?? "",
         companyDisplayName: entry.row.companyDisplayName ?? undefined,
+        isFixture: entry.row.isFixture,
         text: entry.row.text,
         title: entry.row.title ?? undefined,
         docType: entry.row.docType ?? undefined,
@@ -368,6 +384,7 @@ function buildCompanyFilter(
   query: SearchCompaniesQuery,
   markets: Market[],
   indices: string[],
+  includeFixtures: boolean,
 ) {
   const must: QdrantCondition[] = [];
   if (markets.length > 0) {
@@ -379,10 +396,20 @@ function buildCompanyFilter(
   if (query.coverage) {
     must.push({ key: "coverage_tier", match: { value: query.coverage } });
   }
-  return must.length > 0 ? { must } : undefined;
+  const mustNot: QdrantCondition[] = includeFixtures
+    ? []
+    : [{ key: "is_fixture", match: { value: true } }];
+  if (must.length === 0 && mustNot.length === 0) return undefined;
+  return {
+    ...(must.length > 0 ? { must } : {}),
+    ...(mustNot.length > 0 ? { must_not: mustNot } : {}),
+  };
 }
 
-function buildDocumentFilter(query: SearchDocumentsQuery) {
+function buildDocumentFilter(
+  query: SearchDocumentsQuery,
+  includeFixtures: boolean,
+) {
   const must: QdrantCondition[] = [];
   if (query.company_id) {
     must.push({ key: "company_id", match: { value: query.company_id } });
@@ -393,15 +420,24 @@ function buildDocumentFilter(query: SearchDocumentsQuery) {
   if (query.lang) {
     must.push({ key: "lang", match: { value: query.lang } });
   }
-  return must.length > 0 ? { must } : undefined;
+  const mustNot: QdrantCondition[] = includeFixtures
+    ? []
+    : [{ key: "is_fixture", match: { value: true } }];
+  if (must.length === 0 && mustNot.length === 0) return undefined;
+  return {
+    ...(must.length > 0 ? { must } : {}),
+    ...(mustNot.length > 0 ? { must_not: mustNot } : {}),
+  };
 }
 
 function matchesCompanyFilters(
   bundle: CompanyBundle,
   markets: Market[],
   indices: string[],
-  coverage?: string,
+  coverage: string | undefined,
+  includeFixtures: boolean,
 ): boolean {
+  if (!includeFixtures && bundle.company.isFixture) return false;
   if (coverage && bundle.company.coverageTier !== coverage) return false;
   if (indices.length > 0) {
     const own = bundle.indices.map((entry) => entry.indexCode);
@@ -438,6 +474,7 @@ function toCompanyHit(
     country: company.country ?? undefined,
     website: company.website ?? undefined,
     coverageTier: company.coverageTier as CompanyHit["coverageTier"],
+    ...(company.isFixture ? { isFixture: true } : {}),
     description: company.description ?? undefined,
     sector: company.sector ?? undefined,
     marketCapBucket: company.marketCapBucket ?? undefined,

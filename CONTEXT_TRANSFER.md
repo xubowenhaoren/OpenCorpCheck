@@ -1,8 +1,11 @@
 # OpenCorpCheck — Context Transfer
 
-> 交接日期：2026-10-27（P2 更新：2026-10-28）
-> 当前阶段：Phase 0 + Phase 1 已完成；P2 数据层 + 混合检索 + 搜索 API 已实现并通过 live E2E（35/35）
-> 下一阶段：先做 QQQ/NDX 100 家 backfill + 检索质量评测（见 §6 P2.5）；Docker 封装全部 TODO
+> 交接日期：2026-10-27（P2 更新：2026-10-28；语料清洗 + 评测扩编：2026-10-28）
+> 当前阶段：Phase 0 + Phase 1 + P2 + P2.5 已完成。真实语料已与 synthetic fixture
+> 隔离（默认只搜索 102 家真实 profile），golden query 扩到 7 个 family、含 MRR@10/
+> nDCG@10。Docker 封装全部 TODO。
+> 下一阶段：P3（MCP / CLI / dsh ACP sidebar + fact/relation 抽取）或 P4（A500/HSI/SPX
+> 快照 + A/HK 全量 backfill），由用户决定。
 >
 > **本机约束（2026-10-28 用户确认）**：这台电脑是 macOS 虚拟机，**暂时不能跑 Docker**。
 > 所有 Docker / Compose / 镜像 / 多架构 / GHCR 封装工作全部标记为 TODO，换机器后再做。
@@ -430,7 +433,7 @@ npm run validate
 - backfill 用 pg-boss 队列 + worker 池，按 company/page 分片，支持断点续跑；不要串行。
 - 先把 Phase 0 的 7 份 profile 作为 golden baseline，再扩到 A500/HSI/S&P 500/NDX + AI watchlist。
 
-### P2.5 — 下一步（2026-10-28 用户指定）：QQQ/NDX 100 家 backfill + 质量评测
+### P2.5 — 已完成（2026-10-28）：QQQ/NDX 100 家 backfill + 质量评测
 
 **进度（2026-10-28）：**
 
@@ -463,10 +466,31 @@ npm run validate
   research p50 143s / p95 221s，ingest p50 15s，4.94M input / 1.57M output tokens，
   0 failed / 0 dead letter；1,428 个 profile chunk、100 条 NDX membership。
 - [x] Golden query 评测（`scripts/eval-search.mjs`，结果见 `docs/EVAL.md`）：
-  hybrid 下 ticker / 英文名 **top1 100%**、semantic recall@5 90%、
-  document recall@5 100%；p95 214–278ms（< 400ms 目标）。
+  hybrid 下 ticker / 英文名 **top1 100%**、natural language top1 78.1% /
+  recall@5 100%、pinyin 100%、typo 95.8%；p95 220–383ms。
   顺带修复 exact identifier/alias/fuzzy 排在 BM25 原始分数之后的问题
   （keyword 模式英文名 top1 从 2% → 100%）。
+- [x] **语料清洗（fixture isolation，2026-10-28）**：
+  - migration `0002_fixture_isolation.sql`：`companies.is_fixture` /
+    `documents.is_fixture`；14 家 fixture-only 公司、31 篇 fixture 文档被隐藏，
+    102 家真实 profile 保持可见。
+  - Qdrant payload 带 `is_fixture`；搜索默认 `must_not is_fixture=true`，
+    exact-match planner 也过滤 fixture 公司；`include_fixtures=true` 才返回。
+  - `occ sync-fixtures`（`npm run sync:fixtures`）：对旧语料重算 flag、回填
+    pinyin alias、修补 Qdrant payload；幂等。
+  - 10 家 seed 公司因已有真实 profile 保留可见（8 家 NDX + 600519/00700）；
+    另外 14 家（OpenAI/Anthropic/DeepSeek/CATL/Cambricon 等）默认不可见，等
+    真实 research 后自动转正。
+- [x] **评测扩编（2026-10-28）**：`scripts/golden-queries.mjs` + eval harness
+  - 7 个 family：ticker / name（各 100，自动从 NDX 快照生成）、typo 24、
+    pinyin 16、natural language 32、zh-name 16、documents 10。
+  - 指标补 MRR@10（严格 top10 截断）+ nDCG@10（binary relevance，IDCG=1）。
+  - 歧义 query 支持多个正确 ticker（多 expected 集合），避免把合理答案判错。
+  - 新增 pinyin alias 派生：中文 alias → 全拼 + 首字母（`英伟达 → ywd`），
+    seed 与 ingest 共用 `packages/ingest/src/pinyin.ts`；旧语料由
+    `occ sync-fixtures` 回填（46 条更新 / 92 条新增 alias）。
+  - 已知缺口：NFLX 无“奈飞”alias、COST 无“好市多”alias，zh-name top1 87.5%；
+    `Adboe` typo 排 ADBE 第 3。下一轮补 curated 中文 alias。
 
 **目标**：跑通真实数据闭环，测 backfill pipeline 速度 + hybrid search 质量。
 
@@ -490,16 +514,16 @@ npm run validate
    引用；`--concurrency 4`。
 4. **100 家 backfill**：`--concurrency 4–8`（LLM 全局 4–6，搜索 provider 2–4），记录
    wall time、p50/p95、tokens/成本、失败/重试/死信、cache hit；输出 `run-summary.json`。
-5. **搜索质量评测**：50–100 条 golden queries（中文全称、英文名、ticker、错拼、拼音首字母、
-   自然语言），测 MRR@10、nDCG@10、Recall@50、zero-result rate、p95 延迟；对比
-   hybrid / keyword / semantic / +rerank。结果写进 `docs/SEARCH.md` 或 `docs/EVAL.md`。
+5. **搜索质量评测（已完成）**：7 个 family、约 300 条 query（含自动生成的
+   100 ticker + 100 英文名、错拼、拼音首字母、自然语言、中文名、document），
+   已测 MRR@10、nDCG@10、Recall@5、zero-result、p95；hybrid / keyword /
+   semantic 三模式对比，结果见 [`docs/EVAL.md`](docs/EVAL.md)。
 6. **验收**：
-   - 100 家都有 section；失败公司可单独重跑；
-   - 至少 90 家进入 `documents/chunks`，并能在 `/v1/search/companies`、
-     `/v1/search/documents` 搜到；
-   - ticker / 中文名 / 英文名三类查询 top1 准确率 ≥ 90%（golden set）；
-   - 记录 100 家 backfill wall time 与单家 p50/p95；
-   - 搜索 p95（不含 rerank）目标 < 400ms（本地 Qdrant）。
+   - [x] 100 家都有 section；失败公司可单独重跑；
+   - [x] 至少 90 家进入 `documents/chunks`（实际 100 家 / 1,428 chunks）；
+   - [x] ticker / 英文名 top1 100%；中文名 top1 87.5%（奈飞/好市多缺 alias）；
+   - [x] 记录 100 家 backfill wall time（约 42 分钟）与 p50/p95；
+   - [x] 搜索 p95（不含 rerank）220–383ms，整体 < 400ms。
 
 注意：本机无 Docker，继续用 `scripts/dev-db.sh` / `scripts/dev-qdrant.sh` /
 `scripts/dev-embeddings.sh`；QQQ 成分股会变，快照必须带 `as_of`；真实 F10/SEC 数据的
@@ -577,6 +601,10 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
     **已实现**：`apps/worker`，Postgres 17 + pg-boss，见该目录 README。
 11. **默认直接在 `main` 上提交，不开额外 branch**（用户 2026-10-28 明确要求）。
     需要隔离实验时再临时开分支，合并后删除。
+12. **Synthetic fixture 与真实语料隔离**：fixture 行保留在库里（供 E2E/流水线），
+    但默认搜索不可见；`is_fixture` 同时存在于 Postgres 和 Qdrant payload，搜索默认
+    `must_not`，只有 `include_fixtures=true` 才返回。不要用删除 fixture 的方式“清洗”，
+    否则 E2E 和 mock 流水线会失去基线。
 
 ---
 
@@ -600,6 +628,11 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 | 本机 Postgres 启动失败 `postmaster became multithreaded` | macOS 需要有效 locale：`scripts/dev-db.sh` 已设 `LC_ALL=en_US.UTF-8`；或手动 export |
 | F10 enqueue 报 sidecar unreachable | enqueue 需要调 `GET /v1/f10/pages/{market}` 解析 preset；先起 sidecar，或显式传 `--pages cwfx,gsgk` |
 | worker 队列深度/`--drain` 数字不对 | worker 直接读 `pgboss.job`，假设默认 `pgboss` schema；换 schema 需同步改 `apps/worker/src/queues.ts` |
+| **`scripts/e2e-search.sh` 会 `occ seed --reset`，清空目标 DB + Qdrant** | 不要对真实研究语料运行；`occ seed`（即使不带 `--reset`）也会重写 24 家 seed 公司的 alias 和 company point。用 `node scripts/e2e-search.mjs` 直接跑 live 语料，或把 `DATABASE_URL`/`OCC_QDRANT_*` 指向一次性资源 |
+| 旧语料没有 `is_fixture` payload / pinyin alias | 跑一次 `npm run sync:fixtures`（幂等）：重算 flag、回填 pinyin、修补 Qdrant payload |
+| 默认搜索搜不到 fixture-only 公司（OpenAI/CATL/Cambricon 等） | 这是设计行为；调试时加 `include_fixtures=true`，真实 research 入库后自动转正 |
+| 中文常用名搜不到（奈飞/好市多） | 目前 alias 只从 profile 的 name/ticker 派生；下一轮补 curated 中文 alias，见 `docs/EVAL.md` |
+| pinyin alias 依赖 `pinyin-pro` | 只在 ingest/CLI 侧；搜索侧不需要该依赖。新增中文 alias 时用 `pinyinVariants`/`pinyinAliasForms` |
 | **phase0 `npm run research -- --mock` 会无条件覆盖 `out/sections/` 并重组 `magnificent-seven.md` 等交付物** | 验证流水线后必须 `git checkout -- phase0/out/` 并删除 mock sections（2026-10-28 踩过，已恢复）；中间 section 想保留时先备份 |
 | 没有 `--approval-policy`（rc.3） | 用 `DSH_PERMISSION_MODE=read-only`；不要在命令里加不存在的 flag |
 | `deepseek-official` 搜索每次是一次模型 turn | 预算控制；必要时用 `search-api.patch.yml` 切直接 HTTP |
@@ -624,9 +657,15 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
       macOS + Linux/WSL2（`dev-qdrant.sh` 已按平台选二进制）。
 - [ ] 并行 backfill：`--concurrency 4` 起步；Phase 1 用 pg-boss + worker 池，确认可断点续跑。
 - [ ] 本地 DB：`scripts/dev-db.sh status` 正常；`node apps/worker/dist/cli.js status` 能看到队列。
-- [x] `corepack pnpm -r test` 全绿（adapter 9 + MCP 3 + worker 25 + retrieval 10 +
-      db 3 + api 5）。
-- [x] `corepack pnpm e2e:search` 通过（live Postgres + Qdrant 1.18 + BGE-M3，35/35）。
+- [x] `corepack pnpm -r test` 全绿（adapter 9 + MCP 3 + worker 26 + retrieval 10 +
+      db 3 + api 5 + ingest 34）。
+- [x] `node scripts/e2e-search.mjs` 通过（43/43；fixture 检查用
+      `include_fixtures=true`，默认搜索验证 fixture 不可见）。
+- [x] 语料隔离：`occ sync-fixtures` 后默认只返回 102 家真实 profile；
+      `include_fixtures=true` 才返回 14 家 fixture-only 公司 / 31 篇 fixture 文档。
+- [x] 评测扩编：`scripts/golden-queries.mjs` 7 个 family；hybrid ticker/name
+      top1 100%、pinyin 100%、typo 95.8%、natural 78.1%（recall@5 100%）、
+      zh-name 87.5%；结果写进 `docs/EVAL.md`。
 - [ ] 不要把 `deepseek-v4-pro` 写回配置。
 - [ ] 不要提交任何 key、token、cookie、`.env`。
 

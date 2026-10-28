@@ -1,22 +1,38 @@
 #!/usr/bin/env node
 /**
- * Search-quality eval for the NDX corpus.
+ * Search-quality eval for the visible research corpus.
  *
  * Assumes Postgres/Qdrant/embeddings are up, the API is running, and the NDX
- * backfill has been ingested. Queries three families:
+ * backfill has been ingested. Fixtures are hidden by default; pass
+ * `--include-fixtures` to measure the synthetic corpus too.
  *
  *   ticker    exact identifier (`AAPL`, `ADBE`, ...)
  *   name      English company name from the constituent snapshot
- *   semantic  hand-written descriptions ("模拟芯片 电源管理")
+ *   typo      realistic English misspellings
+ *   pinyin    pinyin initials / full pinyin (`ywd`, `yingweida`)
+ *   natural   natural-language descriptions (Chinese and English)
+ *   zh-name   Chinese company names (`英伟达`, `奈飞`)
+ *   documents document-level semantic probes
  *
- * Metrics: top1 accuracy, MRR@N, recall@5, zero-result rate, latency p50/p95.
- * Document search is checked separately with a small semantic set.
+ * Metrics: top1 accuracy, MRR@10, nDCG@10, recall@5, zero-result rate, and
+ * latency p50/p95. nDCG@10 uses one relevant company per query (binary
+ * relevance), so IDCG@10 = 1.
  *
- *   node scripts/eval-search.mjs [--mode hybrid|keyword|semantic] [--json]
+ *   node scripts/eval-search.mjs [--mode hybrid|keyword|semantic]
+ *     [--family ticker|name|typo|pinyin|natural|zh-name|documents]
+ *     [--include-fixtures] [--json]
  */
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import { parseArgs } from "node:util";
+
+import {
+  DOC_SEMANTIC_QUERIES,
+  NATURAL_QUERIES,
+  PINYIN_QUERIES,
+  TYPO_QUERIES,
+  ZH_NAME_QUERIES,
+} from "./golden-queries.mjs";
 
 const require = createRequire(new URL("../apps/worker/package.json", import.meta.url));
 const { parse: parseYaml } = require("yaml");
@@ -29,43 +45,19 @@ const { values } = parseArgs({
     limit: { type: "string", default: "10" },
     json: { type: "boolean" },
     concurrency: { type: "string", default: "4" },
+    "include-fixtures": { type: "boolean" },
+    family: { type: "string" },
   },
 });
 
 const MODE = values.mode;
 const LIMIT = Number(values.limit);
 const CONCURRENCY = Number(values.concurrency);
+const INCLUDE_FIXTURES = Boolean(values["include-fixtures"]);
+const FAMILY = values.family;
 
-const SEMANTIC = [
-  ["模拟芯片 电源管理", "ADI"],
-  ["短租 民宿 替代住宿", "ABNB"],
-  ["薪酬外包 人力资源 工资单", "ADP"],
-  ["创意软件 Photoshop 订阅", "ADBE"],
-  ["电动汽车 储能 自动驾驶", "TSLA"],
-  ["电商 云计算 Prime", "AMZN"],
-  ["搜索 广告 视频 安卓", "GOOGL"],
-  ["社交 广告 元宇宙", "META"],
-  ["AI 芯片 GPU 数据中心", "NVDA"],
-  ["咖啡 连锁 门店", "SBUX"],
-  ["流媒体 订阅", "NFLX"],
-  ["酒店 机票 在线旅游", "BKNG"],
-  ["半导体设备 光刻", "AMAT"],
-  ["网络设备 交换机", "CSCO"],
-  ["在线支付 数字钱包", "PYPL"],
-  ["会员制仓储 零售", "COST"],
-  ["生物科技 药物研发", "AMGN"],
-  ["数据平台 可观测性", "DDOG"],
-  ["网络安全 零信任", "PANW"],
-  ["电动车 充电 太阳能", "TSLA"],
-];
-
-const DOC_SEMANTIC = [
-  ["模拟芯片 工业 汽车", "Analog Devices, Inc."],
-  ["短租 民宿 体验", "Airbnb, Inc."],
-  ["薪酬外包 人力资源", "Automatic Data Processing, Inc."],
-  ["创意软件 订阅 现金流", "Adobe Inc."],
-  ["iPhone 服务 生态", "Apple Inc."],
-];
+const SEMANTIC = NATURAL_QUERIES;
+const DOC_SEMANTIC = DOC_SEMANTIC_QUERIES;
 
 function loadNdx() {
   const file = new URL("../config/indices/ndx.yaml", import.meta.url);
@@ -77,6 +69,7 @@ async function search(kind, query) {
   url.searchParams.set("q", query);
   url.searchParams.set("mode", MODE);
   url.searchParams.set("limit", String(LIMIT));
+  if (INCLUDE_FIXTURES) url.searchParams.set("include_fixtures", "true");
   const started = performance.now();
   const response = await fetch(url);
   const body = await response.json();
@@ -99,12 +92,23 @@ function metrics(rows) {
   const ranks = rows.map((row) => row.rank ?? Infinity);
   const latencies = rows.map((row) => row.latencyMs).sort((a, b) => a - b);
   const found = ranks.filter((rank) => Number.isFinite(rank));
+  const at10 = (rank) => (Number.isFinite(rank) && rank <= 10 ? rank : null);
   return {
     cases: rows.length,
     top1: round(found.filter((rank) => rank === 1).length / Math.max(1, rows.length)),
+    // MRR@10 and nDCG@10 use one relevant company per query, so the ideal
+    // DCG is 1 and nDCG@10 = 1/log2(rank+1) for a hit inside the cutoff.
     mrr10: round(
-      rows.reduce((sum, row) => sum + (Number.isFinite(row.rank) ? 1 / row.rank : 0), 0) /
-        Math.max(1, rows.length),
+      rows.reduce((sum, row) => {
+        const rank = at10(row.rank);
+        return sum + (rank ? 1 / rank : 0);
+      }, 0) / Math.max(1, rows.length),
+    ),
+    ndcg10: round(
+      rows.reduce((sum, row) => {
+        const rank = at10(row.rank);
+        return sum + (rank ? 1 / Math.log2(rank + 1) : 0);
+      }, 0) / Math.max(1, rows.length),
     ),
     recall5: round(
       found.filter((rank) => rank <= 5).length / Math.max(1, rows.length),
@@ -119,8 +123,11 @@ function metrics(rows) {
 }
 
 function rankCompany(hits, expected) {
+  const expectedList = Array.isArray(expected) ? expected : [expected];
   for (let index = 0; index < hits.length; index += 1) {
-    if (matchCompany(hits[index], expected)) return index + 1;
+    if (expectedList.some((ticker) => matchCompany(hits[index], ticker))) {
+      return index + 1;
+    }
   }
   return hits.length === 0 ? null : Infinity;
 }
@@ -151,69 +158,101 @@ async function runPool(items, worker) {
 async function main() {
   const snapshot = loadNdx();
   const primary = snapshot.constituents.filter((entry) => entry.primary);
-  const tickerRows = [];
-  const nameRows = [];
+  const rows = {
+    ticker: [],
+    name: [],
+    typo: [],
+    pinyin: [],
+    natural: [],
+    "zh-name": [],
+    documents: [],
+  };
 
-  await runPool(primary, async (entry) => {
-    const ticker = await search("companies", entry.ticker);
-    tickerRows.push({
-      expected: entry.ticker,
-      query: entry.ticker,
-      rank: rankCompany(ticker.body.data.hits, entry.ticker),
-      latencyMs: ticker.body.meta.took_ms,
-      wallMs: ticker.wallMs,
+  const shouldRun = (family) => {
+    if (!FAMILY) return true;
+    if (FAMILY === "semantic") return family === "natural";
+    return FAMILY === family;
+  };
+
+  if (shouldRun("ticker") || shouldRun("name")) {
+    await runPool(primary, async (entry) => {
+      if (shouldRun("ticker")) {
+        const ticker = await search("companies", entry.ticker);
+        rows.ticker.push({
+          expected: entry.ticker,
+          query: entry.ticker,
+          rank: rankCompany(ticker.body.data.hits, entry.ticker),
+          latencyMs: ticker.body.meta.took_ms,
+          wallMs: ticker.wallMs,
+        });
+      }
+      if (shouldRun("name")) {
+        const name = entry.name.replace(/[.,]/g, " ").replace(/\s+/g, " ").trim();
+        const byName = await search("companies", name);
+        rows.name.push({
+          expected: entry.ticker,
+          query: name,
+          rank: rankCompany(byName.body.data.hits, entry.ticker),
+          latencyMs: byName.body.meta.took_ms,
+          wallMs: byName.wallMs,
+        });
+      }
     });
-    const name = entry.name.replace(/[.,]/g, " ").replace(/\s+/g, " ").trim();
-    const byName = await search("companies", name);
-    nameRows.push({
-      expected: entry.ticker,
-      query: name,
-      rank: rankCompany(byName.body.data.hits, entry.ticker),
-      latencyMs: byName.body.meta.took_ms,
-      wallMs: byName.wallMs,
+  }
+
+  await runCompanyFamily("typo", TYPO_QUERIES);
+  await runCompanyFamily("pinyin", PINYIN_QUERIES);
+  await runCompanyFamily("natural", SEMANTIC);
+  await runCompanyFamily("zh-name", ZH_NAME_QUERIES);
+
+  if (shouldRun("documents")) {
+    rows.documents = await runPool(DOC_SEMANTIC, async ([query, expected]) => {
+      const result = await search("documents", query);
+      return {
+        expected,
+        query,
+        rank: rankDocument(result.body.data.hits, expected),
+        latencyMs: result.body.meta.took_ms,
+        wallMs: result.wallMs,
+        top: result.body.data.hits.slice(0, 3).map((hit) => hit.companyDisplayName),
+      };
     });
-  });
+  }
 
-  const semanticRows = await runPool(SEMANTIC, async ([query, expected]) => {
-    const result = await search("companies", query);
-    return {
-      expected,
-      query,
-      rank: rankCompany(result.body.data.hits, expected),
-      latencyMs: result.body.meta.took_ms,
-      wallMs: result.wallMs,
-      top: result.body.data.hits.slice(0, 3).map((hit) => hit.displayName),
-    };
-  });
+  async function runCompanyFamily(family, queries) {
+    if (!shouldRun(family)) return;
+    rows[family] = await runPool(queries, async ([query, expected]) => {
+      const result = await search("companies", query);
+      return {
+        expected,
+        query,
+        rank: rankCompany(result.body.data.hits, expected),
+        latencyMs: result.body.meta.took_ms,
+        wallMs: result.wallMs,
+        top: result.body.data.hits.slice(0, 3).map((hit) => hit.displayName),
+      };
+    });
+  }
 
-  const docRows = await runPool(DOC_SEMANTIC, async ([query, expected]) => {
-    const result = await search("documents", query);
-    return {
-      expected,
-      query,
-      rank: rankDocument(result.body.data.hits, expected),
-      latencyMs: result.body.meta.took_ms,
-      wallMs: result.wallMs,
-      top: result.body.data.hits.slice(0, 3).map((hit) => hit.companyDisplayName),
-    };
-  });
-
+  const present = Object.entries(rows).filter(([, familyRows]) => familyRows.length > 0);
   const report = {
     mode: MODE,
     limit: LIMIT,
+    includeFixtures: INCLUDE_FIXTURES,
     companies: primary.length,
-    groups: {
-      ticker: metrics(tickerRows),
-      name: metrics(nameRows),
-      semantic: metrics(semanticRows),
-      documents: metrics(docRows),
-    },
-    failures: {
-      ticker: tickerRows.filter((row) => row.rank !== 1),
-      name: nameRows.filter((row) => row.rank !== 1),
-      semantic: semanticRows.filter((row) => (row.rank ?? Infinity) > 5),
-      documents: docRows.filter((row) => (row.rank ?? Infinity) > 5),
-    },
+    groups: Object.fromEntries(
+      present.map(([name, familyRows]) => [name, metrics(familyRows)]),
+    ),
+    failures: Object.fromEntries(
+      present.map(([name, familyRows]) => [
+        name,
+        familyRows.filter((row) =>
+          name === "documents"
+            ? (row.rank ?? Infinity) > 5
+            : row.rank !== 1,
+        ),
+      ]),
+    ),
   };
 
   if (values.json) {
@@ -221,24 +260,27 @@ async function main() {
     return;
   }
 
-  console.log(`mode=${MODE} limit=${LIMIT} companies=${primary.length}`);
   console.log(
-    "group       cases  top1   MRR@10  recall@5  zero%   p50ms  p95ms  wall-p95",
+    `mode=${MODE} limit=${LIMIT} companies=${primary.length} ` +
+      `fixtures=${INCLUDE_FIXTURES ? "included" : "hidden"}`,
+  );
+  console.log(
+    "group       cases  top1   MRR@10  nDCG@10 recall@5  zero%   p50ms  p95ms  wall-p95",
   );
   for (const [name, group] of Object.entries(report.groups)) {
     console.log(
       `${name.padEnd(11)} ${String(group.cases).padStart(5)} ` +
-        `${pct(group.top1)} ${pct(group.mrr10)} ${pct(group.recall5)} ` +
-        `${pct(group.zero)} ${String(group.p50).padStart(6)} ` +
+        `${pct(group.top1)} ${pct(group.mrr10)} ${pct(group.ndcg10)} ` +
+        `${pct(group.recall5)} ${pct(group.zero)} ${String(group.p50).padStart(6)} ` +
         `${String(group.p95).padStart(6)} ${String(group.wallP95).padStart(9)}`,
     );
   }
-  for (const [group, rows] of Object.entries(report.failures)) {
-    if (rows.length === 0) continue;
+  for (const [group, familyRows] of Object.entries(report.failures)) {
+    if (familyRows.length === 0) continue;
     console.log(`\n${group} failures:`);
-    for (const row of rows.slice(0, 15)) {
+    for (const row of familyRows.slice(0, 20)) {
       console.log(
-        `  ${String(row.query).padEnd(38)} expected=${row.expected} rank=${row.rank ?? "zero"}` +
+        `  ${String(row.query).padEnd(38)} expected=${labelExpected(row.expected)} rank=${row.rank ?? "zero"}` +
           (row.top ? ` top=${row.top.join(" | ")}` : ""),
       );
     }
@@ -257,6 +299,10 @@ function round(value) {
 
 function pct(value) {
   return `${(value * 100).toFixed(1).padStart(5)}%`;
+}
+
+function labelExpected(value) {
+  return Array.isArray(value) ? value.join("|") : value;
 }
 
 main().catch((error) => {

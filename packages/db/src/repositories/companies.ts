@@ -92,9 +92,13 @@ export async function getCompanyBundles(
 export async function findExactCompanyMatches(
   db: Db,
   query: string,
+  includeFixtures = false,
 ): Promise<ExactCompanyMatch[]> {
   const q = query.trim();
   if (!q) return [];
+  const fixtureClause = includeFixtures
+    ? sql``
+    : sql`AND c.is_fixture = false`;
   const matches = new Map<string, ExactCompanyMatch>();
   const put = (match: ExactCompanyMatch) => {
     const previous = matches.get(match.companyId);
@@ -108,9 +112,11 @@ export async function findExactCompanyMatches(
     id_value: string;
   }>(
     await db.execute(sql`
-      SELECT company_id, id_value
-      FROM company_ids
-      WHERE lower(id_value) = lower(${q})
+      SELECT ci.company_id, ci.id_value
+      FROM company_ids ci
+      JOIN companies c ON c.id = ci.company_id
+      WHERE lower(ci.id_value) = lower(${q})
+        ${fixtureClause}
       LIMIT 10
     `),
   );
@@ -125,9 +131,11 @@ export async function findExactCompanyMatches(
 
   const aliasRows = rowsOf<{ company_id: string; alias: string }>(
     await db.execute(sql`
-      SELECT company_id, alias
-      FROM aliases
-      WHERE lower(alias) = lower(${q})
+      SELECT a.company_id, a.alias
+      FROM aliases a
+      JOIN companies c ON c.id = a.company_id
+      WHERE lower(a.alias) = lower(${q})
+        ${fixtureClause}
       LIMIT 10
     `),
   );
@@ -148,7 +156,13 @@ export async function findExactCompanyMatches(
       // trigrams), so "智谱AI" and "AI 芯片" look identical to it. Use a
       // CJK-aware character-bigram Dice coefficient instead.
       const aliasCandidates = rowsOf<{ company_id: string; alias: string }>(
-        await db.execute(sql`SELECT company_id, alias FROM aliases LIMIT 5000`),
+        await db.execute(sql`
+          SELECT a.company_id, a.alias
+          FROM aliases a
+          JOIN companies c ON c.id = a.company_id
+          WHERE true ${fixtureClause}
+          LIMIT 5000
+        `),
       );
       for (const row of aliasCandidates) {
         const sim = cjkSimilarity(q, row.alias);
@@ -166,7 +180,10 @@ export async function findExactCompanyMatches(
         legal_name: string;
       }>(
         await db.execute(sql`
-          SELECT id, display_name, legal_name FROM companies LIMIT 5000
+          SELECT c.id, c.display_name, c.legal_name
+          FROM companies c
+          WHERE true ${fixtureClause}
+          LIMIT 5000
         `),
       );
       for (const row of nameCandidates) {
@@ -189,10 +206,12 @@ export async function findExactCompanyMatches(
         sim: number;
       }>(
         await db.execute(sql`
-          SELECT company_id, alias, similarity(alias, ${q}) AS sim
-          FROM aliases
-          WHERE alias % ${q}
-            AND similarity(alias, ${q}) >= 0.5
+          SELECT a.company_id, a.alias, similarity(a.alias, ${q}) AS sim
+          FROM aliases a
+          JOIN companies c ON c.id = a.company_id
+          WHERE a.alias % ${q}
+            AND similarity(a.alias, ${q}) >= 0.5
+            ${fixtureClause}
           ORDER BY sim DESC
           LIMIT 10
         `),
@@ -212,11 +231,12 @@ export async function findExactCompanyMatches(
         sim: number;
       }>(
         await db.execute(sql`
-          SELECT id, display_name,
-                 GREATEST(similarity(display_name, ${q}), similarity(legal_name, ${q})) AS sim
-          FROM companies
-          WHERE (display_name % ${q} OR legal_name % ${q})
-            AND GREATEST(similarity(display_name, ${q}), similarity(legal_name, ${q})) >= 0.5
+          SELECT c.id, c.display_name,
+                 GREATEST(similarity(c.display_name, ${q}), similarity(c.legal_name, ${q})) AS sim
+          FROM companies c
+          WHERE (c.display_name % ${q} OR c.legal_name % ${q})
+            AND GREATEST(similarity(c.display_name, ${q}), similarity(c.legal_name, ${q})) >= 0.5
+            ${fixtureClause}
           ORDER BY sim DESC
           LIMIT 10
         `),

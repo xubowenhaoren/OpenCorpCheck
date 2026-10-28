@@ -167,6 +167,26 @@ export class QdrantClient {
     return Number(json.result?.count ?? 0);
   }
 
+  /** Merge payload fields into every point matching `filter`. */
+  async setPayload(
+    name: string,
+    payload: Record<string, unknown>,
+    filter?: QdrantFilter,
+  ): Promise<void> {
+    const response = await this.request(
+      `/collections/${encodeURIComponent(name)}/points/payload?wait=true`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          payload,
+          ...(filter ? { filter } : {}),
+        }),
+      },
+      60_000,
+    );
+    if (!response.ok) await this.fail(response, "set payload");
+  }
+
   /** Delete points matching a payload filter (e.g. one document's chunks). */
   async deleteByFilter(name: string, filter: QdrantFilter): Promise<void> {
     const response = await this.request(

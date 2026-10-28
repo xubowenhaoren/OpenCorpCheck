@@ -38,6 +38,8 @@ export const SearchCompaniesQuerySchema = z.object({
   market: z.string().trim().optional(),
   index: z.string().trim().optional(),
   coverage: CoverageTierSchema.optional(),
+  /** Include the synthetic development corpus (default: hidden). */
+  include_fixtures: queryBoolean.default(false),
   explain: queryBoolean.default(false),
   rerank: queryBoolean.optional(),
 });
@@ -50,6 +52,8 @@ export const SearchDocumentsQuerySchema = z.object({
   company_id: z.string().trim().optional(),
   doc_type: z.string().trim().optional(),
   lang: z.string().trim().optional(),
+  /** Include the synthetic development corpus (default: hidden). */
+  include_fixtures: queryBoolean.default(false),
   explain: queryBoolean.default(false),
   rerank: queryBoolean.optional(),
 });
@@ -98,6 +102,8 @@ export interface CompanyHit {
   country?: string;
   website?: string;
   coverageTier: CoverageTier;
+  /** Only present when the caller opted into `include_fixtures`. */
+  isFixture?: boolean;
   description?: string;
   sector?: string;
   marketCapBucket?: string;
@@ -115,6 +121,7 @@ export interface DocumentHit {
   documentId: string;
   companyId: string;
   companyDisplayName?: string;
+  isFixture?: boolean;
   text: string;
   title?: string;
   docType?: string;

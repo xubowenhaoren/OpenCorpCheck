@@ -12,7 +12,7 @@
 | Ingestion | [`packages/ingest`](../packages/ingest) | Section markdown → companies/documents/chunks → Qdrant |
 | Retrieval | [`packages/retrieval`](../packages/retrieval) | jieba/Intl tokenizer, BM25 sparse encoder, BGE-M3 client, Qdrant, RRF/DBSF, indexer |
 | API | [`apps/api`](../apps/api) | Hono search API + OpenAPI |
-| CLI | [`apps/cli`](../apps/cli) | `occ migrate/seed/ingest/search/documents/company/health` |
+| CLI | [`apps/cli`](../apps/cli) | `occ migrate/seed/ingest/sync-fixtures/search/documents/company/health` |
 | Embeddings | [`services/embeddings`](../services/embeddings) | Local BGE-M3 / reranker sidecar (TEI-compatible `/embed`, `/rerank`) |
 
 Postgres is the **truth store and job queue**; Qdrant is the **retrieval engine**.
@@ -44,10 +44,18 @@ query
 - **Company index text** includes display name, legal name, aliases,
   description, sector, and document titles/snippets, so a company's own
   documents improve company-level recall.
+- **Fixture isolation**: synthetic seed rows carry `is_fixture=true` in
+  Postgres and in the Qdrant payload. Company and document search add a
+  `must_not is_fixture=true` filter (and the exact-match planner skips fixture
+  companies), so the visible corpus is real research only. Pass
+  `include_fixtures=true` for development/E2E. `occ sync-fixtures` reconciles
+  flags for corpora created before migration `0002`, backfills pinyin aliases,
+  and patches the Qdrant payloads.
 
 ## Data model (P2)
 
-Migrations live in [`packages/db/migrations/0001_init.sql`](../packages/db/migrations/0001_init.sql).
+Migrations live in [`packages/db/migrations/`](../packages/db/migrations):
+`0001_init.sql` (schema) and `0002_fixture_isolation.sql` (`is_fixture` flags).
 
 `companies`, `company_ids`, `aliases`, `securities`, `index_memberships`,
 `sources`, `documents`, `chunks`, `facts`, `financial_facts`, `products`,
@@ -62,6 +70,7 @@ document / chunk path; facts and relations are ready for P3 ingestion.
 ```bash
 curl 'http://127.0.0.1:8787/v1/search/companies?q=宁德时代&limit=5&explain=true'
 curl 'http://127.0.0.1:8787/v1/search/companies?q=NVDA&mode=keyword'
+curl 'http://127.0.0.1:8787/v1/search/companies?q=OpenAI&include_fixtures=true'
 curl 'http://127.0.0.1:8787/v1/search/documents?q=云%20业务%20增长&limit=5'
 curl 'http://127.0.0.1:8787/v1/companies/catl'
 curl 'http://127.0.0.1:8787/v1/health'
@@ -185,12 +194,17 @@ now sort ahead of unbounded BM25 scores. Full method and comparisons:
 
 ## Known limits / next
 
-- The seed corpus is **synthetic fixtures** (`fixture://` URLs,
-  `trust_tier = 'fixture'`). Real profiles enter through `occ ingest` or the
-  worker's `ingest.company` queue; they are content-hashed and idempotent.
-- Ingestion currently writes section markdown as one `company_profile` document
-  per company (14 chunks for the A/HK profiles). Fact/product/relation
-  extraction is still P3.
+- The visible corpus is now **real research only**: 102 companies with
+  research profiles (100 NDX + 600519/00700); the 14 fixture-only companies and
+  all 31 fixture documents are hidden by default (`include_fixtures=true`
+  restores them for E2E). Old corpora need one `occ sync-fixtures` run.
+- Chinese alias coverage is incomplete: profiles name some US companies only in
+  English (e.g. NFLX has no 奈飞 alias, COST no 好市多), so those queries fall
+  back to semantic retrieval. Derived pinyin aliases exist for names that do
+  appear in Chinese (英伟达 → ywd); curated Chinese aliases are the next gap.
+- Ingestion writes section markdown as one `company_profile` document per
+  company (14 chunks for the A/HK profiles). Fact/product/relation extraction
+  is still P3.
 - MinIO snapshot upload is still pending; `documents.storage_key` is populated
   by ingestion but no object is written.
 - Rerank is implemented and wired, but the E2E run uses `OCC_RERANK_ENABLED=false`
@@ -198,4 +212,11 @@ now sort ahead of unbounded BM25 scores. Full method and comparisons:
 - The `occ` CLI currently calls the API for search; entity resolution, graph
   queries, and MCP search tools land in P3.
 - Index constituent snapshots (P4) are not loaded yet; the seeded `A500`/`HSI`/
-  `SPX`/`NDX` memberships are fixture metadata.
+  `SPX`/`NDX` memberships are fixture metadata. NDX is the exception: the
+  backfill writes real `index_memberships`.
+- `scripts/e2e-search.sh` runs `occ seed --reset`, which **truncates the target
+  database and Qdrant collections**. `occ seed` without `--reset` is also not
+  safe on a shared corpus: it rewrites the 24 seed companies' aliases and
+  company points. Do not run either against the research corpus; run
+  `node scripts/e2e-search.mjs` directly against a live corpus, or point
+  `DATABASE_URL`/`OCC_QDRANT_*` at disposable resources.
