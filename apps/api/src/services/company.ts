@@ -67,7 +67,7 @@ export class CompanyService {
         exchange: security.exchange,
         currency: security.currency ?? undefined,
       })),
-      indices: bundle.indices.map((entry) => entry.indexCode),
+      indices: [...new Set(bundle.indices.map((entry) => entry.indexCode))],
     };
 
     return {
