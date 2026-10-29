@@ -32,6 +32,17 @@ function intEnv(name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+/** Read a secret from env, or from an explicitly named file (never auto-guess). */
+function secretEnv(name: string, fileEnv: string): string | undefined {
+  const direct = process.env[name]?.trim();
+  if (direct) return direct;
+  const file = process.env[fileEnv];
+  if (!file) return undefined;
+  const resolved = path.isAbsolute(file) ? file : path.join(repoRoot, file);
+  if (!fs.existsSync(resolved)) return undefined;
+  return fs.readFileSync(resolved, "utf8").trim() || undefined;
+}
+
 export const config = {
   repoRoot,
   apiUrl: process.env.OCC_API_URL ?? "http://127.0.0.1:8787",
@@ -43,6 +54,9 @@ export const config = {
   embeddingDim: intEnv("OCC_EMBEDDING_DIM", 1024),
   embeddingVersion: process.env.OCC_EMBEDDING_VERSION ?? "bge-m3@1024",
   embeddingTimeoutMs: intEnv("OCC_EMBEDDING_TIMEOUT_MS", 600_000),
+  deepseekApiKey: secretEnv("DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY_FILE"),
+  deepseekBaseUrl: process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com",
+  extractModel: process.env.OCC_EXTRACT_MODEL ?? "deepseek-flash",
   sectionsDir:
     process.env.OCC_SECTIONS_DIR ?? path.join(repoRoot, "phase0", "out", "sections"),
   ndxFile: path.join(repoRoot, "config", "indices", "ndx.yaml"),

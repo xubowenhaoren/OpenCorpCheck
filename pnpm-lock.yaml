@@ -211,6 +211,9 @@ importers:
       '@occ/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@occ/extract':
+        specifier: workspace:*
+        version: link:../../packages/extract
       '@occ/ingest':
         specifier: workspace:*
         version: link:../../packages/ingest
