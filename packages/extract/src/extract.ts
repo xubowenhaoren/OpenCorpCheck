@@ -261,11 +261,14 @@ export async function extractCompany(input: ExtractInput): Promise<ExtractResult
             cached.inputSha256 === inputSha256 &&
             cached.promptHash === request.promptHash;
           if (cacheHit) {
+            const cachedStats = cached.stats as
+              | { accepted?: number }
+              | undefined;
             relationState = {
               ran: false,
               skipped: true,
               promptHash: request.promptHash,
-              accepted: 0,
+              accepted: cachedStats?.accepted ?? 0,
               raw: 0,
               dropped: 0,
               tokensInput: 0,
@@ -426,7 +429,7 @@ export async function extractCompany(input: ExtractInput): Promise<ExtractResult
     skipped: false,
     financialFacts: financialRows.length,
     facts: factRows.length,
-    relations: relationRows.length,
+    relations: relationState?.accepted ?? relationRows.length,
     relationsSkipped: relationState?.skipped ?? false,
     relationsError: relationState?.error,
     errors,

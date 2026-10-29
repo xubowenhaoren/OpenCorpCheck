@@ -292,6 +292,46 @@ describe("deterministic extraction", () => {
     expect(timeline[0]?.value).toMatchObject({ date: "2026-01-12" });
   });
 
+  it("keeps annual and Q4 rows that share the same period end", () => {
+    const markdown = [
+      "## Test Corp（TEST）",
+      "",
+      "### 2. 公司快照",
+      "",
+      "| 项目 | 内容 |",
+      "|---|---|",
+      "| 财年 | 7 月 31 日止 [1] |",
+      "",
+      "### 5. 财务表现（近 3 个财年 + 最新季度）",
+      "",
+      "单位：百万美元",
+      "",
+      "| 指标 | FY2026 | Q4 FY2026 |",
+      "|---|---:|---:|",
+      "| 营收 | 4,666.2 | 1,152.4 |",
+      "",
+      "### 13. 来源",
+      "",
+      "[1] [Test filing](https://example.com/filing) — Example, 2026-08-01",
+    ].join("\n");
+    const value = parseSectionMarkdown(markdown);
+    const rows = extractFinancials({
+      companyId: "c_test",
+      chapter: finance(value),
+      market: "US",
+      fye: parseFiscalYearEnd(chapter(value, "公司快照").text),
+      dataCutoff: "2026-10-28",
+    });
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.periodKind).sort()).toEqual([
+      "annual",
+      "quarter",
+    ]);
+    expect(new Set(rows.map((row) => row.periodEnd))).toEqual(
+      new Set(["2026-07-31"]),
+    );
+  });
+
   it("is deterministic across runs", () => {
     const value = parsed("us.md");
     const fye = parseFiscalYearEnd(chapter(value, "公司快照").text);

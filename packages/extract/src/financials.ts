@@ -134,6 +134,7 @@ export function extractFinancials(input: {
           statement: metric.statement,
           item: metric.item,
           periodEnd: period.periodEnd,
+          periodKind: period.kind,
         }),
         companyId: input.companyId,
         statement: metric.statement,

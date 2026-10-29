@@ -306,6 +306,7 @@ export const financialFacts = pgTable(
       table.statement,
       table.item,
       table.periodEnd,
+      table.periodKind,
     ),
     index("financial_facts_company_idx").on(table.companyId),
     index("financial_facts_company_kind_idx").on(

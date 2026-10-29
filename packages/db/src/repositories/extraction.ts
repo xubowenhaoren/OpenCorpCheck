@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import type { Db } from "../client.js";
 import {
@@ -79,9 +79,10 @@ export function financialFactId(input: {
   statement: string;
   item: string;
   periodEnd: string;
+  periodKind?: string;
 }): string {
   return `ff_${sha1(
-    `${input.companyId}|${input.statement}|${input.item}|${input.periodEnd}`,
+    `${input.companyId}|${input.statement}|${input.item}|${input.periodEnd}|${input.periodKind ?? "annual"}`,
   ).slice(0, 24)}`;
 }
 
@@ -225,15 +226,27 @@ export async function upsertFinancialFacts(
   rows: NewFinancialFact[],
 ): Promise<number> {
   if (rows.length === 0) return 0;
+  // ON CONFLICT cannot update the same row twice in one statement; collapse
+  // duplicates that share the natural key (e.g. two columns parsing to the
+  // same period).
+  const unique = new Map<string, NewFinancialFact>();
+  for (const row of rows) {
+    unique.set(
+      `${row.companyId}|${row.statement}|${row.item}|${row.periodEnd}|${row.periodKind}`,
+      row,
+    );
+  }
+  const values = [...unique.values()];
   await db
     .insert(financialFacts)
-    .values(rows)
+    .values(values)
     .onConflictDoUpdate({
       target: [
         financialFacts.companyId,
         financialFacts.statement,
         financialFacts.item,
         financialFacts.periodEnd,
+        financialFacts.periodKind,
       ],
       set: {
         periodKind: excluded("period_kind"),
@@ -252,14 +265,19 @@ export async function upsertFinancialFacts(
         sourceRefs: excluded("source_refs"),
       },
     });
-  return rows.length;
+  return values.length;
 }
 
-export async function upsertFacts(db: Db, rows: NewFact[]): Promise<number> {
+export async function upsertFacts(
+  db: Db,
+  rows: NewFact[],
+): Promise<number> {
   if (rows.length === 0) return 0;
+  const unique = new Map(rows.map((row) => [row.id, row]));
+  const values = [...unique.values()];
   await db
     .insert(facts)
-    .values(rows)
+    .values(values)
     .onConflictDoUpdate({
       target: facts.id,
       set: {
@@ -282,12 +300,39 @@ export async function replaceInferredRelations(
   companyId: string,
   rows: InferredRelationInput[],
 ): Promise<{ relations: number; evidence: number; reviews: number }> {
+  const previous = await db
+    .select({ id: relations.id })
+    .from(relations)
+    .where(
+      and(
+        eq(relations.srcCompanyId, companyId),
+        eq(relations.status, "inferred"),
+      ),
+    );
   await db.delete(relations).where(
     and(
       eq(relations.srcCompanyId, companyId),
       eq(relations.status, "inferred"),
     ),
   );
+
+  // Drop pending proposals for edges that no longer exist. Never touch rows a
+  // human already reviewed.
+  const nextIds = new Set(rows.map((row) => row.id));
+  const staleKeys = previous
+    .filter((row) => !nextIds.has(row.id))
+    .map((row) => `relation:${row.id}`);
+  if (staleKeys.length > 0) {
+    await db
+      .delete(reviewQueue)
+      .where(
+        and(
+          eq(reviewQueue.kind, "relation"),
+          eq(reviewQueue.status, "pending"),
+          inArray(reviewQueue.dedupeKey, staleKeys),
+        ),
+      );
+  }
 
   let evidenceCount = 0;
   let reviewCount = 0;

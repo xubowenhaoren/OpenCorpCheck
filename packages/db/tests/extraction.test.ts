@@ -22,6 +22,10 @@ describe("deterministic extraction ids", () => {
     expect(financialFactId(base)).not.toBe(
       financialFactId({ ...base, item: "net_income" }),
     );
+    // FY2026 and Q4 FY2026 can share a period end; periodKind keeps them apart.
+    expect(financialFactId({ ...base, periodKind: "annual" })).not.toBe(
+      financialFactId({ ...base, periodKind: "quarter" }),
+    );
   });
 
   it("is insensitive to object key order in fact values", () => {
