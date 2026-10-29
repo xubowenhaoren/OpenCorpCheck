@@ -9,14 +9,17 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",
-    "test": "tsc -p ../../packages/core/tsconfig.json && tsc -p ../../packages/db/tsconfig.json && tsc -p ../../packages/retrieval/tsconfig.json && tsc -p tsconfig.json && vitest run"
+    "test": "tsc -p ../../packages/core/tsconfig.json && tsc -p ../../packages/db/tsconfig.json && tsc -p ../../packages/retrieval/tsconfig.json && tsc -p ../../packages/jobs/tsconfig.json && tsc -p ../../packages/agent/tsconfig.json && tsc -p tsconfig.json && vitest run"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",
+    "@occ/agent": "workspace:*",
     "@occ/core": "workspace:*",
     "@occ/db": "workspace:*",
+    "@occ/jobs": "workspace:*",
     "@occ/retrieval": "workspace:*",
     "hono": "^4.13.14",
+    "pg-boss": "^12.38.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

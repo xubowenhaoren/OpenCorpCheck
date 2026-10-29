@@ -9,7 +9,9 @@ the Phase 0 pattern of running companies one at a time in one process.
 | Queue | Job | Handler |
 |---|---|---|
 | `research.company` | one company → one dsh headless turn | [jobs/research.ts](src/jobs/research.ts) |
-| `ingest.company` | one finished section → documents/chunks + Qdrant | [jobs/ingest.ts](src/jobs/ingest.ts) || `f10.page` | one company × one F10 page | [jobs/f10.ts](src/jobs/f10.ts) |
+| `ingest.company` | one finished section → documents/chunks + Qdrant | [jobs/ingest.ts](src/jobs/ingest.ts) |
+| `news.company` | one company → Google News RSS → `doc_type='news'` documents | [jobs/news.ts](src/jobs/news.ts) |
+| `f10.page` | one company × one F10 page | [jobs/f10.ts](src/jobs/f10.ts) |
 | `*.dead` | exhausted jobs | marks the DB row `dead` |
 
 - **Granularity**: research is one job per company; F10 is one job per page, so a
@@ -22,11 +24,10 @@ the Phase 0 pattern of running companies one at a time in one process.
   ingest job. LLM relation extraction is opt-in with `OCC_EXTRACT_RELATIONS=llm`
   (default `none`, so bulk backfills do not spend tokens silently).
 - **Concurrency**: pg-boss `localConcurrency` — research defaults to 4, ingest to
-  4, F10 to 4 (`OCC_RESEARCH_CONCURRENCY`, `OCC_INGEST_CONCURRENCY`,
-  `OCC_F10_CONCURRENCY`). The sidecar still caps Playwright at 2 pages globally
-  and 5 req/s per domain, so F10 jobs queue behind that limit instead of
-  hammering Eastmoney. Ingestion calls the embedding sidecar; if it is down,
-  ingest jobs retry and eventually dead-letter without re-running the LLM.
+  4, F10 to 4, news to 2 (`OCC_RESEARCH_CONCURRENCY`, `OCC_INGEST_CONCURRENCY`,
+  `OCC_F10_CONCURRENCY`, `OCC_NEWS_CONCURRENCY`). The sidecar still caps Playwright
+  at 2 pages globally and 5 req/s per domain, so F10 jobs queue behind that limit
+  instead of hammering Eastmoney. News makes one polite RSS request per company.
 - **Retries**: research 2 retries (30s exponential backoff, 10m cap); F10 3
   retries (15s base, 5m cap). Exhausted jobs move to a dead-letter queue and the
   DB records `dead` + the last error.
@@ -72,6 +73,7 @@ Environment:
 | `OCC_RESEARCH_CONCURRENCY` | `4` |
 | `OCC_INGEST_CONCURRENCY` | `4` |
 | `OCC_F10_CONCURRENCY` | `4` |
+| `OCC_NEWS_CONCURRENCY` | `2` |
 | `OCC_FINANCE_ANALYST_URL` | `http://127.0.0.1:8090` |
 | `OCC_QDRANT_URL` | `http://127.0.0.1:6333` |
 | `OCC_EMBEDDING_URL` | `http://127.0.0.1:8080` |
@@ -115,6 +117,10 @@ node apps/worker/dist/cli.js enqueue research --tickers AAPL --mock --ingest-moc
 node apps/worker/dist/cli.js enqueue f10 --tickers 600519:A --preset default
 node apps/worker/dist/cli.js enqueue f10 --tickers AAPL:US --pages cwfx,gsgk
 node apps/worker/dist/cli.js work --queues f10 --drain
+
+# news: Google News RSS → news documents (company must already be ingested)
+node apps/worker/dist/cli.js enqueue news --tickers AAPL --max-items 10 --since-days 30
+node apps/worker/dist/cli.js work --queues news --drain
 
 # operations
 node apps/worker/dist/cli.js status

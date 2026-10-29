@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { createDb } from "@occ/db";
+import { JobStore, startBoss } from "@occ/jobs";
 import {
   HttpEmbeddingClient,
   HttpRerankClient,
@@ -10,7 +11,9 @@ import {
 
 import { createApp, type HealthReport } from "./app.js";
 import { config, publicConfig } from "./config.js";
+import { AgentService } from "./services/agent.js";
 import { CompanyService } from "./services/company.js";
+import { ResearchService } from "./services/research.js";
 import { ReviewService } from "./services/review.js";
 import { SearchService } from "./services/search.js";
 
@@ -45,6 +48,29 @@ const engine = new SearchEngine({
 const search = new SearchService({ db, engine, reranker });
 const company = new CompanyService(db);
 const review = new ReviewService(db);
+
+// Research enqueue shares the worker's pg-boss queues and run tables. The API
+// process owns its own PgBoss handle so agents can queue work without spawning
+// the worker CLI.
+const jobStore = new JobStore(config.databaseUrl, 5, "occ-api");
+await jobStore.migrate();
+const boss = await startBoss({
+  connectionString: config.databaseUrl,
+  applicationName: "occ-api",
+});
+const research = new ResearchService({ db, store: jobStore, boss });
+const agent = new AgentService({
+  apiUrl: `http://127.0.0.1:${config.apiPort}`,
+  repoRoot: config.repoRoot,
+  dshVersion: config.dshVersion,
+  dshHome: config.agentDshHome,
+  npmCache: config.npmCache,
+  mcpEntry: config.mcpEntry,
+  financeAnalystUrl: config.financeAnalystUrl,
+  deepseekApiKey: config.deepseekApiKey,
+  permissionMode: config.agentPermissionMode,
+  enabled: config.agentEnabled,
+});
 
 async function health(): Promise<HealthReport> {
   const [database, qdrantOk, embeddingReport] = await Promise.all([
@@ -90,7 +116,7 @@ async function checkEmbeddings(): Promise<{
   }
 }
 
-const app = createApp({ search, company, review, health });
+const app = createApp({ search, company, research, review, agent, health });
 
 const server = serve(
   { fetch: app.fetch, port: config.apiPort, hostname: "127.0.0.1" },
@@ -109,6 +135,9 @@ const server = serve(
 async function shutdown(signal: string): Promise<void> {
   console.log(JSON.stringify({ level: "info", msg: "shutting down", signal }));
   server.close();
+  await boss.stop({ graceful: false }).catch(() => undefined);
+  await agent.dispose().catch(() => undefined);
+  await jobStore.close().catch(() => undefined);
   await pool.end();
   process.exit(0);
 }

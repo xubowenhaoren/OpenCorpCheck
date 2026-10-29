@@ -199,6 +199,9 @@ now sort ahead of unbounded BM25 scores. Full method and comparisons:
   research profiles (100 NDX + 600519/00700); the 14 fixture-only companies and
   all 31 fixture documents are hidden by default (`include_fixtures=true`
   restores them for E2E). Old corpora need one `occ sync-fixtures` run.
+- News documents (`doc_type='news'`) are ingested per company from Google News
+  RSS; they are searchable through `/v1/search/documents?doc_type=news` and
+  appear in the company card's `events`. See [NEWS.md](NEWS.md).
 - Chinese alias coverage: curated names in
   [`config/aliases/zh.yaml`](../config/aliases/zh.yaml) cover the NDX corpus and
   the A/HK profiles (`奈飞`, `好市多`, `茅台`, `腾讯`). `occ aliases sync` inserts

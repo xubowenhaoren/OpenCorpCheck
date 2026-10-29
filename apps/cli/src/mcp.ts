@@ -327,6 +327,89 @@ server.registerTool(
 );
 
 server.registerTool(
+  "deep_research",
+  {
+    title: "Queue company research",
+    description: [
+      "Queue a deep company-profile research job (BFS/DFS over web + official",
+      "filings, or Eastmoney F10 when include_f10=true). This is asynchronous:",
+      "it returns a runId and jobKey immediately. Poll get_run with the runId",
+      "until status is completed (or failed/partial), then use get_company and",
+      "search_documents to read the result.",
+      "",
+      "Use it when the database lacks a profile or the profile is stale for the",
+      "question. Pass a focused brief (e.g. '只研究云业务收入与 AI capex') to keep",
+      "the run small. Do not queue the same company repeatedly while a run is",
+      "active; check get_run first. Research writes a cited profile into the",
+      "database and review queue, never directly into verified facts.",
+    ].join("\n"),
+    inputSchema: z.object({
+      company: z.string().min(1).describe("ULID, slug or ticker (AAPL, 600519, 00700)"),
+      focus: z
+        .string()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe("Narrow research brief; omit for the full profile"),
+      include_f10: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("Attach Eastmoney F10 tools (A/HK preferred, US cross-check)"),
+      force: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("Ignore the research cache and regenerate the profile"),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+  },
+  async ({ company, focus, include_f10, force }) => {
+    try {
+      return jsonResult(
+        await apiPost("/v1/research", {
+          company,
+          ...(focus ? { focus } : {}),
+          include_f10,
+          force,
+        }),
+      );
+    } catch (error) {
+      return errorResult("deep_research", error);
+    }
+  },
+);
+
+server.registerTool(
+  "get_run",
+  {
+    title: "Get research run status",
+    description:
+      "Return one research run: status, per-job progress, duration/tokens and " +
+      "dead-letter errors. Poll this after deep_research. A completed run means " +
+      "the profile was written and indexed; read it with get_company.",
+    inputSchema: z.object({
+      run_id: z.string().min(1).describe("runId returned by deep_research"),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  async ({ run_id }) => {
+    try {
+      return jsonResult(
+        await apiGet(`/v1/runs/${encodeURIComponent(run_id)}`),
+      );
+    } catch (error) {
+      return errorResult("get_run", error);
+    }
+  },
+);
+
+server.registerTool(
   "propose_fact",
   {
     title: "Propose a fact",

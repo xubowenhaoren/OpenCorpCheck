@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import { parseArgs } from "node:util";
 
-import { enqueueF10, enqueueResearch, type EnqueueResult } from "./backfill.js";
+import { enqueueF10, enqueueNews, enqueueResearch, type EnqueueResult } from "./backfill.js";
 import { publicConfig } from "./config.js";
 import {
   closePool,
@@ -20,7 +20,8 @@ Usage:
   occ-backfill migrate
   occ-backfill enqueue research [options]
   occ-backfill enqueue f10 [options]
-  occ-backfill work [--queues research,ingest,f10] [--drain]
+  occ-backfill enqueue news [options]
+  occ-backfill work [--queues research,ingest,news,f10] [--drain]
   occ-backfill status [--run <uuid>] [--json]
   occ-backfill config
 
@@ -36,6 +37,9 @@ Enqueue options:
   --ingest-mock                  Research only: ingest mock sections too
   --preset default|minimal       F10 only (default: default)
   --pages cwfx,gsgk              F10 only: explicit page hashes
+  --query "Apple earnings"       News only: search query override
+  --max-items N                  News only: articles per company (default 10)
+  --since-days N                 News only: recency window (default 30)
 
 Environment:
   DATABASE_URL (default postgres://occ@127.0.0.1:5432/occdb)
@@ -57,8 +61,8 @@ async function main(): Promise<void> {
       return;
     case "enqueue": {
       const [kind, ...args] = rest;
-      if (kind !== "research" && kind !== "f10") {
-        throw new Error("enqueue requires research or f10");
+      if (kind !== "research" && kind !== "f10" && kind !== "news") {
+        throw new Error("enqueue requires research, f10 or news");
       }
       await enqueueCommand(kind, args);
       return;
@@ -104,7 +108,10 @@ async function main(): Promise<void> {
   }
 }
 
-async function enqueueCommand(kind: "research" | "f10", args: string[]): Promise<void> {
+async function enqueueCommand(
+  kind: "research" | "f10" | "news",
+  args: string[],
+): Promise<void> {
   const { values } = parseArgs({
     args,
     options: {
@@ -119,6 +126,9 @@ async function enqueueCommand(kind: "research" | "f10", args: string[]): Promise
       "ingest-mock": { type: "boolean" },
       preset: { type: "string" },
       pages: { type: "string" },
+      query: { type: "string" },
+      "max-items": { type: "string" },
+      "since-days": { type: "string" },
     },
   });
 
@@ -143,6 +153,17 @@ async function enqueueCommand(kind: "research" | "f10", args: string[]): Promise
         includeF10: values["include-f10"],
         ingest: values["no-ingest"] ? false : undefined,
         ingestMock: values["ingest-mock"],
+      });
+    } else if (kind === "news") {
+      result = await enqueueNews(boss, {
+        universe: values.universe,
+        tickers: values.tickers,
+        limit,
+        shard,
+        force: values.force,
+        query: values.query,
+        maxItems: parsePositive(values["max-items"], "--max-items"),
+        sinceDays: parsePositive(values["since-days"], "--since-days"),
       });
     } else {
       result = await enqueueF10(boss, {
@@ -170,13 +191,20 @@ async function workCommand(args: string[]): Promise<void> {
       drain: { type: "boolean" },
     },
   });
-  const queues = (values.queues ?? "research,ingest,f10")
+  const queues = (values.queues ?? "research,ingest,news,f10")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean) as QueueKind[];
   for (const queue of queues) {
-    if (queue !== "research" && queue !== "ingest" && queue !== "f10") {
-      throw new Error(`unknown queue ${queue}; use research, ingest or f10`);
+    if (
+      queue !== "research" &&
+      queue !== "ingest" &&
+      queue !== "news" &&
+      queue !== "f10"
+    ) {
+      throw new Error(
+        `unknown queue ${queue}; use research, ingest, news or f10`,
+      );
     }
   }
   await migrate();
@@ -278,6 +306,18 @@ function parseShard(
     throw new Error(`--shard index must be between 0 and ${count - 1}`);
   }
   return { index, count };
+}
+
+function parsePositive(
+  value: string | undefined,
+  flag: string,
+): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${flag} must be a positive integer`);
+  }
+  return parsed;
 }
 
 main()

@@ -1,16 +1,18 @@
 # OpenCorpCheck — Context Transfer
 
-> 交接日期：2026-10-27（P2 更新：2026-10-28；语料清洗 + 评测扩编：2026-10-28；
-> P3.1/P3.2 公司情报层：2026-10-28；运维补缺：中文 alias + 审核队列批量 + MinIO
-> 快照：2026-10-28）
-> 当前阶段：Phase 0 + Phase 1 + P2 + P2.5 + P3.1/P3.2 + 运维补缺已完成。真实语料
+> 交接日期：2026-10-27（P3.3 收尾：2026-10-29）
+> 当前阶段：Phase 0 + P1 + P2 + P2.5 + P3.1/P3.2 + P3.3 已完成。真实语料
 > 已与 synthetic fixture 隔离（默认只搜索 102 家真实 profile），golden query 扩到 7
 > 个 family、含 MRR@10/nDCG@10；公司卡片 API + CLI + MCP 已能读 cited 财务/事实/关系，
 > 关系抽取走 deepseek-flash + 审核队列。中文 curated alias 已接入（zh-name top1
 > 100%）；审核队列支持批量 accept/reject + 本地 HTML console；section/F10 快照已写入
-> S3 兼容存储（本地 MinIO）。Docker 封装全部 TODO。
-> 下一阶段：P3 剩余（deep_research MCP、ACP sidebar）或 P4（A500/HSI/SPX 快照 +
-> A/HK 全量 backfill），由用户决定。
+> S3 兼容存储（本地 MinIO）。
+>
+> **P3.3（2026-10-29）**：`deep_research` MCP 入队（API → pg-boss → worker）、
+> dsh ACP sidebar（`OCC_AGENT_DSH_HOME` + `occ` MCP 已实测调用）、Google News RSS
+> 新闻文档入库（`doc_type='news'`，可搜索、进公司卡片 events）。Docker 封装仍全部 TODO。
+>
+> 下一阶段：P4（A500/HSI/SPX 快照 + A/HK 全量 backfill）或 P6（评测/质量），由用户决定。
 >
 > **本机约束（2026-10-28 用户确认）**：这台电脑是 macOS 虚拟机，**暂时不能跑 Docker**。
 > 所有 Docker / Compose / 镜像 / 多架构 / GHCR 封装工作全部标记为 TODO，换机器后再做。
@@ -59,7 +61,7 @@ Phase 1。
 
 ---
 
-## 2. 当前状态（2026-10-27）
+## 2. 当前状态（2026-10-29）
 
 ### 2.1 Phase 0 已完成
 
@@ -166,19 +168,24 @@ OpenCorpCheck/
   docs/
     ARCHITECTURE.md                # 完整平台设计（Phase 1+ 的主要参考）
     EXTRACT.md                     # P3：财务/事实/关系抽取、审核队列与读取方式
+    AGENT.md                       # P3.3：dsh ACP sidebar、SSE 事件、权限
+    NEWS.md                        # P3.3：Google News RSS 新闻入库
     DATA_SOURCES.md                # 数据源矩阵 + F10 复用方案
     PRIOR_ART.md                   # 竞品/开源生态扫描
   apps/
-    cli/                           # MCP stdio server（f10_scrape / f10_pages）
-    worker/                        # pg-boss 并行 backfill（research / f10）
+    cli/                           # MCP stdio server（F10 / 公司 / deep_research / get_run）
+    worker/                        # pg-boss 并行 backfill（research / ingest / news / f10）
   packages/
+    agent/                         # ACP client runtime（spawn dsh、事件归一化）
     core/                          # Zod 契约、类型、ULID
     db/                            # Drizzle schema + migrations
-    ingest/                        # section markdown → documents/chunks → Qdrant
+    ingest/                        # section markdown / news → documents/chunks → Qdrant
     extract/                       # section markdown → financials/facts/relations
+    jobs/                          # 共享 pg-boss 队列 + backfill run store（API/worker）
     retrieval/                     # tokenizer / BM25 / BGE-M3 / Qdrant / RRF-DBSF
     storage/                       # S3/MinIO snapshot store（@aws-sdk/client-s3）
     sources/eastmoney-f10/         # TS adapter：Zod 校验 + summary/full 投影
+    sources/news/                  # Google News RSS adapter（link-only）
   services/
     finance-analyst/               # Python sidecar：A/HK/US F10（uv + Playwright）
   scripts/
@@ -547,7 +554,8 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 
 ### P3 — API / CLI / MCP / dsh ACP sidebar
 
-**进度（2026-10-28）：P3.1 + P3.2 已完成。** 详见 [`docs/EXTRACT.md`](docs/EXTRACT.md)。
+**进度（2026-10-29）：P3.1 + P3.2 + P3.3 已完成。** 详见 [`docs/EXTRACT.md`](docs/EXTRACT.md)、
+[`docs/AGENT.md`](docs/AGENT.md)、[`docs/NEWS.md`](docs/NEWS.md)。
 
 - [x] `packages/extract`：确定性抽取 + deepseek-flash 关系抽取。
   - 财务表格（US/A/HK 单位与期间写法）、公司快照、分部收入、近 12 个月大事；
@@ -591,7 +599,34 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
     ticker/name/typo/pinyin/zh-name 全 100%、natural 81.3%（recall@5 96.9%）、
     documents 80%（recall@5 100%）；快照重跑 0 上传 / 102 existing。
 
-**还没做（P3 剩余）**：`deep_research` MCP 入队、dsh ACP sidebar、新闻文档入库。
+- [x] **P3.3（2026-10-29）**：
+  - **`deep_research` MCP 入队**：`POST /v1/research` → `@occ/jobs` 创建
+    `backfill_runs/backfill_jobs` 行 + pg-boss `research.company` job；MCP 工具
+    `deep_research` 返回 `runId/jobKey`，`get_run` 轮询 `GET /v1/runs/{id}`。
+    API 进程自己持有 PgBoss，不 spawn worker CLI；worker 无需任何特殊分支。
+    只支持有可识别交易所 listing 的公司；私有公司（无 ticker）返回 400。
+  - **共享 queue/run store**：新包 `packages/jobs`（`QUEUES`、`ensureQueues`、
+    `JobStore`）由 API 和 worker 共用，避免两套 SQL；migration `0005_runtime_runs.sql`
+    把 `backfill_runs/backfill_jobs/research_cache/f10_pages` 纳入 `occ migrate`。
+  - **dsh ACP sidebar**：`packages/agent` 的 `DshAcpRuntime` spawn
+    `dsh --profile acp`，`initialize` + `session/new`（stdio MCP = `occ`），把
+    `session/update` 归一化成 `AgentEvent`；API 端点
+    `POST /v1/agent/sessions`、`POST /v1/agent/sessions/{id}/prompt`（SSE）、
+    `.../cancel`、`GET /v1/agent/ui`（无构建步骤的 HTML sidebar）。
+    **必须用独立 `OCC_AGENT_DSH_HOME`（默认 `.occ/dsh-acp-home`）**：ACP profile 用
+    zstd session，`phase0/.dsh-home` 是明文 `.jsonl`，共享会 `session/new` 失败。
+  - **新闻文档入库**：新包 `packages/sources/news` 抓 Google News RSS（link-only，
+    10 条/公司、30 天、每公司 1 次请求）；worker 新队列 `news.company`；
+    `packages/ingest` 的 `ingestNews` 写 `documents(doc_type='news')` + 1 chunk +
+    Qdrant；标题+摘要 sha256 幂等；公司卡片 `events` 和 `search_documents?doc_type=news`
+    都能读到。命令：`occ-backfill enqueue news --tickers AAPL --max-items 10`。
+  - **验收（live）**：AAPL deep_research 入队并 `get_run` 返回 queued；ACP session
+    创建后 `只回复 OK` 正常流式返回，第二轮 `search_companies 苹果` 实际调用
+    `mcp__occ__search_companies` 并回答 `AAPL — Apple Inc.`；AAPL 新闻 5 篇入库、
+    重跑 5 条全部 skipped、0 embedding；新闻可被 documents 搜索和公司卡片 events 读取。
+  - `corepack pnpm -r --workspace-concurrency=1 test` 全绿（news 4 + API 22 + CLI 7 +
+    worker 26 + ingest 39 + extract 22 等）。并行 `pnpm -r test` 在本机会因共享
+    `node_modules/.vitest-cache` 偶发 `ENOTEMPTY`，串行跑即可。
 
 原始 P3 设计（保留）：
 
@@ -676,6 +711,14 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 14. **快照存储是可选 S3 兼容层**：未配置 `OCC_S3_*` 时 ingest/worker 完全不变；
     配置后 section markdown 和 F10 JSON 都会上传，上传失败只告警、不阻塞入库。
     F10 raw HTML 需要 sidecar 未来返回 bytes，当前快照是结构化 page JSON。
+15. **API 与 worker 共用 `@occ/jobs`**：`backfill_runs/backfill_jobs` 和 pg-boss
+    队列只有一份实现；API 的 `deep_research` 直接创建同样的 run/job 并 send，
+    worker 不需要区分来源。新增队列/run kind 时先改 `packages/jobs`。
+16. **ACP 与 headless 用不同 `DSH_HOME`**：headless 的 patch 是 `compression: none`
+    （`phase0/.dsh-home`），ACP profile 是 zstd（`.occ/dsh-acp-home`），不能混用。
+17. **新闻是 link-only 覆盖层**：Google News RSS 只存标题/摘要/链接，不抓正文、
+    不批量重分发；需要正文时新增 adapter 写同样的 `documents` 形状，不要把 RSS
+    摘要当审计事实。
 
 ---
 
@@ -717,6 +760,15 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 | `deepseek-official` 搜索每次是一次模型 turn | 预算控制；必要时用 `search-api.patch.yml` 切直接 HTTP |
 | 来源偏 stockanalysis、SEC 少 | Phase 1 接 F10 + SEC XBRL；profile 标注未验证项 |
 | GOOGL/NVDA 各 1 个 search-summary 来源 warn | 不是 fail；可在 validator 加 `searchOnly` 分类或去 query 归一化 |
+| **ACP `session/new` 报 `Internal error`，stderr 说 session 用了 `.jsonl` 但后端是 zstd** | ACP 用独立 `OCC_AGENT_DSH_HOME`（默认 `.occ/dsh-acp-home`）；不要把 `phase0/.dsh-home` 给 ACP（那里是 `compression: none` 的明文 session） |
+| **dsh ACP session 创建失败但只看到 `Internal error`** | `packages/agent` 会把 dsh stderr 尾部附在错误里；再不行用原始 JSON-RPC 脚本发 `initialize` + `session/new` 看 `error.data.details` |
+| **`deep_research` 对 OpenAI/Anthropic 等私有公司返回 400** | 当前要求公司有可识别交易所的 `securities`；私有公司 profile 走 CLI/backfill，等 P4 实体解析后再开放 |
+| **`deep_research` 是异步的，立刻 `get_company` 看不到新 profile** | 用 `get_run` 轮询到 completed；research 完成后 worker 会自动 enqueue `ingest.company` |
+| **新闻入库报 `company not found`** | 先 ingest 该公司 research profile；news job 按 ticker 解析已存在的 company |
+| **Google News RSS 是 link-only、约 10 条/公司** | 不抓正文、不做批量重分发；feed terms 限个人/非商业阅读。需要正文时另建 adapter 写同样的 `documents` 形状 |
+| **新闻重跑显示 `skipped=5`** | 这是幂等：标题+摘要 sha256 未变，不重写、不重 embedding；不是故障 |
+| **`pnpm -r test` 偶发 `ENOTEMPTY: node_modules/.vitest-cache`** | 多个 package 并行启 vitest 抢同一个 cache 目录；用 `pnpm -r --workspace-concurrency=1 test` |
+| **API 进程会持有 pg-boss 连接** | 关 API 用 SIGTERM（会 stop boss + close job store）；不要直接 `kill -9`，否则 pgboss job 可能停在 active 直到 expire |
 
 ---
 
@@ -755,7 +807,8 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 - [x] P3.1/P3.2：`packages/extract` + migration `0003/0004` + 公司卡片 API +
       `occ company/review/propose/extract` + 5 个 MCP 公司工具；
       `docs/EXTRACT.md` 记录命令、关系类型、校验规则和已知限制。
-- [ ] P3 剩余：`deep_research` MCP 入队、dsh ACP sidebar、新闻文档入库。
+- [x] P3 剩余（2026-10-29 完成）：`deep_research` MCP 入队、dsh ACP sidebar、
+      新闻文档入库；见 [`docs/AGENT.md`](docs/AGENT.md)、[`docs/NEWS.md`](docs/NEWS.md)。
 - [ ] 不要把 `deepseek-v4-pro` 写回配置。
 - [ ] 不要提交任何 key、token、cookie、`.env`。
 

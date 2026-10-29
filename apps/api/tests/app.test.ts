@@ -2,7 +2,9 @@ import { AppError, type CompanyCard } from "@occ/core";
 import { describe, expect, it } from "vitest";
 
 import { createApp, type HealthReport } from "../src/app.js";
+import type { AgentService } from "../src/services/agent.js";
 import type { CompanyService } from "../src/services/company.js";
+import type { ResearchService } from "../src/services/research.js";
 import type { ReviewService } from "../src/services/review.js";
 import type { SearchService } from "../src/services/search.js";
 
@@ -206,6 +208,50 @@ const fakeReview = {
   },
 } as unknown as ReviewService;
 
+const fakeResearch = {
+  enqueue: async () => ({
+    runId: "run_1",
+    jobKey: "US:AAPL",
+    company: {
+      id: "cmp_apple",
+      slug: "apple",
+      displayName: "Apple Inc.",
+      ticker: "AAPL",
+      market: "US",
+      skill: "mag7-profile",
+    },
+    status: "queued",
+    queued: true,
+  }),
+  getRun: async (runId: string) => {
+    if (runId === "missing") {
+      throw new AppError("not_found", `run not found: ${runId}`);
+    }
+    return {
+      id: runId,
+      kind: "research",
+      status: "queued",
+      totalJobs: 1,
+      completedJobs: 0,
+      failedJobs: 0,
+      options: {},
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      jobs: [],
+    };
+  },
+  listRuns: async () => [],
+} as unknown as ResearchService;
+
+const fakeAgent = {
+  createSession: async () => ({ sessionId: "sess_1" }),
+  prompt: async function* () {
+    yield { type: "assistant.delta", text: "hi" };
+    yield { type: "run.completed", stopReason: "end_turn" };
+  },
+  cancel: async () => undefined,
+} as unknown as AgentService;
+
 const healthy: HealthReport = {
   ok: true,
   database: { ok: true },
@@ -217,7 +263,9 @@ function app() {
   return createApp({
     search: fakeSearch,
     company: fakeCompany,
+    research: fakeResearch,
     review: fakeReview,
+    agent: fakeAgent,
     health: async () => healthy,
   });
 }
@@ -404,5 +452,69 @@ describe("review proposals", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
     expect(await response.text()).toContain("Review queue");
+  });
+});
+
+describe("research API", () => {
+  it("queues a company research run", async () => {
+    const response = await app().request("/v1/research", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ company: "AAPL", focus: "cloud revenue" }),
+    });
+    expect(response.status).toBe(202);
+    const body = await response.json();
+    expect(body.data.runId).toBe("run_1");
+    expect(body.data.jobKey).toBe("US:AAPL");
+    expect(body.data.company.skill).toBe("mag7-profile");
+  });
+
+  it("returns run detail and 404 for an unknown run", async () => {
+    const ok = await app().request("/v1/runs/run_1");
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).data.status).toBe("queued");
+
+    const missing = await app().request("/v1/runs/missing");
+    expect(missing.status).toBe(404);
+    expect((await missing.json()).error.code).toBe("not_found");
+  });
+
+  it("rejects a research request without a company", async () => {
+    const response = await app().request("/v1/research", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ focus: "x" }),
+    });
+    expect(response.status).toBe(400);
+  });
+});
+
+describe("agent sidebar", () => {
+  it("creates a session and streams normalized events", async () => {
+    const created = await app().request("/v1/agent/sessions", {
+      method: "POST",
+    });
+    expect(created.status).toBe(201);
+    const sessionId = (await created.json()).data.sessionId;
+
+    const response = await app().request(
+      `/v1/agent/sessions/${sessionId}/prompt`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: "hello" }),
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const text = await response.text();
+    expect(text).toContain("event: assistant.delta");
+    expect(text).toContain("event: run.completed");
+  });
+
+  it("serves the local sidebar console", async () => {
+    const response = await app().request("/v1/agent/ui");
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Agent Sidebar");
   });
 });

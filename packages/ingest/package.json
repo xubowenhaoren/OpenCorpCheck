@@ -18,12 +18,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p ../../packages/core/tsconfig.json && tsc -p ../../packages/db/tsconfig.json && tsc -p ../../packages/retrieval/tsconfig.json && tsc -p ../../packages/storage/tsconfig.json && tsc -p tsconfig.json && vitest run --passWithNoTests"
+    "test": "tsc -p ../../packages/core/tsconfig.json && tsc -p ../../packages/db/tsconfig.json && tsc -p ../../packages/retrieval/tsconfig.json && tsc -p ../../packages/storage/tsconfig.json && tsc -p ../sources/news/tsconfig.json && tsc -p tsconfig.json && vitest run --passWithNoTests"
   },
   "dependencies": {
     "@occ/core": "workspace:*",
     "@occ/db": "workspace:*",
     "@occ/retrieval": "workspace:*",
+    "@occ/sources-news": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "pinyin-pro": "^3.29.5",
     "yaml": "^2.9.1",

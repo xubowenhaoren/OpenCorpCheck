@@ -384,7 +384,7 @@ export async function getCompanyCounts(
   const count = async (query: Promise<Array<{ value: number }>>) =>
     (await query)[0]?.value ?? 0;
 
-  const [financialCount, factCount, outgoing, incoming, eventCount] =
+  const [financialCount, factCount, outgoing, incoming, timelineCount, newsCount] =
     await Promise.all([
       count(
         db
@@ -421,6 +421,18 @@ export async function getCompanyCounts(
             ),
           ),
       ),
+      count(
+        db
+          .select({ value: sql<number>`count(*)::int` })
+          .from(documents)
+          .where(
+            and(
+              eq(documents.companyId, companyId),
+              inArray(documents.docType, ["news", "press_release"]),
+              eq(documents.isFixture, false),
+            ),
+          ),
+      ),
     ]);
 
   return {
@@ -428,7 +440,7 @@ export async function getCompanyCounts(
     facts: factCount,
     relationsOutgoing: outgoing,
     relationsIncoming: incoming,
-    events: eventCount,
+    events: timelineCount + newsCount,
   };
 }
 

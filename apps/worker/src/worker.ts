@@ -4,6 +4,7 @@ import { config } from "./config.js";
 import { createFollowUpJob, markJobDeadByKey } from "./db.js";
 import { handleF10Jobs, type F10JobData } from "./jobs/f10.js";
 import { handleIngestJobs, type IngestJobData } from "./jobs/ingest.js";
+import { handleNewsJobs, type NewsJobData } from "./jobs/news.js";
 import { handleResearchJobs, type ResearchJobData } from "./jobs/research.js";
 import { closeIngestRuntime } from "./ingest-runtime.js";
 import {
@@ -14,7 +15,7 @@ import {
   startBoss,
 } from "./queues.js";
 
-export type QueueKind = "research" | "ingest" | "f10";
+export type QueueKind = "research" | "ingest" | "news" | "f10";
 
 export interface WorkerOptions {
   queues: QueueKind[];
@@ -76,6 +77,22 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
       handleDead,
     );
   }
+  if (kinds.has("news")) {
+    await boss.work<NewsJobData>(
+      QUEUES.NEWS,
+      {
+        batchSize: 1,
+        localConcurrency: config.newsConcurrency,
+        pollingIntervalSeconds: 2,
+      },
+      handleNewsJobs,
+    );
+    await boss.work<DeadJobData>(
+      QUEUES.NEWS_DEAD,
+      { batchSize: 1, localConcurrency: 1, pollingIntervalSeconds: 2 },
+      handleDead,
+    );
+  }
   if (kinds.has("f10")) {
     await boss.work<F10JobData>(
       QUEUES.F10,
@@ -98,6 +115,7 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
     queues: options.queues,
     researchConcurrency: config.researchConcurrency,
     ingestConcurrency: config.ingestConcurrency,
+    newsConcurrency: config.newsConcurrency,
     f10Concurrency: config.f10Concurrency,
     drain: Boolean(options.drain),
   });
@@ -146,6 +164,7 @@ function queueNamesFor(kinds: QueueKind[]): string[] {
   for (const kind of kinds) {
     if (kind === "research") names.push(QUEUES.RESEARCH, QUEUES.RESEARCH_DEAD);
     if (kind === "ingest") names.push(QUEUES.INGEST, QUEUES.INGEST_DEAD);
+    if (kind === "news") names.push(QUEUES.NEWS, QUEUES.NEWS_DEAD);
     if (kind === "f10") names.push(QUEUES.F10, QUEUES.F10_DEAD);
   }
   return names;

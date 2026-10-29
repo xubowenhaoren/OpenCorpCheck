@@ -44,7 +44,7 @@ export interface EnqueueResearchOptions {
 
 export interface EnqueueResult {
   runId: string;
-  kind: "research" | "f10";
+  kind: "research" | "f10" | "news";
   targets: number;
   jobs: number;
 }
@@ -121,6 +121,83 @@ export async function enqueueResearch(
   return {
     runId,
     kind: "research",
+    targets: targets.length,
+    jobs: specs.length,
+  };
+}
+
+export interface EnqueueNewsOptions {
+  universe?: string;
+  tickers?: string;
+  limit?: number;
+  shard?: { index: number; count: number };
+  /** Search query override applied to every target. */
+  query?: string;
+  maxItems?: number;
+  sinceDays?: number;
+  force?: boolean;
+}
+
+/**
+ * Queue news ingestion for one company per job. The source is Google News RSS
+ * (link-only), so this queue needs no LLM key and no F10 sidecar.
+ */
+export async function enqueueNews(
+  boss: PgBoss,
+  options: EnqueueNewsOptions,
+): Promise<EnqueueResult> {
+  const targets = await resolveTargets({
+    universe: options.universe,
+    tickers: options.tickers,
+    limit: options.limit,
+    shard: options.shard,
+  });
+  if (targets.length === 0) {
+    throw new Error("no news targets matched --universe/--tickers");
+  }
+
+  const runId = randomUUID();
+  const runOptions = {
+    universe: options.universe ?? null,
+    tickers: options.tickers ?? null,
+    limit: options.limit ?? null,
+    shard: options.shard ?? null,
+    query: options.query ?? null,
+    maxItems: options.maxItems ?? 10,
+    sinceDays: options.sinceDays ?? 30,
+    force: Boolean(options.force),
+    concurrency: config.newsConcurrency,
+  };
+
+  const specs: JobSpec[] = targets.map((target) => ({
+    queue: QUEUES.NEWS,
+    jobKey: target.key,
+    companyId: target.key,
+    payload: {
+      runId,
+      key: target.key,
+      ticker: target.ticker,
+      name: target.name,
+      market: target.market ?? "US",
+      ...(options.query ? { query: options.query } : {}),
+      maxItems: options.maxItems ?? 10,
+      sinceDays: options.sinceDays ?? 30,
+      force: Boolean(options.force),
+    },
+  }));
+
+  await createRun("news", runOptions, specs, runId);
+  const priorityByKey = new Map(targets.map((target) => [target.key, target.priority]));
+  for (const spec of specs) {
+    await sendJob(boss, spec.queue, spec.payload, {
+      key: `${runId}:${spec.jobKey}`,
+      priority: priorityByKey.get(spec.jobKey) ?? PRIORITY_FALLBACK,
+    });
+  }
+
+  return {
+    runId,
+    kind: "news",
     targets: targets.length,
     jobs: specs.length,
   };

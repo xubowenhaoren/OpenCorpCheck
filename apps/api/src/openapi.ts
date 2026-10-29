@@ -182,6 +182,135 @@ export function openApiDocument() {
           },
         },
       },
+      "/v1/research": {
+        post: {
+          operationId: "enqueueResearch",
+          description:
+            "Queue one company-profile research job. Asynchronous: poll /v1/runs/{id}.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["company"],
+                  properties: {
+                    company: {
+                      type: "string",
+                      description: "Internal ULID, slug or ticker",
+                    },
+                    focus: { type: "string", maxLength: 500 },
+                    include_f10: { type: "boolean", default: false },
+                    force: { type: "boolean", default: false },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "202": { description: "Run queued; returns runId and jobKey" },
+            "400": errorResponse,
+            "404": errorResponse,
+          },
+        },
+      },
+      "/v1/runs": {
+        get: {
+          operationId: "listRuns",
+          parameters: [
+            {
+              name: "limit",
+              in: "query",
+              schema: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+            },
+          ],
+          responses: { "200": { description: "Recent research/F10/news runs" } },
+        },
+      },
+      "/v1/runs/{id}": {
+        get: {
+          operationId: "getRun",
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            "200": { description: "Run detail with per-job progress" },
+            "404": errorResponse,
+          },
+        },
+      },
+      "/v1/agent/sessions": {
+        post: {
+          operationId: "createAgentSession",
+          description:
+            "Start a dsh ACP session with the occ MCP server attached.",
+          responses: {
+            "201": { description: "Session created" },
+            "502": errorResponse,
+          },
+        },
+      },
+      "/v1/agent/sessions/{id}/prompt": {
+        post: {
+          operationId: "promptAgentSession",
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["message"],
+                  properties: {
+                    message: { type: "string", maxLength: 8000 },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description:
+                "text/event-stream of AgentEvent frames (run.started, assistant.delta, tool.called, run.completed, ...)",
+            },
+            "404": errorResponse,
+          },
+        },
+      },
+      "/v1/agent/sessions/{id}/cancel": {
+        post: {
+          operationId: "cancelAgentSession",
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          responses: { "200": { description: "Cancellation requested" } },
+        },
+      },
+      "/v1/agent/ui": {
+        get: {
+          operationId: "agentUi",
+          responses: {
+            "200": { description: "Dependency-free HTML agent sidebar" },
+          },
+        },
+      },
       "/v1/review/proposals": {
         post: {
           operationId: "createReviewProposal",

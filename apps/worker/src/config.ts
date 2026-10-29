@@ -68,6 +68,7 @@ export const config = {
   researchConcurrency: intEnv("OCC_RESEARCH_CONCURRENCY", 4),
   f10Concurrency: intEnv("OCC_F10_CONCURRENCY", 4),
   ingestConcurrency: intEnv("OCC_INGEST_CONCURRENCY", 4),
+  newsConcurrency: intEnv("OCC_NEWS_CONCURRENCY", 2),
   dshHome: pathEnv("OCC_DSH_HOME", "phase0/.dsh-home"),
   runsDir: pathEnv("OCC_RUNS_DIR", ".occ/runs"),
   sectionsDir: pathEnvAny(
@@ -101,6 +102,7 @@ export function publicConfig(): Record<string, unknown> {
     researchConcurrency: config.researchConcurrency,
     f10Concurrency: config.f10Concurrency,
     ingestConcurrency: config.ingestConcurrency,
+    newsConcurrency: config.newsConcurrency,
     dshHome: config.dshHome,
     runsDir: config.runsDir,
     sectionsDir: config.sectionsDir,

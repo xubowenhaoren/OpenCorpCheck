@@ -197,7 +197,8 @@ sections and makes no LLM call.
   of out-of-universe counterparties are ignored rather than invented.
 - Segment tables are extracted when they follow the standard three-column shape;
   free-form prose segments are not parsed.
-- News documents (`doc_type='news'`) are not ingested yet; `events` currently
-  comes from the profile timeline.
+- News documents (`doc_type='news'`) come from Google News RSS (link-only); the
+  company card's `events` merges them with profile timeline events. See
+  [NEWS.md](NEWS.md).
 - The LLM can still pick the wrong relation type. That is why nothing is
   `verified` without review.

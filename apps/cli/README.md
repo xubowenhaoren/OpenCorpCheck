@@ -101,6 +101,8 @@ semantics.
 | `search_companies` | Search the internal company DB by name/ticker/alias/pinyin |
 | `get_company` | One company card (profile, financials, facts, relations, events); `include` trims |
 | `search_documents` | Search internal research chunks, optionally for one company |
+| `deep_research` | Queue a company-profile research job; returns `runId` immediately |
+| `get_run` | Poll a research run's status, jobs, tokens and dead-letter errors |
 | `propose_fact` | Queue a fact proposal for human review (never writes directly) |
 | `propose_relation` | Queue a company-relation proposal for human review |
 
@@ -111,6 +113,23 @@ quote and source URL and never present them as audited.
 
 `f10_scrape` defaults to `detail: "summary"` (20k chars/page, 60 rows/table);
 pass `detail: "full"` only when a number is missing from the summary.
+
+## Agent research
+
+`deep_research` queues the same `research.company` job as `occ-backfill`, then
+returns a run id. Poll `get_run` until `status` is `completed`; the worker writes
+the profile, ingests it and enqueues deterministic extraction.
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/research \
+  -H 'content-type: application/json' \
+  -d '{"company":"AAPL","focus":"cloud revenue and AI capex"}'
+curl http://127.0.0.1:8787/v1/runs/<runId>
+```
+
+The same tools are attached to the dsh ACP sidebar. Open
+`http://127.0.0.1:8787/v1/agent/ui` after starting the API; see
+[docs/AGENT.md](../../docs/AGENT.md) for the SSE event contract and permissions.
 
 ## Run
 

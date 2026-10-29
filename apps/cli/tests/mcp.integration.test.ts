@@ -11,6 +11,7 @@ const MCP_ENTRY = fileURLToPath(new URL("../dist/mcp.js", import.meta.url));
 const scrapeRequests: unknown[] = [];
 const apiRequests: string[] = [];
 const proposalRequests: unknown[] = [];
+const researchRequests: unknown[] = [];
 
 const scrapeFixture = {
   meta: {
@@ -179,6 +180,59 @@ beforeAll(async () => {
         meta: { total: 1, citations: [] },
       });
     }
+    if (url.pathname === "/v1/research" && request.method === "POST") {
+      let body = "";
+      request.on("data", (chunk) => {
+        body += chunk;
+      });
+      request.on("end", () => {
+        researchRequests.push(JSON.parse(body));
+        response.statusCode = 202;
+        sendJson(response, {
+          data: {
+            runId: "run_1",
+            jobKey: "US:AAPL",
+            company: {
+              id: "cmp_aapl",
+              slug: "apple",
+              displayName: "Apple Inc.",
+              ticker: "AAPL",
+              market: "US",
+              skill: "mag7-profile",
+            },
+            status: "queued",
+            queued: true,
+          },
+          meta: { request_id: "req_1", as_of: new Date().toISOString() },
+        });
+      });
+      return;
+    }
+    if (url.pathname === "/v1/runs/run_1") {
+      return sendJson(response, {
+        data: {
+          id: "run_1",
+          kind: "research",
+          status: "queued",
+          totalJobs: 1,
+          completedJobs: 0,
+          failedJobs: 0,
+          options: {},
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          jobs: [
+            {
+              queue: "research.company",
+              jobKey: "US:AAPL",
+              companyId: "US:AAPL",
+              status: "queued",
+              attempts: 0,
+            },
+          ],
+        },
+        meta: { request_id: "req_2", as_of: new Date().toISOString() },
+      });
+    }
     if (url.pathname === "/v1/review/proposals" && request.method === "POST") {
       let body = "";
       request.on("data", (chunk) => {
@@ -233,9 +287,11 @@ describe("occ-f10 MCP server", () => {
     const { tools } = await mcp.listTools();
     const names = tools.map((tool) => tool.name).sort();
     expect(names).toEqual([
+      "deep_research",
       "f10_pages",
       "f10_scrape",
       "get_company",
+      "get_run",
       "propose_fact",
       "propose_relation",
       "search_companies",
@@ -247,6 +303,9 @@ describe("occ-f10 MCP server", () => {
     const company = tools.find((tool) => tool.name === "get_company")!;
     expect(company.description).toMatch(/unreviewed machine extraction/i);
     expect(company.description).toMatch(/never present/i);
+    const research = tools.find((tool) => tool.name === "deep_research")!;
+    expect(research.description).toMatch(/asynchronous/i);
+    expect(research.description).toMatch(/poll get_run/i);
   });
 
   it("lists pages for a market", async () => {
@@ -321,6 +380,37 @@ describe("occ-f10 MCP server", () => {
     expect(
       apiRequests.some((entry) => entry.includes("company_id=cmp_aapl")),
     ).toBe(true);
+  });
+
+  it("queues deep research and polls the run", async () => {
+    researchRequests.length = 0;
+    const queued = await mcp.callTool({
+      name: "deep_research",
+      arguments: { company: "AAPL", focus: "cloud revenue" },
+    });
+    expect(queued.isError).toBeFalsy();
+    const queuedPayload = JSON.parse(contentText(queued)) as {
+      data: { runId: string; jobKey: string; status: string };
+    };
+    expect(queuedPayload.data.runId).toBe("run_1");
+    expect(queuedPayload.data.jobKey).toBe("US:AAPL");
+    expect(researchRequests[0]).toMatchObject({
+      company: "AAPL",
+      focus: "cloud revenue",
+      include_f10: false,
+      force: false,
+    });
+
+    const run = await mcp.callTool({
+      name: "get_run",
+      arguments: { run_id: "run_1" },
+    });
+    expect(run.isError).toBeFalsy();
+    const runPayload = JSON.parse(contentText(run)) as {
+      data: { status: string; jobs: unknown[] };
+    };
+    expect(runPayload.data.status).toBe("queued");
+    expect(runPayload.data.jobs).toHaveLength(1);
   });
 
   it("posts relation proposals to the review queue", async () => {
