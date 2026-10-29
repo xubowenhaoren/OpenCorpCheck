@@ -33,6 +33,27 @@ function intEnv(name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+/** Like intEnv, but 0 is a meaningful value (e.g. "disable this timeout"). */
+function nonNegativeIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+/**
+ * ACP overlay for the sidebar. `none` (or a missing file) disables it; the
+ * default overlay sets reasoningEffort=medium plus the profile's provider/model.
+ */
+function agentPatchPath(): string | undefined {
+  const raw = process.env.OCC_AGENT_DSH_PATCH?.trim();
+  if (raw === "none" || raw === "") return undefined;
+  const file = raw
+    ? path.resolve(repoRoot, raw)
+    : path.join(repoRoot, ".dsh", "acp.patch.yml");
+  return fs.existsSync(file) ? file : undefined;
+}
+
 function boolEnv(name: string, fallback: boolean): boolean {
   const raw = process.env[name];
   if (raw === undefined) return fallback;
@@ -82,6 +103,10 @@ export const config = {
   mcpEntry: path.join(repoRoot, "apps", "cli", "dist", "mcp.js"),
   agentEnabled: boolEnv("OCC_AGENT_ENABLED", true),
   agentPermissionMode: process.env.OCC_AGENT_PERMISSION_MODE ?? "read-only",
+  agentDshPatch: agentPatchPath(),
+  agentTurnTimeoutMs: intEnv("OCC_AGENT_TURN_TIMEOUT_MS", 180_000),
+  agentMaxToolCalls: intEnv("OCC_AGENT_MAX_TOOL_CALLS", 30),
+  agentIdleTimeoutMs: nonNegativeIntEnv("OCC_AGENT_IDLE_TIMEOUT_MS", 600_000),
   deepseekApiKey: secretEnv(
     "DEEPSEEK_API_KEY",
     "DEEPSEEK_API_KEY_FILE",

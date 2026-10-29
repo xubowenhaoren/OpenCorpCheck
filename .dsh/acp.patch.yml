@@ -1,0 +1,19 @@
+# dsh ACP profile overlay for the OpenCorpCheck sidebar.
+#
+# The sidebar is an interactive consumer UI, not a batch researcher: with the
+# shipped default reasoning effort a single market-event question runs 15+
+# tool-call steps before answering, which users experience as a silent hang.
+#
+# Where the effort lives (dsh 0.2.1-rc.3):
+#   - The ACP app routes sessions with its own `provider`/`model` config; it
+#     does NOT consult agent-default-model, so setting effort there is a no-op.
+#   - The DeepSeek adapter reads `connection.defaults.reasoningEffort` from the
+#     `llm-deepseek` entry. Its schema only accepts "off" | "low" | "high" |
+#     "max" — there is no "medium". `low` is the closest usable value.
+#
+# Applied by apps/api: dsh --profile acp --patch <this file>.
+# Headless research keeps its own phase0/dsh.patch.yml.
+
+- id: llm-deepseek
+  config:
+    reasoningEffort: low

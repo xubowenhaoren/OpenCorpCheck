@@ -72,6 +72,27 @@ export function AgentSidebar() {
     element.setAttribute("aria-hidden", String(!open));
   }, [open]);
 
+  // Closing/reloading the page must not leave a dsh turn running. The SSE
+  // request abort usually reaches the API, but sendBeacon survives page
+  // teardown. Closing the sidebar panel alone intentionally keeps the turn
+  // running; only the Stop button or leaving the page cancels it.
+  useEffect(() => {
+    function cancelOnPageHide(): void {
+      const sessionId = sessionRef.current;
+      if (!busyRef.current || !sessionId) return;
+      const url = `/v1/agent/sessions/${encodeURIComponent(sessionId)}/cancel`;
+      if (typeof navigator.sendBeacon === "function") {
+        navigator.sendBeacon(url);
+      } else {
+        void fetch(url, { method: "POST", keepalive: true }).catch(
+          () => undefined,
+        );
+      }
+    }
+    window.addEventListener("pagehide", cancelOnPageHide);
+    return () => window.removeEventListener("pagehide", cancelOnPageHide);
+  }, []);
+
   useEffect(() => {
     const element = bodyRef.current;
     if (element) element.scrollTop = element.scrollHeight;

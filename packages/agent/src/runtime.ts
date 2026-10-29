@@ -7,6 +7,7 @@ import {
   methods,
   ndJsonStream,
   type ActiveSession,
+  type ActiveSessionMessage,
   type ClientConnection,
   type McpServerStdio,
   type RequestPermissionRequest,
@@ -18,6 +19,23 @@ import type { AgentEvent } from "./events.js";
 
 const VERSION = "0.1.0";
 const STDERR_TAIL = 8_000;
+const TIMEOUT = Symbol("turn-timeout");
+
+/** Hard limits for one prompt turn. */
+export interface TurnLimits {
+  /** Wall-clock limit for one turn. */
+  timeoutMs: number;
+  /** Tool calls allowed before the runtime cancels the turn. */
+  maxToolCalls: number;
+  /** How long to wait for dsh to report `stop` after a cancel. */
+  cancelGraceMs: number;
+}
+
+export const DEFAULT_TURN_LIMITS: TurnLimits = {
+  timeoutMs: 180_000,
+  maxToolCalls: 30,
+  cancelGraceMs: 5_000,
+};
 
 export interface McpServerSpec {
   name: string;
@@ -37,6 +55,10 @@ export interface DshAcpRuntimeOptions {
   env?: Record<string, string>;
   /** dsh permission mode; `read-only` is the safe default. */
   permissionMode?: string;
+  /** Extra dsh patch overlay (absolute path) applied after the profile layer. */
+  patch?: string;
+  /** Per-turn limits; omitted fields fall back to DEFAULT_TURN_LIMITS. */
+  limits?: Partial<TurnLimits>;
   /** Extra args appended after `--profile acp` (rarely needed). */
   extraArgs?: string[];
 }
@@ -70,6 +92,7 @@ export class DshAcpRuntime {
       `@deepseek-ai/dsh@${this.options.dshVersion}`,
       "--profile",
       "acp",
+      ...(this.options.patch ? ["--patch", this.options.patch] : []),
       ...(this.options.extraArgs ?? []),
     ];
     const child = spawn(npx, args, {
@@ -185,6 +208,10 @@ export class DshAcpRuntime {
     return { sessionId: active.sessionId, acpSessionId: active.sessionId };
   }
 
+  hasSession(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
+  }
+
   async *prompt(sessionId: string, text: string): AsyncGenerator<AgentEvent> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`unknown agent session: ${sessionId}`);
@@ -192,24 +219,87 @@ export class DshAcpRuntime {
       throw new Error(`agent session is already running a prompt: ${sessionId}`);
     }
     this.busy.add(sessionId);
+    const limits: TurnLimits = {
+      ...DEFAULT_TURN_LIMITS,
+      ...this.options.limits,
+    };
+    const deadline = Date.now() + limits.timeoutMs;
+    let toolCalls = 0;
+    // One outstanding read at a time. A timed-out race must not leave a stale
+    // waiter behind, or it would swallow the `stop` message that follows the
+    // cancel and leave the session stuck.
+    let pending: Promise<ActiveSessionMessage> | null = null;
+    const take = (): Promise<ActiveSessionMessage> => {
+      pending ??= session.nextUpdate();
+      return pending;
+    };
+    const nextWithin = async (ms: number) => {
+      const result = await raceWithTimeout(take(), ms);
+      if (result !== TIMEOUT) pending = null;
+      return result;
+    };
+    let limitHit: { title: string; message: string } | null = null;
     try {
       yield { type: "run.started", sessionId, prompt: text };
       const response = session.prompt(text);
+      // The events below carry the outcome; this only prevents an unhandled
+      // rejection when we cancel the turn ourselves.
+      void response.catch(() => undefined);
+
       for (;;) {
         for (const event of this.drainPermissionEvents(sessionId)) yield event;
-        const message = await session.nextUpdate();
+        const remaining = deadline - Date.now();
+        const message =
+          remaining > 0
+            ? await nextWithin(remaining)
+            : TIMEOUT;
+        if (message === TIMEOUT) {
+          limitHit = {
+            title: "Answer stopped: time limit",
+            message: `Turn stopped after ${Math.round(
+              limits.timeoutMs / 1000,
+            )}s (OCC_AGENT_TURN_TIMEOUT_MS). Ask a narrower question or raise the limit.`,
+          };
+          break;
+        }
         if (message.kind === "stop") {
           yield {
             type: "run.completed",
             stopReason: message.stopReason,
             response: message.response,
           };
-          break;
+          return;
         }
         const event = mapUpdate(message.update);
-        if (event) yield event;
+        if (!event) continue;
+        yield event;
+        if (event.type === "tool.called") {
+          toolCalls += 1;
+          if (toolCalls > limits.maxToolCalls) {
+            limitHit = {
+              title: "Answer stopped: tool-call limit",
+              message: `Turn stopped after ${limits.maxToolCalls} tool calls to avoid an endless loop (OCC_AGENT_MAX_TOOL_CALLS).`,
+            };
+            break;
+          }
+        }
       }
-      await response;
+
+      // Limit reached: cancel, then wait briefly for dsh to finish the turn.
+      await this.cancel(sessionId).catch(() => undefined);
+      const graceDeadline = Date.now() + limits.cancelGraceMs;
+      for (;;) {
+        const grace = graceDeadline - Date.now();
+        if (grace <= 0) break;
+        const message = await nextWithin(grace);
+        if (message === TIMEOUT || message.kind === "stop") break;
+      }
+      yield {
+        type: "notice",
+        severity: "warning",
+        title: limitHit.title,
+      };
+      yield { type: "run.failed", error: limitHit.message };
     } catch (error) {
       yield {
         type: "run.failed",
@@ -286,6 +376,20 @@ export class DshAcpRuntime {
     this.permissionEvents.delete(sessionId);
     return queue;
   }
+}
+
+function raceWithTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+): Promise<T | typeof TIMEOUT> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<typeof TIMEOUT>((resolve) => {
+    timer = setTimeout(() => resolve(TIMEOUT), Math.max(1, ms));
+    timer.unref?.();
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
 }
 
 function mapUpdate(update: SessionUpdate): AgentEvent | null {

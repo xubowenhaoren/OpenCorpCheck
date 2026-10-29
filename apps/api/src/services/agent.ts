@@ -8,8 +8,6 @@ import {
   type McpServerSpec,
 } from "@occ/agent";
 
-import { config } from "../config.js";
-
 const SYSTEM_CONTEXT = [
   "你正在 OpenCorpCheck 的公司情报侧栏中回答用户问题。",
   "优先使用 occ MCP 工具查内部数据库：search_companies、get_company、search_documents；",
@@ -18,6 +16,8 @@ const SYSTEM_CONTEXT = [
   "关系数据若 status=inferred，必须标注为未审核的机器抽取，不得当作已确认事实。",
   "所有数字和关系都要带引用；没有证据就明确说没有。",
 ].join("\n");
+
+const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60_000;
 
 export interface AgentServiceOptions {
   apiUrl: string;
@@ -30,15 +30,32 @@ export interface AgentServiceOptions {
   deepseekApiKey?: string;
   permissionMode?: string;
   enabled?: boolean;
+  /** dsh patch overlay applied to the ACP profile (absolute path). */
+  dshPatch?: string;
+  /** Wall-clock limit for one prompt turn. */
+  turnTimeoutMs?: number;
+  /** Tool calls allowed before the runtime cancels a turn. */
+  maxToolCalls?: number;
+  /** Dispose the dsh process after this much idle time; 0 disables. */
+  idleTimeoutMs?: number;
 }
 
 /**
- * Owns one dsh ACP process for the local sidebar. Sessions are isolated; a
+ * Owns the dsh ACP process for the local sidebar. Sessions are isolated; a
  * cancelled or failed session never takes down the API.
+ *
+ * The runtime is disposed after it has been idle for `idleTimeoutMs`, so a
+ * forgotten sidebar does not keep a dsh process (and its MCP child) alive. The
+ * UI keeps using the session id it was given; the next prompt transparently
+ * starts a fresh dsh session under that id (conversation history is lost, which
+ * is acceptable after an idle period).
  */
 export class AgentService {
   private runtime: DshAcpRuntime | null = null;
-  private readonly sessions = new Set<string>();
+  /** UI-facing session id → live dsh session id (they differ after a restart). */
+  private readonly aliases = new Map<string, string>();
+  private activePrompts = 0;
+  private idleTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly options: AgentServiceOptions) {}
 
@@ -58,7 +75,9 @@ export class AgentService {
     const runtime = await this.ensureRuntime();
     try {
       const { sessionId } = await runtime.createSession();
-      this.sessions.add(sessionId);
+      this.aliases.set(sessionId, sessionId);
+      this.clearIdleTimer();
+      this.scheduleIdleDispose();
       return { sessionId };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -75,37 +94,97 @@ export class AgentService {
     sessionId: string,
     message: string,
   ): AsyncGenerator<AgentEvent> {
-    if (!this.runtime || !this.sessions.has(sessionId)) {
-      throw new AppError("not_found", `agent session not found: ${sessionId}`);
+    const runtime = await this.ensureRuntime();
+    let target = this.resolveSession(sessionId);
+    if (!target) {
+      // The idle disposer (or a crashed child) dropped the session; start a
+      // fresh one and keep routing the UI's old id to it.
+      try {
+        target = (await runtime.createSession()).sessionId;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new AppError(
+          "upstream_error",
+          `failed to restart dsh ACP session: ${detail}`,
+        );
+      }
+      this.aliases.set(target, target);
+      this.aliases.set(sessionId, target);
     }
-    yield* this.runtime.prompt(
-      sessionId,
-      `${SYSTEM_CONTEXT}\n\n用户问题：${message}`,
-    );
+    this.clearIdleTimer();
+    this.activePrompts += 1;
+    try {
+      yield* runtime.prompt(
+        target,
+        `${SYSTEM_CONTEXT}\n\n用户问题：${message}`,
+      );
+    } finally {
+      this.activePrompts -= 1;
+      this.scheduleIdleDispose();
+    }
   }
 
   async cancel(sessionId: string): Promise<void> {
-    if (!this.runtime) return;
-    await this.runtime.cancel(sessionId);
+    const runtime = this.runtime;
+    if (!runtime) return;
+    await runtime.cancel(this.resolveSession(sessionId) ?? sessionId);
   }
 
   async dispose(): Promise<void> {
-    this.sessions.clear();
-    await this.runtime?.dispose();
+    this.clearIdleTimer();
+    this.aliases.clear();
+    // Detach first: a prompt arriving while the child is shutting down must
+    // spawn a fresh runtime instead of racing this one to null.
+    const runtime = this.runtime;
     this.runtime = null;
+    await runtime?.dispose();
   }
 
   logs(): string {
     return this.runtime?.logs() ?? "";
   }
 
+  private resolveSession(sessionId: string): string | null {
+    const runtime = this.runtime;
+    if (!runtime?.started) return null;
+    if (runtime.hasSession(sessionId)) return sessionId;
+    const alias = this.aliases.get(sessionId);
+    return alias && runtime.hasSession(alias) ? alias : null;
+  }
+
+  private scheduleIdleDispose(): void {
+    const timeout = this.options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+    this.clearIdleTimer();
+    if (timeout <= 0 || this.activePrompts > 0 || !this.runtime) return;
+    const timer = setTimeout(() => {
+      this.idleTimer = null;
+      if (this.activePrompts > 0) return;
+      void this.dispose();
+    }, timeout);
+    timer.unref?.();
+    this.idleTimer = timer;
+  }
+
+  private clearIdleTimer(): void {
+    if (!this.idleTimer) return;
+    clearTimeout(this.idleTimer);
+    this.idleTimer = null;
+  }
+
   private async ensureRuntime(): Promise<DshAcpRuntime> {
     if (this.runtime?.started) return this.runtime;
     if (this.runtime) {
       // The dsh child exited; dispose the stale handle before respawning.
-      await this.runtime.dispose();
+      const stale = this.runtime;
       this.runtime = null;
-      this.sessions.clear();
+      this.aliases.clear();
+      await stale.dispose();
+    }
+    if (this.options.enabled === false) {
+      throw new AppError(
+        "bad_request",
+        "agent sidebar is disabled (OCC_AGENT_ENABLED=false)",
+      );
     }
     const apiKey = this.options.deepseekApiKey;
     if (!apiKey) {
@@ -132,6 +211,15 @@ export class AgentService {
       npmCache: this.options.npmCache,
       mcpServers,
       permissionMode: this.options.permissionMode ?? "read-only",
+      ...(this.options.dshPatch ? { patch: this.options.dshPatch } : {}),
+      limits: {
+        ...(this.options.turnTimeoutMs
+          ? { timeoutMs: this.options.turnTimeoutMs }
+          : {}),
+        ...(this.options.maxToolCalls
+          ? { maxToolCalls: this.options.maxToolCalls }
+          : {}),
+      },
       env: { DEEPSEEK_API_KEY: apiKey },
     });
     await runtime.start();

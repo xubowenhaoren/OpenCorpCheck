@@ -70,6 +70,10 @@ const agent = new AgentService({
   deepseekApiKey: config.deepseekApiKey,
   permissionMode: config.agentPermissionMode,
   enabled: config.agentEnabled,
+  dshPatch: config.agentDshPatch,
+  turnTimeoutMs: config.agentTurnTimeoutMs,
+  maxToolCalls: config.agentMaxToolCalls,
+  idleTimeoutMs: config.agentIdleTimeoutMs,
 });
 
 async function health(): Promise<HealthReport> {

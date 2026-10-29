@@ -678,25 +678,73 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 - 当前 UI 设计（`docs/UI.md` §8）刻意不显示工具名/JSON/token，只显示
   “查了公司资料 · 看了 3 个来源”。这是默认形态，不要改。
 
-**已知 bug（2026-10-29 用户实测，下一任优先修复）**
+**已知 bug（2026-10-29 用户实测，当日已修复）**
 
 - **现象**：在 `apps/web` 的 AI 助手侧栏问「goog 今天股价大跌，是什么原因？」后，
   侧栏长时间没有回答，只显示「查了 14 次资料 · 0 个来源」，看起来卡在 thinking。
-- **怀疑**：dsh ACP profile 的 thinking budget / reasoning effort 默认过高。
-  用户建议**默认设为 medium**。同时要加每轮 turn / step / 超时上限，避免无限
-  工具循环。这个问题和 trajectory 是两个独立问题：即使不显示 trajectory，
-  也必须先让侧栏在合理时间内返回。
-- **需要检查的位置**：`packages/agent/src/runtime.ts` 的 spawn args/env、
-  `phase0/dsh.patch.yml`、dsh 0.2.1-rc.3 的 config schema（`dsh --dump-config` /
-  `--help` / 官方 docs）。注意 ACP 和 headless 可能不是同一套 patch；不要只改
-  `phase0/dsh.patch.yml` 就以为 ACP 生效。
-- **UI 侧**：`apps/web/src/components/AgentSidebar.tsx` 目前只显示工具调用次数；
-  在 0 来源、无 `assistant.delta` 时缺少「仍在思考 / 已超时」状态。修 budget 后
-  仍需给用户可停止、超时提示和错误文案，不能静默卡住。
-- **验收**：简单问题 30s 内返回；市场事件问题在合理时间内返回或明确超时；
-  不再出现「14 次工具调用、0 来源、无回答」的静默卡死。
-- **下一任还需要实现本节的 trajectory 显示**（tool cards / web_search /
-  sub-agent / 来源账本）；这是用户 2026-10-29 明确要求。
+- **原因**：dsh ACP profile 的 reasoning effort 是适配器默认的 `high`；单轮没有
+  turn / tool-call / 超时上限，工具循环可以一直跑。关闭侧栏不会取消，只有停止按钮会。
+- **修复（2026-10-29）**：
+  - `.dsh/acp.patch.yml` 通过 `--patch` 注入 ACP profile，patch `llm-deepseek`
+    条目设 `reasoningEffort: low`。**重要**：ACP 会话的模型路由来自 `dsh-acp`
+    自己的 `provider`/`model` config，**不读 `agent-default-model`**；DeepSeek
+    适配器只接受 `off|low|high|max`，**没有 `medium`**。`dsh --patch` 是整块替换
+    `config`（非深合并）。headless 仍用 `phase0/dsh.patch.yml`。
+  - `DshAcpRuntime.prompt()` 加每轮硬上限：`OCC_AGENT_TURN_TIMEOUT_MS`（默认 180s）
+    和 `OCC_AGENT_MAX_TOOL_CALLS`（默认 30）；超限先 `session/cancel`，等 5s 的
+    `stop`，再发 `notice` + `run.failed`，不再静默卡死。
+  - `AgentService` 空闲 `OCC_AGENT_IDLE_TIMEOUT_MS`（默认 10 分钟）后 dispose dsh
+    进程和 MCP 子进程；UI 持有的旧 session id 由 alias 透明映射到新会话。
+  - 关网页（`pagehide`）用 `sendBeacon` 补发 cancel；关侧栏仍然不取消（用户确认）。
+  - 验证：`packages/agent` 3 个 turn-limit 单测、`apps/api` 4 个 AgentService
+    单测（空闲 dispose / prompt 中不 dispose / alias 重映射 / cancel 映射）全绿；
+    `dsh --dump-config` 确认 patch 合并；会话日志 `request/header` 确认实际请求为
+    `deepseek-v4-flash + reasoningEffort=low`。
+  - **真实 UI 实测**（Playwright 打开 `:5173` 侧栏，同一问题「goog 今天股价大跌，
+    是什么原因？」）：`high` 76.9s / 15 次工具 / 11 个来源（已完成）；
+    `low` 61.8s / 13 次工具 / 4 个来源（已完成）。两次都远低于 180s 上限。
+- **仍需实现**：本节的 trajectory 显示（tool cards / web_search / sub-agent / 来源账本）。
+  侧栏暂时没有独立的「仍在思考 / 即将超时」状态；超限通过 `notice` + 错误气泡呈现。
+
+**已知 bug（2026-10-29 用户实测，待修复）：侧栏不渲染 Markdown**
+
+- **现象**：侧栏回答原样显示模型输出的 Markdown 源码——`## 一句话结论`、
+  `**搜索广告增速放缓**`、`| 项目 | 数值 |` 表格、`---` 分隔线、
+  `[StockAnalysis](https://…)` 都是字面文本，长回答几乎不可读。用户 2026-10-29
+  在 Alphabet 页面提问后截图反馈。
+- **根因**：
+  - [`AgentSidebar.tsx`](apps/web/src/components/AgentSidebar.tsx) 的 `Linkified`
+    只按 URL 正则切分文本，其余原样渲染；`apps/web` 没有任何 Markdown 依赖
+    （package.json 只有 react / router / query）。
+  - [`styles.css`](apps/web/src/styles.css) 里 `.msg .bubble { white-space: pre-wrap; }`
+    （约 954 行）是按纯文本设计的；换成 Markdown 组件后要同时调整空白处理和
+    `h1–h4 / p / ul / ol / blockquote / table / pre / code` 的样式。
+  - [`agent-ui.ts`](apps/api/src/agent-ui.ts) 的零依赖 console 也用
+    `assistantEl.textContent = …`（约 179 行），同样不渲染 Markdown；次要，可后修。
+- **要求**：
+  - 助手消息渲染 GFM：标题、粗体/斜体、列表、引用、表格、分隔线、行内代码、
+    代码块、链接。用户消息可保持纯文本。
+  - 流式期间能安全渲染：未闭合的 ``` 或半张表格不能崩、不能反复抖动；按 message
+    缓存解析结果或节流，避免每个 token 重新解析整段。
+  - **安全**：模型输出可能引用不可信网页内容。不要对未清洗文本用
+    `dangerouslySetInnerHTML`；优先 `react-markdown` + `remark-gfm`（默认不执行
+    HTML），若用 `marked` / `markdown-it` 必须配 DOMPurify。链接用
+    `target="_blank" rel="noopener noreferrer"`，只放行 http/https。
+  - 保留现有行为：`uniqueUrls` 仍从原始文本提取来源 chips；底部
+    「查了 N 次资料 · M 个来源」不变；来源链接继续走现有 `SourceSheet` 或新窗口。
+  - 样式沿用 CSS tokens，不引入 Tailwind/shadcn；420px 侧栏里表格要能横向滚动，
+    不能撑破页面；深浅色都要可读。`react-markdown` 体积不小（当前 JS 约 378 KB /
+    gzip 116 KB），建议侧栏打开时懒加载，并记录新的构建体积。
+- **验收**：
+  - Playwright 打开侧栏问同一问题，断言 `.msg.assistant .bubble` 内存在
+    `h2` / `strong` / `table`，可见文本中不再出现字面量 `**`、`## `、`|---|`；
+  - 链接可点、新窗口打开、`rel` 正确；无 console error；
+  - 模拟输出 `<img src=x onerror=…>` 和 `[x](javascript:alert(1))` 不执行；
+  - 390px 宽度下表格在气泡内横向滚动、页面无横向滚动；深色模式可读；流式无崩溃。
+- **实现顺序**：`react-markdown` + `remark-gfm`（懒加载）→ 替换 assistant 分支的
+  `Linkified` → 调整 `.msg .bubble` 空白与 Markdown 样式 → 保留来源提取 →
+  Playwright 验收 →（可选）同步 `agent-ui.ts` console。
+
 
 **目标形态（用户看到什么）**
 
@@ -917,6 +965,8 @@ corepack pnpm build:web        # apps/web/dist
 - 生产静态托管未做：开发用 Vite proxy；生产需 API/nginx 同源托管。
 - AI 助手侧栏是 P3.3 的真实 SSE，但 **P3.4 的 trajectory / sub-agent 卡片
   仍未实现**；不要把它当成已完成。
+- AI 助手侧栏**不渲染 Markdown**（2026-10-29 用户实测）：`##`、`**`、表格、
+  `---`、`[text](url)` 都按字面显示。修复要求见 §6 P3.4「已知 bug（待修复）」。
 - 首页热门公司是前端静态列表；没有运营后台。
 - `apps/web` 没有单测；目前用 Playwright 手动验收。后续 P6 加 UI smoke。
 
@@ -1019,6 +1069,12 @@ corepack pnpm build:web        # apps/web/dist
 21. **图谱布局按节点数自适应**：≤6 个节点放大视图（800×640），>6 个节点用
     960×720；直接邻居按等角环形排布，不再按固定类别扇区排（固定扇区在某一类
     有 7–10 个节点时会重叠）。颜色仍按关系类别分组。
+22. **ACP 侧栏必须有硬上限**（2026-10-29）：`.dsh/acp.patch.yml` patch
+    `llm-deepseek` 设 `reasoningEffort: low`（ACP 不读 `agent-default-model`；
+    适配器无 `medium`）。每轮有 `OCC_AGENT_TURN_TIMEOUT_MS` +
+    `OCC_AGENT_MAX_TOOL_CALLS`，超限先 `session/cancel` 再发 `notice` +
+    `run.failed`；空闲 `OCC_AGENT_IDLE_TIMEOUT_MS` 后 dispose dsh。
+    关侧栏**不**取消（用户明确要求），关网页用 `pagehide` beacon 取消。
 
 ---
 
@@ -1027,7 +1083,8 @@ corepack pnpm build:web        # apps/web/dist
 | 坑 | 处理 |
 |---|---|
 | dsh 是 developer preview，接口会变 | 固定 `0.2.1-rc.3`；spawn/解析集中在 `lib/dsh.mjs`；异常试 rc.4 |
-| **dsh 侧栏长时间 thinking / 0 来源无回答** | 检查 ACP 的 thinking budget，默认设 **medium**；加 turn/step/timeout；补 UI 超时/停止提示；见 §6 P3.4「已知 bug」 |
+| **dsh 侧栏长时间 thinking / 0 来源无回答** | 已修复（2026-10-29）：ACP patch 在 `llm-deepseek` 设 `reasoningEffort: low`（无 medium 档）；`OCC_AGENT_TURN_TIMEOUT_MS` / `OCC_AGENT_MAX_TOOL_CALLS` 超限自动 cancel；空闲 dispose。见 §6 P3.4「已知 bug」 |
+| **侧栏把 Markdown 当纯文本显示** | 待修复：`AgentSidebar` 的 `Linkified` 只切 URL，`.msg .bubble` 是 `pre-wrap`。用 `react-markdown` + `remark-gfm`（懒加载），不要未清洗的 `dangerouslySetInnerHTML`；见 §6 P3.4「待修复 bug」 |
 | npm `~/.npm/_cacache` 不可写 | `lib/dsh.mjs` 用 `OCC_NPM_CACHE` / `$TMPDIR/occ-npm-cache`；不要继承 `npm_config_cache` |
 | Python 3.9 vs F10 的 3.10+ | 已用 `uv` 装 Python 3.12（`services/finance-analyst/.python-version`）；Docker 镜像 TODO，换机器后再做 |
 | **本机是 macOS 虚拟机，不能跑 Docker** | Docker/Compose/镜像全部 TODO；开发用 `scripts/dev-db.sh`、`scripts/dev-qdrant.sh`、`scripts/dev-embeddings.sh` 的「散装」方式 |
@@ -1115,8 +1172,12 @@ corepack pnpm build:web        # apps/web/dist
       `pnpm --filter @occ/web typecheck` + `build` 通过；Playwright 桌面/手机
       和真实 ACP 聊天验收通过；后端新增 `/v1/graph`、`/v1/indices/:code`、
       `/v1/sectors`、搜索 `sector` 过滤。
-- [ ] P3.4 bug：dsh ACP 侧栏 thinking budget 默认 **medium** + turn/step/timeout；
-      修复“查了 14 次资料、0 来源、无回答”的静默卡死。见 §6 P3.4「已知 bug」。
+- [x] P3.4 bug（2026-10-29）：ACP patch 在 `llm-deepseek` 设 `reasoningEffort: low`
+      （ACP 不读 `agent-default-model`；适配器无 medium 档）；
+      每轮 `OCC_AGENT_TURN_TIMEOUT_MS` / `OCC_AGENT_MAX_TOOL_CALLS` 上限；
+      空闲 dispose dsh；关网页自动 cancel（关侧栏不 cancel）。
+- [ ] AI 助手侧栏 Markdown 渲染（GFM 表格/标题/链接、流式安全、链接白名单、
+      懒加载），见 §6 P3.4「待修复 bug」。
 - [ ] P3.4 trajectory / sub-agent UI 实现（tool cards / web_search / 来源账本）。
 - [ ] 不要把 `deepseek-v4-pro` 写回配置。
 - [ ] 不要提交任何 key、token、cookie、`.env`。
