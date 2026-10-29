@@ -392,6 +392,59 @@ function raceWithTimeout<T>(
   });
 }
 
+/**
+ * Caps tool payloads before they cross the SSE seam.
+ *
+ * dsh can return whole fetched pages; the sidebar only needs the head of the
+ * text (URLs and result lists) plus a marker that it was truncated. Shape is
+ * preserved so `{content:[{type:"text",text}]}` stays recognizable, and the
+ * browser never receives multi-megabyte payloads.
+ */
+export function summarizeToolPayload(
+  value: unknown,
+  maxChars = 12_000,
+): unknown {
+  if (value === undefined || value === null) return value;
+  if (typeof value === "string") {
+    return value.length <= maxChars
+      ? value
+      : `${value.slice(0, maxChars)}\n…[truncated]`;
+  }
+  try {
+    const json = JSON.stringify(value);
+    if (json === undefined || json.length <= maxChars) return value;
+  } catch {
+    return value;
+  }
+  const budget = { left: maxChars };
+  return truncateDeep(value, budget, 0);
+}
+
+function truncateDeep(
+  value: unknown,
+  budget: { left: number },
+  depth: number,
+): unknown {
+  if (depth > 8) return "[truncated]";
+  if (typeof value === "string") {
+    if (budget.left <= 0) return "[truncated]";
+    const take = Math.min(value.length, budget.left);
+    budget.left -= take;
+    return take === value.length ? value : `${value.slice(0, take)}\n…[truncated]`;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => truncateDeep(item, budget, depth + 1));
+  }
+  if (value !== null && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      result[key] = truncateDeep(item, budget, depth + 1);
+    }
+    return result;
+  }
+  return value;
+}
+
 function mapUpdate(update: SessionUpdate): AgentEvent | null {
   switch (update.sessionUpdate) {
     case "agent_message_chunk":
@@ -420,7 +473,7 @@ function mapUpdate(update: SessionUpdate): AgentEvent | null {
         tool: update.name ?? null,
         kind: update.kind ?? null,
         status: update.status ?? null,
-        input: update.rawInput,
+        input: summarizeToolPayload(update.rawInput, 4_000),
       };
     case "tool_call_update":
       return {
@@ -428,8 +481,8 @@ function mapUpdate(update: SessionUpdate): AgentEvent | null {
         callId: update.toolCallId,
         title: update.title ?? null,
         status: update.status ?? null,
-        input: update.rawInput,
-        output: update.rawOutput,
+        input: summarizeToolPayload(update.rawInput, 4_000),
+        output: summarizeToolPayload(update.rawOutput, 16_000),
       };
     case "plan":
       return { type: "plan", entries: update.entries };

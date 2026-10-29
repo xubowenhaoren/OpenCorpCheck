@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentEvent } from "../src/events.js";
-import { DshAcpRuntime } from "../src/runtime.js";
+import { DshAcpRuntime, summarizeToolPayload } from "../src/runtime.js";
 
 type Message =
   | { kind: "session_update"; update: Record<string, unknown> }
@@ -125,5 +125,33 @@ describe("DshAcpRuntime turn limits", () => {
       "assistant.delta",
       "run.completed",
     ]);
+  });
+});
+
+describe("summarizeToolPayload", () => {
+  it("keeps small payloads untouched", () => {
+    const payload = { content: [{ type: "text", text: "ok" }] };
+    expect(summarizeToolPayload(payload)).toBe(payload);
+  });
+
+  it("caps long MCP text while preserving the content shape", () => {
+    const payload = {
+      content: [{ type: "text", text: "x".repeat(100_000) }],
+      isError: false,
+    };
+    const summary = summarizeToolPayload(payload, 1_000) as {
+      content: { type: string; text: string }[];
+      isError: boolean;
+    };
+    expect(summary.content[0].type).toBe("text");
+    expect(summary.content[0].text.length).toBeLessThan(1_100);
+    expect(summary.content[0].text).toContain("truncated");
+    expect(summary.isError).toBe(false);
+  });
+
+  it("truncates plain strings", () => {
+    expect(summarizeToolPayload("a".repeat(50), 10)).toBe(
+      `${"a".repeat(10)}\n…[truncated]`,
+    );
   });
 });

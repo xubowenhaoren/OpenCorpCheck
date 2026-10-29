@@ -2,8 +2,9 @@
 
 React 19 + Vite 8 + TypeScript UI for the OpenCorpCheck API.
 
-> Status: implemented 2026-10-29 · agent trajectory is **not** implemented
-> (reserved in [docs/UI.md](../../docs/UI.md) §8.4 and
+> Status: implemented 2026-10-29 · assistant Markdown + tool-use trajectory
+> shipped; sub-agent cards / persistence remain reserved
+> ([docs/UI.md](../../docs/UI.md) §8.4,
 > [CONTEXT_TRANSFER.md](../../CONTEXT_TRANSFER.md) §6 P3.4).
 
 ## Run it
@@ -67,5 +68,16 @@ without CORS.
   (for example `宁德时代`, which is not in the visible corpus).
 - English mode translates the UI chrome; company data keeps its original
   language.
-- P3.4 (tool calls, web search trajectory, sub-agent cards) is deliberately
-  not rendered yet.
+- Assistant answers render GFM Markdown through a lazy-loaded
+  `react-markdown` + `remark-gfm` chunk. Raw HTML is escaped, images are not
+  fetched, and links are limited to `http(s)` with `noopener noreferrer`.
+- Tool use is a collapsed trajectory under each answer: plan, human-readable
+  tool cards (web search / fetch / OCC MCP / F10 / deep research), a
+  deduplicated source ledger (cited vs consulted) and token usage. Raw JSON,
+  token streams and `thought.delta` are never rendered. See
+  [`src/lib/agent-trace.ts`](src/lib/agent-trace.ts).
+- Sub-agent cards (deep_research job progress / nested tool timeline) and
+  event persistence/replay are **not** implemented yet; `deep_research`
+  currently appears as a tool card.
+- Tests: `corepack pnpm --filter @occ/web test` (trajectory helpers) plus
+  `typecheck` / `build`.

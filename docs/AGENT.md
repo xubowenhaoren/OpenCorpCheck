@@ -26,7 +26,8 @@ occ MCP server → OpenCorpCheck API / finance-analyst sidecar
 | ACP client runtime | [`packages/agent`](../packages/agent) | Spawn dsh, initialize ACP, create sessions, map `session/update` to `AgentEvent` |
 | Session service | [`apps/api/src/services/agent.ts`](../apps/api/src/services/agent.ts) | One dsh process, in-memory sessions, prompt/cancel/cancel-on-disconnect |
 | HTTP surface | [`apps/api/src/app.ts`](../apps/api/src/app.ts) | Session create, SSE prompt, cancel, HTML sidebar |
-| Sidebar UI | [`apps/api/src/agent-ui.ts`](../apps/api/src/agent-ui.ts) | Dependency-free chat + tool cards + notices |
+| Sidebar UI | [`apps/api/src/agent-ui.ts`](../apps/api/src/agent-ui.ts) | Dependency-free debug console (raw tool cards) |
+| Consumer sidebar | [`apps/web/src/components/AgentSidebar.tsx`](../apps/web/src/components/AgentSidebar.tsx) | React sidebar: GFM Markdown, collapsed tool trajectory, source ledger |
 
 The `occ` MCP server exposes nine tools to the agent: `search_companies`,
 `get_company`, `search_documents`, `deep_research`, `get_run`, `propose_fact`,
@@ -87,7 +88,10 @@ GET  /v1/agent/ui                       # local HTML sidebar
 | `run.failed` | `error` |
 
 Raw ACP types never reach the browser. If dsh changes its update payloads, only
-`packages/agent/src/runtime.ts` changes.
+`packages/agent/src/runtime.ts` changes. `tool.called.input` and
+`tool.updated.output` are capped at 4 KB / 16 KB (shape-preserving, with a
+`…[truncated]` marker) before they are sent over SSE; the sidebar further
+reduces them to human summaries and links.
 
 ## Configuration
 
@@ -144,6 +148,55 @@ The sidebar counts `tool.called` events, so the limit also stops the
   session id; the next prompt transparently starts a fresh dsh session under
   that id (conversation history is lost).
 
+### Trajectory and Markdown (2026-10-29)
+
+The React sidebar (`apps/web`) renders assistant answers as GitHub-flavored
+Markdown and exposes tool use as progressive disclosure. Raw model output is
+never injected as HTML.
+
+**Markdown**
+
+- `react-markdown` + `remark-gfm`, imported lazily from
+  [`MarkdownMessage.tsx`](../apps/web/src/components/MarkdownMessage.tsx). The
+  parser is a separate chunk and does not load until an answer renders.
+- Supports headings, bold/italic, lists, blockquotes, tables, rules, inline
+  code, fenced code and links. Tables are wrapped in a horizontally scrollable
+  container so a 420 px sidebar (or 390 px phone) never scrolls the page.
+- Streaming is throttled to one text flush per ~90 ms (`TEXT_FLUSH_MS`), so the
+  parser does not re-run per token. Unclosed code fences and half tables render
+  without crashing; React re-renders land at most ~11 times per second.
+- Safety: raw HTML is escaped by react-markdown (no `rehype-raw`); images are
+  replaced by their alt text (no remote fetch); anchors are restricted to
+  `http(s)` and carry `target="_blank" rel="noopener noreferrer"`.
+  `javascript:` links become plain text. Verified with injected
+  `<img onerror>` / `<script>` / `[x](javascript:…)` payloads.
+
+**Trajectory**
+
+- A collapsed `<details class="agent-trace">` under each answer summarises
+  “执行过程 N 步 · M 个来源 · 42s”; expanding it shows:
+  1. plan entries (`plan` event),
+  2. one card per `tool.called` / `tool.updated` call,
+  3. a deduplicated source ledger split into 已引用 / 仅查阅,
+  4. token usage when dsh reports it.
+- Cards map ACP data to human labels (`apps/web/src/lib/agent-trace.ts`):
+  `web_search` → 搜索网页 (query, result count, domains); `web_fetch` → 打开网页
+  (URL, HTTP status); `mcp__occ__search_companies` → 查找公司;
+  `get_company` → 查看公司资料; `search_documents` → 检索资料;
+  `deep_research` → 发起深度研究; `get_run` → 查询研究进度; F10 tools and
+  `propose_*` have their own labels. Unknown tools fall back to 使用工具.
+- Status is shown as text (排队中 / 进行中 / 已完成 / 失败 / 已取消), not colour
+  alone. There is no raw JSON, token stream or `thought.delta` in the trace;
+  tool output is rendered as a summary plus links.
+- `packages/agent/src/runtime.ts` caps `rawInput`/`rawOutput` before SSE
+  (4 KB / 16 KB, shape-preserving) so a fetched page cannot flood the browser.
+- `deep_research` appears as a tool card; a first-class sub-agent card with
+  `get_run` progress polling and event persistence is still reserved (see
+  [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §6 P3.4).
+
+Build size after adding Markdown: main JS 393 KB (gzip 121 KB); lazy Markdown
+chunk 163 KB (gzip 49 KB); CSS 40 KB (gzip 8 KB).
+
 ## Permissions and safety
 
 - dsh runs with `DSH_PERMISSION_MODE=read-only`; it cannot edit the repo.
@@ -173,15 +226,25 @@ The sidebar counts `tool.called` events, so the limit also stops the
   but each turn has a wall-clock and tool-call cap (see Configuration).
 - The dsh process is disposed after `OCC_AGENT_IDLE_TIMEOUT_MS` of inactivity;
   there is no background token consumption once a turn stops or is cancelled.
-- The API also serves a local console (`/v1/agent/ui`). `apps/web` now implements the
-  React sidebar over the same ACP SSE endpoint, with company context, suggestions and
-  cancel; it deliberately does **not** render tool calls or a trajectory yet. The
-  runtime and HTTP seam are the durable part.
-- **Trajectory and sub-agent UI are designed but not built.** `tool.called` /
-  `tool.updated` already stream, but there is no persistence, no sub-agent
-  event, and no trace view. The reserved design is in
-  [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §6 P3.4 and
-  [`UI.md`](UI.md) §8.4. Keep `thought.delta` out of the consumer UI.
+- The API also serves a local console (`/v1/agent/ui`). That console is a
+  dependency-free debug view: it still shows raw tool names/JSON and does not
+  render Markdown. The consumer experience is `apps/web`.
+- **Known issue (2026-10-29): the 30-call cap can stop legitimate research.**
+  A broad market question made 32 calls (18 `web_fetch`, 6 `bash`,
+  5 `web_search`) and was cancelled by `OCC_AGENT_MAX_TOOL_CALLS` before it
+  produced an answer. The session log
+  (`.occ/dsh-acp-home/sessions/.../c643c443-…/session.v4.jsonl.zstd`) is kept
+  for root-cause work; details and investigation steps are in
+  [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §6 P3.4 “已知问题 2”. Do not
+  simply raise the number: add repetition detection / a budget warning first.
+- The trajectory is currently a permanent collapsed block. The next UX pass
+  should make each tool call appear transiently and auto-collapse on completion
+  (Grok-like), merging repeated calls into one activity line.
+- **Trajectory is client-side only.** Tool cards, plan and the source ledger are
+  built from the live SSE stream; nothing is persisted. `thought.delta` is
+  deliberately not rendered. A first-class sub-agent card (deep-research job
+  status via `get_run`, nested tool timeline), event persistence and replay are
+  still reserved in [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §6 P3.4.
 - `additionalDirectories`, client filesystem, terminals and elicitation are not
   advertised; dsh rejects additional directories by design.
 - **Separate DSH_HOME is mandatory.** The ACP profile stores zstd-compressed

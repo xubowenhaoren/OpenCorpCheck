@@ -1,7 +1,8 @@
 # OpenCorpCheck UI — 企查查式公司情报页
 
 > Status: implemented in [`apps/web`](../apps/web) · 2026-10-29
-> (except §8.4 agent trajectory / sub-agent, which remains a reserved design)
+> (tool-use trajectory + GFM Markdown shipped; sub-agent cards / persistence
+> remain reserved in §8.4)
 > Audience: 本项目作者 / 前端实现者
 > Related: [Architecture](ARCHITECTURE.md) §1、§7.4、§8.4 · [Search](SEARCH.md) ·
 > [Facts & relations](EXTRACT.md) · [Agent sidebar](AGENT.md) ·
@@ -414,7 +415,7 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 │ · iPhone 占营收约 52%        [来源 1]  │
 │ · 服务业务增长更快            [来源 2]  │
 │                                        │
-│ ✓ 查了公司资料 · 看了 3 个来源          │
+│ ▸ 执行过程 6 步 · 3 个来源 · 42s        │
 ├────────────────────────────────────────┤
 │ [输入问题…]                    [发送]  │
 └────────────────────────────────────────┘
@@ -423,10 +424,11 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 ### 8.2 交互
 
 - 打开/关闭只改变右侧栏宽度和主内容让位，**不使用全屏遮罩**；页面始终可见、可滚动。
-- 发送后显示"正在查资料…"；不显示工具名、JSON、token、延迟。
-- 工具调用折叠为一行："查了公司资料 · 看了 3 个来源"；点开只显示来源 URL 列表。
-- 引用渲染为 `[来源]` chip，点击打开来源浮层。
-- 不显示模型名、token、trace、权限选项。
+- 发送后显示"正在查资料…"；默认不显示原始工具名、JSON、token、延迟。
+- 工具调用折叠为一行："执行过程 N 步 · M 个来源 · 42s"；点开显示人话工具卡片
+  （搜网页 / 打开网页 / 查公司资料 / 查财报 / 发起深研）、计划和来源账本。
+- 引用渲染为 `[来源]` chip，点击打开来源浮层；来源账本里的 URL 也新窗口打开。
+- 不显示模型名、原始 token 流、trace、权限选项或思考链。
 - 错误话术："暂时没查到，换个问法试试"，保留重试。
 - 关闭即结束会话，下次新会话。
 - 底部固定三个建议问题（与基本资料 tab 的"你可能想问"一致）。
@@ -442,19 +444,26 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 | F10 抓取 | 查最新财报 |
 | `propose_*` | **不暴露**，只进内部审核队列 |
 
-### 8.4 轨迹与子代理（预留，未实现）
+### 8.4 轨迹与子代理（tool use 已实现；子代理卡片/持久化预留）
 
-> 详细事件模型、持久化、后端缺口和验收见
-> [CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §6「P3.4」。
+> 工具轨迹、来源账本和 Markdown 渲染已在 `apps/web` 实现（2026-10-29）。
+> 子代理卡片（deep_research 的 job 进度/嵌套轨迹）和事件持久化仍是预留设计，
+> 见 [CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §6「P3.4」和
+> [AGENT.md](AGENT.md)「Trajectory and Markdown」。
 
-- **默认折叠**：答案 + 来源 + 一行「执行过程 N 步 · M 个来源」；点开才看时间线。
+- **默认折叠**：答案 + 来源 + 一行「执行过程 N 步 · M 个来源 · 42s」；点开才看时间线。
+- **运行中（Grok-like，待实现）**：每次新 tool call 临时出现活动行，完成后自动收起；
+  同类合并为「执行了 4 次搜索」；答案开始输出时整轮收成一行摘要。
 - **工具卡片**：搜网页（web_search）、打开网页（web_fetch）、查公司资料、
   查财报、发起深研；显示查询/结果数/耗时/已引用来源，不显示原始 JSON。
-- **子代理卡片**：agentic web search 或 `deep_research`；显示任务、状态、
-  进度、当前步骤、嵌套子轨迹、摘要和来源；最多一级嵌套。
+- **Markdown**：助手消息渲染 GFM（标题、粗体、列表、引用、表格、分隔线、代码、链接）；
+  流式期间节流解析，表格在气泡内横向滚动；原始 HTML 不执行，链接只放行 http(s)。
+- **子代理卡片**（预留）：agentic web search 或 `deep_research`；显示任务、状态、
+  进度、当前步骤、嵌套子轨迹、摘要和来源；最多一级嵌套。目前 `deep_research`
+  先以「发起深度研究」工具卡片呈现。
 - **来源账本**：去重后的 URL，分「已引用 / 仅查阅」，复用现有来源浮层。
 - **不显示原始思考链**（`thought.delta`）；原始事件只在 local debug 模式可见。
-- 侧栏宽度和布局不变；trajectory 在消息内滚动，不撑破侧栏。
+- 侧栏宽度和布局不变；trajectory 在消息内滚动，不撑破侧栏（390px 已验收）。
 
 ---
 

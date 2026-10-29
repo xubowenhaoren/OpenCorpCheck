@@ -1,8 +1,8 @@
 # OpenCorpCheck — Context Transfer
 
-> 交接日期：2026-10-27（P3.5 Web UI 收尾：2026-10-29）
-> 当前阶段：Phase 0 + P1 + P2 + P2.5 + P3.1/P3.2 + P3.3 + P3.5 已完成；
-> P3.4 agent trajectory 仍为预留设计（未实现）。真实语料
+> 交接日期：2026-10-27（P3.4 tool trajectory + Markdown：2026-10-29）
+> 当前阶段：Phase 0 + P1 + P2 + P2.5 + P3.1/P3.2 + P3.3 + P3.4（tool trajectory /
+> Markdown）+ P3.5 已完成；sub-agent 卡片与事件持久化仍为预留。真实语料
 > 已与 synthetic fixture 隔离（默认只搜索 102 家真实 profile），golden query 扩到 7
 > 个 family、含 MRR@10/nDCG@10；公司卡片 API + CLI + MCP 已能读 cited 财务/事实/关系，
 > 关系抽取走 deepseek-flash + 审核队列。中文 curated alias 已接入（zh-name top1
@@ -13,13 +13,14 @@
 > dsh ACP sidebar（`OCC_AGENT_DSH_HOME` + `occ` MCP 已实测调用）、Google News RSS
 > 新闻文档入库（`doc_type='news'`，可搜索、进公司卡片 events）。Docker 封装仍全部 TODO。
 >
-> **P3.4（预留，2026-10-29）**：agent trajectory（tool use / web search /
-> sub-agent）的 UI、事件模型、持久化和验收已写入 §6，**未实现**。
+> **P3.4（2026-10-29 部分实现）**：agent tool-use trajectory（折叠式工具卡片 /
+> 计划 / 来源账本）和侧栏 GFM Markdown 已实现；sub-agent 卡片、事件持久化和
+> 重放仍是预留设计。详见 §6 P3.4。
 >
 > **P3.5（2026-10-29）**：`apps/web` 已实现 docs/UI.md 的公开 UI（首页 / 搜索 /
 > 公司页 5 tabs / 全局图谱 / NDX 100 家成分页 / 真实 ACP AI 助手侧栏），并补齐
 > `/v1/graph`、`/v1/indices/:code`、`/v1/sectors`、搜索 `sector` 过滤。agent
-> trajectory 仍按 P3.4 预留，未实现。
+> tool-use trajectory 与 Markdown 渲染随后在 P3.4 补齐（2026-10-29）。
 >
 > 下一阶段：P4（A500/HSI/SPX 快照 + A/HK 全量 backfill）或 P6（评测/质量），由用户决定。
 >
@@ -653,11 +654,16 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
   插件 `sidebar.right.pane.tab`。
 - Phase 0 的 headless runner 继续用于批量文档生成；ACP 用于交互式 sidebar。
 
-### P3.4（预留，未实现）— Agent trajectory：tool use / web search / sub-agent
+### P3.4（2026-10-29：tool trajectory + Markdown 已实现；sub-agent/持久化预留）— Agent trajectory
 
+> **实现状态（2026-10-29）**：`apps/web` 侧栏已支持
+> 折叠式 tool-use trajectory（计划 + 工具卡片 + 来源账本 + 用量）和 GFM Markdown
+> 渲染。纯前端，不依赖持久化；`deep_research` 目前以「发起深度研究」工具卡片呈现。
+> 子代理专属卡片、`get_run` 进度轮询、事件持久化/重放仍按下文预留设计。
+>
 > 2026-10-29 用户提出：UI 设计要为 dsh agent 的 trajectory 预留空间，重点是
 > **tool use（主要是 web search）** 和 **sub-agent（主要是 agentic web search 查公司
-> 信息）**。本轮只写设计预留，不实现。目标用户仍是股民/普通金融从业者，所以默认
+> 信息）**。目标用户仍是股民/普通金融从业者，所以默认
 > 界面保持「答案 + 来源」，执行过程是**可展开的渐进披露**，不是默认展开的调试面板。
 
 **现状（已经有的，不要重复造）**
@@ -703,50 +709,136 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
   - **真实 UI 实测**（Playwright 打开 `:5173` 侧栏，同一问题「goog 今天股价大跌，
     是什么原因？」）：`high` 76.9s / 15 次工具 / 11 个来源（已完成）；
     `low` 61.8s / 13 次工具 / 4 个来源（已完成）。两次都远低于 180s 上限。
-- **仍需实现**：本节的 trajectory 显示（tool cards / web_search / sub-agent / 来源账本）。
-  侧栏暂时没有独立的「仍在思考 / 即将超时」状态；超限通过 `notice` + 错误气泡呈现。
+- **已实现（2026-10-29）**：tool-use trajectory——折叠行「执行过程 N 步 · M 个来源 ·
+  42s」；展开显示 plan、每个 `tool.called/tool.updated` 一张人话卡片
+  （搜索网页 / 打开网页 / 查找公司 / 查看公司资料 / 检索资料 / 发起深度研究 /
+  查询研究进度 / F10 / propose_*）、去重来源账本（已引用 / 仅查阅）和 token 用量。
+  不显示原始 JSON、token 流或 `thought.delta`。实现见
+  [`agent-trace.ts`](apps/web/src/lib/agent-trace.ts)、
+  [`AgentTrace.tsx`](apps/web/src/components/AgentTrace.tsx)、
+  [`AgentSidebar.tsx`](apps/web/src/components/AgentSidebar.tsx)。
+  `packages/agent/src/runtime.ts` 在 SSE 前把 `rawInput/rawOutput` 截到 4 KB / 16 KB
+  （保持形状），避免整页 HTML 进浏览器。
+- **仍未实现**：sub-agent 专属卡片（`deep_research` 目前只是一张工具卡片，
+  没有 `get_run` 状态轮询/嵌套轨迹）、事件持久化/重放、侧栏「仍在思考/即将超时」
+  独立状态。
 
-**已知 bug（2026-10-29 用户实测，待修复）：侧栏不渲染 Markdown**
+**已知问题（2026-10-29 用户实测，下一轮处理）**
 
-- **现象**：侧栏回答原样显示模型输出的 Markdown 源码——`## 一句话结论`、
+1. **Trajectory 不够“灵动”**：现在是答案下方一个永久存在的折叠块，展开后把
+   31 张工具卡片一次性铺出来。用户希望像 Grok Web 那样：
+   - 每次触发新的 tool call，先在答案区域**临时出现**一张活动卡片（运行中转圈）；
+   - 该调用完成后**自动收起**成一行摘要，不长期占空间；
+   - 新一轮调用出现时，上一轮自动折叠；同一类调用（如 4 次 `web_search`）合并成
+     「执行了 4 次搜索」+ 缩进子行，而不是 4 张等高卡片；
+   - 整轮结束后收成一行「工作了 13s · 执行了 4 次搜索 · 打开 6 个网页」，
+     默认不再展开；用户主动点开才看完整时间线。
+   - 参考视觉：用户提供的 Grok 截图（“工作了 13s”“执行了 4 次搜索”
+     “已搜索网络 为 …”）。不要照搬品牌，只借交互节奏。
+   - 实现建议（纯前端即可）：每个 tool call 增加 `active/completed` 状态机；
+     新调用到来时关闭上一张卡片；完成 300–500ms 后自动折叠；按 `tool/kind`
+     分组合并；答案开始流式输出时把活动区收成一行。
+   - **不要**把“自动收起”做成信息丢失：展开后仍能看到完整工具卡片、来源账本
+     和用量。默认视图只保留答案 + 来源 + 一行摘要。
+
+2. **30 次工具上限误伤正常深度研究**：2026-10-29 16:03 用户问
+   「goog 今天股价大跌，是什么原因？」，侧栏显示
+   `Turn stopped after 30 tool calls to avoid an endless loop
+   (OCC_AGENT_MAX_TOOL_CALLS).`，没有最终答案。
+   - **现场 session**：
+     `.occ/dsh-acp-home/sessions/--Users-bowenxu-Downloads-Projects-OpenCorpCheck---/c643c443-c390-4f17-bef9-d1ae10a6cebf/session.v4.jsonl.zstd`
+     （16:03，约 95s；`turn/end` 为 `{kind:"aborted", reason:{kind:"user"}}`，
+     即被 runtime 的 cancel 终止）。
+   - **已观测**：该 turn 共 32 次 tool call：
+     18 `web_fetch` / 6 `bash` / 5 `web_search` /
+     1 `mcp__occ__search_companies` / 1 `get_company` / 1 `search_documents`；
+     不是同一个 query 的死循环，而是广度高、持续换源的 research：
+     先搜新闻 → 抓 4 个媒体页 → bash 查 SEC 8-K → 抓 IR/SEC → 再搜再抓 10+ 个域名。
+     工具结果没有明显 `isError=true`（需要下个 agent 再核对原始 result 文本与 HTTP
+     状态；不要只信 `isError`）。
+   - **怀疑的 root cause（按优先级，下个 agent 用 session 验证）**：
+     1. `OCC_AGENT_MAX_TOOL_CALLS=30` 对所有工具一视同仁，且网络研究天然是
+        search → fetch ×N；上一次同类问题 13–15 次，这次 32 次，30 的阈值太低。
+     2. 模型不知道剩余预算，runtime 只在超限后 cancel，没有“还剩 N 次”的提示；
+        dsh 没有 budget-aware prompt。
+     3. `SYSTEM_CONTEXT` 要求“所有数字和关系都要带引用”，促使模型不断补来源。
+     4. 媒体付费墙/反爬（401/403/JS challenge）或 `web_fetch` 截断可能让模型
+        换 URL 重试；需要用原始 `tool/result` 文本确认。
+     5. `reasoningEffort: low` 是否降低规划效率（重复补搜）需要 A/B；
+        历史上 low 61.8s/13 calls，high 76.9s/15 calls，尚未复现 30+。
+     6. 计数器是否把同一 callId 的重复 `tool.called` 重复计数：对比 session 的
+        32 次 vs 侧栏的 31 张卡片 vs runtime 的 30 次上限，确认 ACP 是否多发；
+        当前证据更支持“确实调用了 30+ 次”，不是重复计数。
+   - **排查命令**（本机）：
+     ```bash
+     SID=c643c443-c390-4f17-bef9-d1ae10a6cebf
+     F=.occ/dsh-acp-home/sessions/--Users-bowenxu-Downloads-Projects-OpenCorpCheck---/$SID/session.v4.jsonl.zstd
+     zstd -dc "$F" | python3 -c '…统计 tool/call、tool/result、turn/end…'
+     ```
+     重点看：`request/header`（实际 model / reasoningEffort / tools）、
+     `turn/start` → `step/start` → `tool/call` → `tool/result` → `assistant/message`、
+     `turn/end`、每个 result 的 `isError`/HTTP 状态/truncated 标记。
+   - **建议修复方向**（不要只调大数字）：
+     - 把“防死循环”从绝对次数改成**预算 + 重复检测**：相同
+       `(tool, normalized input)` 重复出现 N 次才判定 loop；总预算可按问题类型
+       配置（如普通问答 30、深研 60–80）。
+     - 超限前先给模型一次“预算将尽，请基于已有证据作答”的 notice/prompt；
+       或让 dsh 在接近上限时收到摘要提示。
+     - UI 在运行中显示「已查阅 N 个来源 / 已执行 M 步」，超限时明确告知
+       “已停止继续搜索，基于现有资料回答”，而不是只报错。
+     - `0 个来源` 的显示有误导：本次 18 个网页已抓取，但摘要只统计“已引用”；
+       运行中/失败时应显示“已查阅”，并在 trace 里保留 ledger。
+   - **验收**：同一问题在调整后能给出带引用的答案；若仍超预算，UI 显示
+     “已查阅 N 个来源”并允许一键“继续研究”；session 里不出现同一 query
+     的连续重复；`turn/end` 不是被 runtime 强制 abort（除非用户点停止）。
+
+**已修复（2026-10-29）：侧栏不渲染 Markdown**
+
+- **原现象**：侧栏回答原样显示模型输出的 Markdown 源码——`## 一句话结论`、
   `**搜索广告增速放缓**`、`| 项目 | 数值 |` 表格、`---` 分隔线、
-  `[StockAnalysis](https://…)` 都是字面文本，长回答几乎不可读。用户 2026-10-29
-  在 Alphabet 页面提问后截图反馈。
-- **根因**：
-  - [`AgentSidebar.tsx`](apps/web/src/components/AgentSidebar.tsx) 的 `Linkified`
-    只按 URL 正则切分文本，其余原样渲染；`apps/web` 没有任何 Markdown 依赖
-    （package.json 只有 react / router / query）。
-  - [`styles.css`](apps/web/src/styles.css) 里 `.msg .bubble { white-space: pre-wrap; }`
-    （约 954 行）是按纯文本设计的；换成 Markdown 组件后要同时调整空白处理和
-    `h1–h4 / p / ul / ol / blockquote / table / pre / code` 的样式。
-  - [`agent-ui.ts`](apps/api/src/agent-ui.ts) 的零依赖 console 也用
-    `assistantEl.textContent = …`（约 179 行），同样不渲染 Markdown；次要，可后修。
-- **要求**：
-  - 助手消息渲染 GFM：标题、粗体/斜体、列表、引用、表格、分隔线、行内代码、
-    代码块、链接。用户消息可保持纯文本。
-  - 流式期间能安全渲染：未闭合的 ``` 或半张表格不能崩、不能反复抖动；按 message
-    缓存解析结果或节流，避免每个 token 重新解析整段。
-  - **安全**：模型输出可能引用不可信网页内容。不要对未清洗文本用
-    `dangerouslySetInnerHTML`；优先 `react-markdown` + `remark-gfm`（默认不执行
-    HTML），若用 `marked` / `markdown-it` 必须配 DOMPurify。链接用
-    `target="_blank" rel="noopener noreferrer"`，只放行 http/https。
-  - 保留现有行为：`uniqueUrls` 仍从原始文本提取来源 chips；底部
-    「查了 N 次资料 · M 个来源」不变；来源链接继续走现有 `SourceSheet` 或新窗口。
-  - 样式沿用 CSS tokens，不引入 Tailwind/shadcn；420px 侧栏里表格要能横向滚动，
-    不能撑破页面；深浅色都要可读。`react-markdown` 体积不小（当前 JS 约 378 KB /
-    gzip 116 KB），建议侧栏打开时懒加载，并记录新的构建体积。
-- **验收**：
-  - Playwright 打开侧栏问同一问题，断言 `.msg.assistant .bubble` 内存在
-    `h2` / `strong` / `table`，可见文本中不再出现字面量 `**`、`## `、`|---|`；
-  - 链接可点、新窗口打开、`rel` 正确；无 console error；
-  - 模拟输出 `<img src=x onerror=…>` 和 `[x](javascript:alert(1))` 不执行；
-  - 390px 宽度下表格在气泡内横向滚动、页面无横向滚动；深色模式可读；流式无崩溃。
-- **实现顺序**：`react-markdown` + `remark-gfm`（懒加载）→ 替换 assistant 分支的
-  `Linkified` → 调整 `.msg .bubble` 空白与 Markdown 样式 → 保留来源提取 →
-  Playwright 验收 →（可选）同步 `agent-ui.ts` console。
+  `[StockAnalysis](https://…)` 都是字面文本。
+- **根因**：`AgentSidebar` 的 `Linkified` 只切 URL；`apps/web` 没有 Markdown 依赖；
+  `.msg .bubble { white-space: pre-wrap; }` 是按纯文本设计的。
+- **修复**：
+  - 新增 [`MarkdownMessage.tsx`](apps/web/src/components/MarkdownMessage.tsx)：
+    `react-markdown@10` + `remark-gfm@4`，由 `AgentSidebar` 用
+    `lazy(() => import(...))` 懒加载；主 bundle 不含解析器。
+  - GFM：标题、粗体/斜体、列表、引用、表格、分隔线、行内代码、代码块、链接。
+    表格包在 `.md-table-wrap` 里横向滚动；390px 下页面无横向滚动。
+  - 流式：`AgentSidebar` 每 ~90ms 合并一次 `assistant.delta` 再 setState，避免
+    每个 token 重新解析整段；未闭合 ``` / 半张表格不会崩。
+  - 安全：不使用 `dangerouslySetInnerHTML`；react-markdown 默认转义原始 HTML；
+    图片覆盖为 alt 文本（不远程加载）；链接只放行 http/https 并带
+    `target=_blank rel="noopener noreferrer"`；`javascript:` 链接降级为文本。
+  - 样式：新增 `.md` 系列规则，沿用 CSS tokens（深浅色都可读）；
+    `.msg.user/.msg.system` 仍是 `pre-wrap` 纯文本。
+- **验收（2026-10-29）**：
+  - 真实 ACP 会话（Playwright，`goog 今天股价大跌…`）：13–31 次工具调用，
+    答案按 Markdown 渲染，trace 折叠行显示「执行过程 N 步 · M 个来源 · 49s」。
+  - 确定性 mocked SSE（覆盖模型不一定输出的语法）：`h2`、`strong`、2 行 GFM 表格、
+    列表、引用、`hr`、行内代码全部正确；可见文本中无字面 `**` / `## ` / `|---|` /
+    ```；注入 `<script>`、`<img onerror>`、`[x](javascript:…)` 均不执行，
+    DOM 中无 `img/script`、无 javascript 链接；无 console error。
+  - 未闭合代码块：渲染为 `pre`，不出现字面 ```，不崩溃。
+  - 390×900：`document.scrollWidth == innerWidth`，宽表格在气泡内横向滚动。
+  - 构建：主 JS 393 KB（gzip 121 KB），Markdown 懒加载 chunk 163 KB（gzip 49 KB），
+    CSS 40 KB（gzip 8 KB）。
+  - 单测：`apps/web` 8 个 trajectory helper 测试（工具描述、计数、来源账本、
+    URL 提取、plan、duration）；`packages/agent` 6 个测试含 payload 截断。
+    `corepack pnpm -r --workspace-concurrency=1 test` 全绿。
+- **保留未做**：`apps/api/src/agent-ui.ts` 的零依赖 debug console 仍用
+  `textContent`（不渲染 Markdown），它是内部排错页，不是面向用户侧栏。
 
 
 **目标形态（用户看到什么）**
+
+运行中（live，Grok-like；本轮未实现）：
+
+- 每次新 tool call 临时出现一行活动卡片（运行中显示 spinner + 人话动作）。
+- 调用完成 300–500ms 后自动收起到一行；下一次调用出现时，上一张自动收起。
+- 同类调用合并：「执行了 4 次搜索」+ 缩进的查询子行；网页抓取同理。
+- 答案开始流式输出时，整个活动区收成一行「工作了 13s · 执行了 4 次搜索 ·
+  打开 6 个网页」；用户点开仍能看到完整时间线。
 
 默认（collapsed）：
 
@@ -872,12 +964,12 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 5. 最后接 dsh 原生 sub-agent/task（如果存在）。
 6. 始终保留默认「答案 + 来源」形态；trajectory 是可选展开。
 
-### P3.5（2026-10-29）— Web UI 已实现（agent trajectory 除外）
+### P3.5（2026-10-29）— Web UI 已实现（tool trajectory + Markdown 随后补齐）
 
 **状态**：`apps/web` 已按 [`docs/UI.md`](docs/UI.md) 落地。首页、搜索结果、公司页
 5 个 tab（基本资料 / 财务数据 / 关系图谱 / 新闻动态 / 资料来源）、全局图谱、
-NASDAQ-100 成分页、AI 助手侧栏都可用。**P3.4 的 tool / web-search / sub-agent
-trajectory 仍未实现**，侧栏只显示消息、工具调用次数和来源链接。
+NASDAQ-100 成分页、AI 助手侧栏都可用。侧栏的 tool-use trajectory 和 GFM
+Markdown 渲染已在 P3.4 补齐；sub-agent 卡片与持久化仍为预留设计。
 
 **技术栈**：React 19 + Vite 8 + TypeScript + React Router 7 +
 TanStack Query 5；样式沿用原型 CSS tokens（暖灰 + 绿色），**未引入**
@@ -914,8 +1006,9 @@ corepack pnpm build:web        # apps/web/dist
   支持文本和行业筛选；A500/HSI/SPX 未加载时显示空状态。
 - AI 助手侧栏：真实 `POST /v1/agent/sessions` + SSE prompt/cancel；
   桌面 420px、右侧滑出、主内容让位、无遮罩；手机全屏；支持公司上下文、
-  建议问题、停止、来源 URL 转 chip。**不显示 tool JSON / token / 思考链 /
-  trajectory。**
+  建议问题、停止、来源 URL 转 chip。回答渲染 GFM Markdown；tool-use
+  trajectory 默认折叠（展开可见 plan / 工具卡片 / 来源账本 / 用量）。
+  **不显示原始 JSON、token 流或思考链。**
 - 主题：浅色/深色，`data-theme` + localStorage；语言：中/英切换（UI chrome
   和数字格式切换，公司数据保持原文）。
 
@@ -963,10 +1056,11 @@ corepack pnpm build:web        # apps/web/dist
 - 英文模式只翻译 UI chrome 和数字格式；公司描述、分部名等数据保持原文。
 - 未引入 Tailwind / shadcn/ui；如要迁移，先保持 CSS tokens 不变。
 - 生产静态托管未做：开发用 Vite proxy；生产需 API/nginx 同源托管。
-- AI 助手侧栏是 P3.3 的真实 SSE，但 **P3.4 的 trajectory / sub-agent 卡片
-  仍未实现**；不要把它当成已完成。
-- AI 助手侧栏**不渲染 Markdown**（2026-10-29 用户实测）：`##`、`**`、表格、
-  `---`、`[text](url)` 都按字面显示。修复要求见 §6 P3.4「已知 bug（待修复）」。
+- AI 助手侧栏是 P3.3 的真实 SSE；tool-use trajectory 与 Markdown 已实现
+  （2026-10-29）。**sub-agent 专属卡片（deep_research job 进度/嵌套轨迹）和
+  事件持久化仍未实现**，不要把它们当成已完成。
+- 构建体积（2026-10-29）：主 JS 393 KB（gzip 121 KB）、Markdown 懒加载 chunk
+  163 KB（gzip 49 KB）、CSS 40 KB（gzip 8 KB）。
 - 首页热门公司是前端静态列表；没有运营后台。
 - `apps/web` 没有单测；目前用 Playwright 手动验收。后续 P6 加 UI smoke。
 
@@ -1059,6 +1153,8 @@ corepack pnpm build:web        # apps/web/dist
     「执行过程 N 步」；展开才显示 tool calls / web search / sub-agent。不显示原始
     JSON、token 或思考链（`thought.delta`）；原始事件只留给 local debug。子代理
     优先复用 `deep_research` 的 pg-boss job，不新造一套同步 sub-agent 协议。
+    **2026-10-29 已实现** tool cards / plan / 来源账本（纯前端，无持久化）；
+    sub-agent 卡片仍按此原则预留。
 19. **Web UI 先落地，不引入 Tailwind/shadcn**：`apps/web` 用 React 19 + Vite 8 +
     React Router 7 + TanStack Query 5，样式沿用原型的 CSS tokens，保证和已确认的
     视觉一致。后续要迁 Tailwind/shadcn 时先保持 tokens 不变；Electron/Docker 仍在 P5。
@@ -1084,7 +1180,8 @@ corepack pnpm build:web        # apps/web/dist
 |---|---|
 | dsh 是 developer preview，接口会变 | 固定 `0.2.1-rc.3`；spawn/解析集中在 `lib/dsh.mjs`；异常试 rc.4 |
 | **dsh 侧栏长时间 thinking / 0 来源无回答** | 已修复（2026-10-29）：ACP patch 在 `llm-deepseek` 设 `reasoningEffort: low`（无 medium 档）；`OCC_AGENT_TURN_TIMEOUT_MS` / `OCC_AGENT_MAX_TOOL_CALLS` 超限自动 cancel；空闲 dispose。见 §6 P3.4「已知 bug」 |
-| **侧栏把 Markdown 当纯文本显示** | 待修复：`AgentSidebar` 的 `Linkified` 只切 URL，`.msg .bubble` 是 `pre-wrap`。用 `react-markdown` + `remark-gfm`（懒加载），不要未清洗的 `dangerouslySetInnerHTML`；见 §6 P3.4「待修复 bug」 |
+| **正常深度研究被 30 次工具上限打断** | 待排查（2026-10-29）：问题「goog 今天股价大跌」触发 `OCC_AGENT_MAX_TOOL_CALLS`，session `c643c443-…`，32 次调用（18 fetch / 6 bash / 5 search）。这不是明显死循环，更像阈值太低 + 无预算提示。排查步骤和建议见 §6 P3.4「已知问题 2」；不要只把数字调大 |
+| **侧栏把 Markdown 当纯文本显示** | 已修复（2026-10-29）：`apps/web` 用懒加载的 `react-markdown` + `remark-gfm`，`.md` 样式 + 表格横向滚动；`AgentSidebar` 90ms 合并流式文本。不要改回 `dangerouslySetInnerHTML`；`agent-ui.ts` debug console 仍是纯文本 |
 | npm `~/.npm/_cacache` 不可写 | `lib/dsh.mjs` 用 `OCC_NPM_CACHE` / `$TMPDIR/occ-npm-cache`；不要继承 `npm_config_cache` |
 | Python 3.9 vs F10 的 3.10+ | 已用 `uv` 装 Python 3.12（`services/finance-analyst/.python-version`）；Docker 镜像 TODO，换机器后再做 |
 | **本机是 macOS 虚拟机，不能跑 Docker** | Docker/Compose/镜像全部 TODO；开发用 `scripts/dev-db.sh`、`scripts/dev-qdrant.sh`、`scripts/dev-embeddings.sh` 的「散装」方式 |
@@ -1176,9 +1273,19 @@ corepack pnpm build:web        # apps/web/dist
       （ACP 不读 `agent-default-model`；适配器无 medium 档）；
       每轮 `OCC_AGENT_TURN_TIMEOUT_MS` / `OCC_AGENT_MAX_TOOL_CALLS` 上限；
       空闲 dispose dsh；关网页自动 cancel（关侧栏不 cancel）。
-- [ ] AI 助手侧栏 Markdown 渲染（GFM 表格/标题/链接、流式安全、链接白名单、
-      懒加载），见 §6 P3.4「待修复 bug」。
-- [ ] P3.4 trajectory / sub-agent UI 实现（tool cards / web_search / 来源账本）。
+- [x] AI 助手侧栏 Markdown 渲染（2026-10-29）：`react-markdown` + `remark-gfm`
+      懒加载、90ms 流式合并、GFM 表格横向滚动、原始 HTML 不执行、链接白名单；
+      真实 ACP + mocked SSE + 390px Playwright 验收通过。
+- [x] P3.4 tool-use trajectory（2026-10-29）：折叠行 + 计划 + 工具人话卡片 +
+      来源账本 + 用量；`packages/agent` 对 tool payload 做 4KB/16KB 截断。
+- [ ] P3.4 剩余：sub-agent 专属卡片（`deep_research` 状态轮询/嵌套轨迹）、
+      事件持久化与重放。
+- [ ] P3.4 UX v2（2026-10-29 用户要求，未实现）：Grok-like 临时活动卡片，
+      单次调用完成即自动收起、同类合并、整轮结束后一行摘要；见 §6 P3.4
+      「已知问题 1」。
+- [ ] P3.4 预算 bug（2026-10-29 待排查）：正常深度研究触发
+      `OCC_AGENT_MAX_TOOL_CALLS`；先查 session `c643c443-…` 和 §6 P3.4
+      「已知问题 2」，再决定预算/重复检测方案。
 - [ ] 不要把 `deepseek-v4-pro` 写回配置。
 - [ ] 不要提交任何 key、token、cookie、`.env`。
 
