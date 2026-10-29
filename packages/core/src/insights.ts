@@ -265,6 +265,32 @@ export const ReviewProposalSchema = z.object({
 });
 export type ReviewProposal = z.infer<typeof ReviewProposalSchema>;
 
+/** A human decision on one queue item. Only `pending` items can transition. */
+export const ReviewDecisionSchema = z.object({
+  decision: z.enum(["accepted", "rejected"]),
+  reviewer: z.string().trim().min(1).max(120).optional(),
+});
+export type ReviewDecision = z.infer<typeof ReviewDecisionSchema>;
+
+/**
+ * Batch decision. A filter is mandatory: either explicit ids, a kind/company
+ * filter, or `all: true`. This prevents an accidental empty-filter approval.
+ */
+export const ReviewBatchDecisionSchema = ReviewDecisionSchema.extend({
+  ids: z.array(z.string().trim().min(1)).min(1).max(500).optional(),
+  kind: ReviewKindSchema.optional(),
+  company: z.string().trim().min(1).max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(200),
+  all: z.boolean().default(false),
+});
+export type ReviewBatchDecision = z.infer<typeof ReviewBatchDecisionSchema>;
+
+export interface ReviewBatchResult {
+  updated: number;
+  skipped: number;
+  items: ReviewItemView[];
+}
+
 export interface CompanyCardResponse {
   data: CompanyCard;
   meta: {

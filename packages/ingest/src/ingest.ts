@@ -27,7 +27,12 @@ import {
   type IndexableCompany,
   type RetrievalCollections,
 } from "@occ/retrieval";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import {
+  createSnapshotStoreFromEnv,
+  sectionSnapshotKey,
+  type SnapshotStore,
+} from "@occ/storage";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import {
   buildChunks,
@@ -35,6 +40,7 @@ import {
   parseSectionMarkdown,
   type ParsedSection,
 } from "./sections.js";
+import { curatedAliasesForTicker } from "./curated-aliases.js";
 import { pinyinAliasForms, pinyinVariants } from "./pinyin.js";
 import {
   countryForMarket,
@@ -55,6 +61,8 @@ export interface IngestRuntimeOptions {
   embeddingTimeoutMs?: number;
   collections: RetrievalCollections;
   skipIndex?: boolean;
+  /** S3-compatible snapshot store. `undefined` reads OCC_S3_*; `null` disables. */
+  snapshot?: SnapshotStore | null;
 }
 
 export interface IngestContext {
@@ -66,6 +74,8 @@ export interface IngestContext {
   embeddingDim: number;
   embeddingVersion: string;
   skipIndex: boolean;
+  /** Null when snapshots are not configured. */
+  snapshot: SnapshotStore | null;
 }
 
 export async function createIngestContext(
@@ -90,6 +100,10 @@ export async function createIngestContext(
     embeddingDim: options.embeddingDim ?? 1024,
     embeddingVersion: options.embeddingVersion ?? "bge-m3@1024",
     skipIndex: Boolean(options.skipIndex),
+    snapshot:
+      options.snapshot === undefined
+        ? createSnapshotStoreFromEnv()
+        : options.snapshot,
   };
   return {
     ctx,
@@ -120,6 +134,11 @@ export interface IngestResult {
   indexedChunks: number;
   companyIndexed: boolean;
   skipped: boolean;
+  /** True when the section markdown was written to the snapshot store. */
+  snapshotUploaded?: boolean;
+  /** S3 object key, when uploaded. */
+  snapshotKey?: string | null;
+  snapshotError?: string;
 }
 
 export interface IngestBatchItem {
@@ -394,8 +413,15 @@ export async function ingestSection(
     } satisfies TransactionOutput;
   });
 
+  const withSnapshot = await uploadSectionSnapshot(
+    ctx,
+    output.result,
+    sectionHash,
+    markdown,
+  );
+
   if (output.result.skipped || options.skipIndex || ctx.skipIndex) {
-    return output.result;
+    return withSnapshot;
   }
 
   await ensureCollections(ctx.qdrant, ctx.collections, ctx.embeddingDim);
@@ -426,10 +452,72 @@ export async function ingestSection(
   }
 
   return {
-    ...output.result,
+    ...withSnapshot,
     indexedChunks,
     companyIndexed,
   };
+}
+
+/**
+ * Upload the section markdown to the snapshot store and record the object key
+ * on the document. Failure is non-fatal: the research row and index are still
+ * useful, and the next ingest retries the upload. Without a configured store
+ * this is a no-op, so existing deployments are unchanged.
+ */
+async function uploadSectionSnapshot(
+  ctx: IngestContext,
+  result: IngestResult,
+  sectionHash: string,
+  markdown: string,
+): Promise<IngestResult> {
+  const store = ctx.snapshot;
+  if (!store) return result;
+  try {
+    const object = await store.put(
+      sectionSnapshotKey(result.slug, sectionHash),
+      markdown,
+      "text/markdown; charset=utf-8",
+    );
+    await ctx.db
+      .update(documents)
+      .set({
+        storageKey: object.uri,
+        metadata: sql`${documents.metadata} || ${JSON.stringify({
+          snapshot: {
+            store: "s3",
+            bucket: store.bucket,
+            key: object.key,
+            uri: object.uri,
+            sha256: object.sha256,
+            bytes: object.bytes,
+            uploadedAt: new Date().toISOString(),
+          },
+        })}::jsonb`,
+      })
+      .where(eq(documents.id, result.documentId));
+    return {
+      ...result,
+      snapshotUploaded: true,
+      snapshotKey: object.key,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        msg: "snapshot upload failed",
+        company: result.slug,
+        document: result.documentId,
+        error: message,
+      }),
+    );
+    return {
+      ...result,
+      snapshotUploaded: false,
+      snapshotKey: null,
+      snapshotError: message,
+    };
+  }
 }
 
 /**
@@ -487,6 +575,41 @@ export async function ingestSections(
     indexedChunks: results.reduce((sum, result) => sum + result.indexedChunks, 0),
     results,
   };
+}
+
+/**
+ * Rebuild one company point (dense + sparse) from Postgres. Used after an
+ * alias-only change (curated names) that does not go through a section ingest.
+ * The document text is rebuilt from stored chunks so profile recall is kept.
+ */
+export async function reindexCompanyPoint(
+  ctx: IngestContext,
+  companyId: string,
+): Promise<boolean> {
+  const chunkRows = await ctx.db
+    .select({ text: chunks.text })
+    .from(chunks)
+    .where(eq(chunks.companyId, companyId))
+    .orderBy(asc(chunks.documentId), asc(chunks.ordinal))
+    .limit(20);
+  const documentText = chunkRows
+    .map((row) => row.text)
+    .join("\n")
+    .slice(0, 2_000);
+  const indexableCompany = await loadIndexableCompany(
+    ctx.db,
+    companyId,
+    documentText,
+  );
+  if (!indexableCompany) return false;
+  await ensureCollections(ctx.qdrant, ctx.collections, ctx.embeddingDim);
+  await indexCompanies(
+    ctx.qdrant,
+    ctx.embeddings,
+    ctx.collections,
+    [indexableCompany],
+  );
+  return true;
 }
 
 type Executor = Pick<Db, "select" | "insert" | "update" | "delete" | "execute">;
@@ -746,6 +869,11 @@ async function writeCompanyRelations(
   addAlias(target.name, "brand");
   addAlias(target.ticker, "ticker");
   addAlias(stripCorporateSuffix(parsed.legalName), "brand");
+  // Hand-curated Chinese names (config/aliases/zh.yaml) cover companies whose
+  // profiles/snapshots only carry the English name (NFLX → 奈飞, COST → 好市多).
+  for (const alias of curatedAliasesForTicker(target.ticker)) {
+    addAlias(alias, "brand");
+  }
   if (aliasRows.size > 0) {
     await tx.insert(aliases).values([...aliasRows.values()]).onConflictDoNothing();
   }

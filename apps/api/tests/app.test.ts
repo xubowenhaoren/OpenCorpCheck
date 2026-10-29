@@ -175,6 +175,35 @@ const fakeReview = {
     items: [],
     total: 0,
   }),
+  decide: async (id: string, input: { decision: string }) => ({
+    item: {
+      id,
+      kind: "relation",
+      payload: {},
+      status: input.decision,
+      createdAt: new Date().toISOString(),
+    },
+    updated: true,
+  }),
+  decideBatch: async (input: {
+    ids?: string[];
+    kind?: string;
+    company?: string;
+    all?: boolean;
+    decision: string;
+  }) => {
+    if (!input.all && !input.ids?.length && !input.kind && !input.company) {
+      throw new AppError(
+        "bad_request",
+        "batch decision requires ids, kind, company or all=true",
+      );
+    }
+    return {
+      updated: input.ids?.length ?? 1,
+      skipped: 0,
+      items: [],
+    };
+  },
 } as unknown as ReviewService;
 
 const healthy: HealthReport = {
@@ -270,6 +299,7 @@ describe("company card API", () => {
     expect(body.paths["/v1/search/companies"]).toBeTruthy();
     expect(body.paths["/v1/companies/{id}"]).toBeTruthy();
     expect(body.paths["/v1/review/proposals"].post).toBeTruthy();
+    expect(body.paths["/v1/review/batch"].post).toBeTruthy();
   });
 });
 
@@ -319,5 +349,60 @@ describe("review proposals", () => {
     const body = await response.json();
     expect(body.data.items).toEqual([]);
     expect(body.data.total).toBe(0);
+  });
+
+  it("decides one item", async () => {
+    const response = await app().request("/v1/review/items/rvw_1/decision", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ decision: "accepted", reviewer: "bowen" }),
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.item.status).toBe("accepted");
+    expect(body.meta.updated).toBe(true);
+  });
+
+  it("decides a filtered batch", async () => {
+    const response = await app().request("/v1/review/batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        decision: "rejected",
+        ids: ["rvw_1", "rvw_2"],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.updated).toBe(2);
+    expect(body.meta.decision).toBe("rejected");
+  });
+
+  it("refuses an unfiltered batch", async () => {
+    const response = await app().request("/v1/review/batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ decision: "accepted" }),
+    });
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  it("decides every pending item when all=true", async () => {
+    const response = await app().request("/v1/review/batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ decision: "accepted", all: true, limit: 10 }),
+    });
+    expect(response.status).toBe(200);
+    expect((await response.json()).data.updated).toBe(1);
+  });
+
+  it("serves the local review console", async () => {
+    const response = await app().request("/v1/review/ui");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    expect(await response.text()).toContain("Review queue");
   });
 });

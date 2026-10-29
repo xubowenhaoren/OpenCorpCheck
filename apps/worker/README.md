@@ -80,6 +80,9 @@ Environment:
 | `OCC_WORKER_SECTIONS_DIR` | `.occ/sections` (falls back to `OCC_SECTIONS_DIR`) |
 | `OCC_RESEARCH_MODEL` | `deepseek-flash` |
 | `DEEPSEEK_API_KEY` | required for live research |
+| `OCC_S3_ENDPOINT` / `OCC_S3_BUCKET` | unset → snapshots disabled |
+| `OCC_S3_ACCESS_KEY` / `OCC_S3_SECRET_KEY` | required when the store is enabled |
+| `OCC_S3_REGION` / `OCC_S3_PREFIX` | `us-east-1` / none |
 
 Worker output goes under `.occ/` (gitignored) so a backfill can never overwrite
 the committed Phase 0 corpus in `phase0/`. If you still point
@@ -130,7 +133,9 @@ completed checkpoint and the research cache.
 - `backfill_jobs` — per company/page: status, attempts, duration, last error.
 - `research_cache` — company → prompt hash, section hash, tokens.
 - `f10_pages` — latest snapshot per `(market, code, page)`: HTTP status, text
-  length, table count, `html_sha256`, `storage_key`, warnings.
+  length, table count, `html_sha256`, `storage_key`, warnings. With `OCC_S3_*`
+  configured, `storage_key` is an `s3://` URI pointing at the structured page
+  JSON snapshot; the sidecar does not yet return raw HTML bytes.
 
 pg-boss owns its own `pgboss` schema.
 
@@ -165,6 +170,9 @@ must be running, or dsh startup fails).
   source, `as_of` recorded). A500/HSI/SPX constituent snapshots are still P4.
 - Live queue counts query `pgboss.job` directly, assuming the default schema.
 - Token/cost is logged per job but not summed per run.
-- Snapshots are referenced by `storage_key`; MinIO upload is still P2.
+- Snapshots: ingest uploads each section to `sections/<slug>/<sha256>.md`;
+  `f10.page` jobs upload `f10/<market>/<code>/<page>/<sha>.json`. Both are
+  no-ops unless `OCC_S3_ENDPOINT`/`OCC_S3_BUCKET` are set. Raw F10 HTML capture
+  remains a sidecar follow-up (`F10_SNAPSHOT_DIR` writes local files today).
 - Ingest writes section markdown to `documents`/`chunks`; it does not yet
   extract facts/products/relations or upload raw snapshots.

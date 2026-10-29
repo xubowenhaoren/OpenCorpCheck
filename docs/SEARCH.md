@@ -133,6 +133,7 @@ No Docker required on the development laptop.
 scripts/dev-db.sh start
 scripts/dev-qdrant.sh start          # downloads Qdrant 1.18 arm64 once
 scripts/dev-embeddings.sh start      # BGE-M3 loads on first request (~2.3 GB)
+scripts/dev-minio.sh start           # optional: snapshots (brew install minio)
 
 # 2. build + schema
 corepack pnpm -r build
@@ -198,15 +199,18 @@ now sort ahead of unbounded BM25 scores. Full method and comparisons:
   research profiles (100 NDX + 600519/00700); the 14 fixture-only companies and
   all 31 fixture documents are hidden by default (`include_fixtures=true`
   restores them for E2E). Old corpora need one `occ sync-fixtures` run.
-- Chinese alias coverage is incomplete: profiles name some US companies only in
-  English (e.g. NFLX has no 奈飞 alias, COST no 好市多), so those queries fall
-  back to semantic retrieval. Derived pinyin aliases exist for names that do
-  appear in Chinese (英伟达 → ywd); curated Chinese aliases are the next gap.
+- Chinese alias coverage: curated names in
+  [`config/aliases/zh.yaml`](../config/aliases/zh.yaml) cover the NDX corpus and
+  the A/HK profiles (`奈飞`, `好市多`, `茅台`, `腾讯`). `occ aliases sync` inserts
+  them and re-indexes company points; derived pinyin aliases come from the same
+  pass (`英伟达 → ywd`). New names still need a curated entry.
 - Ingestion writes section markdown as one `company_profile` document per
   company (14 chunks for the A/HK profiles). Fact/product/relation extraction
-  is still P3.
-- MinIO snapshot upload is still pending; `documents.storage_key` is populated
-  by ingestion but no object is written.
+  is P3 and lives in [`EXTRACT.md`](EXTRACT.md).
+- Snapshot upload is implemented: `occ snapshots upload` writes every section to
+  the S3-compatible store (MinIO via `scripts/dev-minio.sh`), and ingestion
+  uploads new sections automatically. F10 pages are stored as structured JSON
+  snapshots; raw HTML capture is still a sidecar follow-up.
 - Rerank is implemented and wired, but the E2E run uses `OCC_RERANK_ENABLED=false`
   so it does not download the second model.
 - The `occ` CLI currently calls the API for search; entity resolution, graph

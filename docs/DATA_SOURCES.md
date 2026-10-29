@@ -253,8 +253,21 @@ document   → source_id, company_id, doc_type, mime, storage_key, sha256, pages
 chunk      → document_id, page, section, text, qdrant_point_id, embedding_version
 ```
 
-Changing the extractor prompt, model, or taxonomy triggers re-extraction from MinIO — not a
-refetch. This makes evals reproducible and keeps us polite to the sources.
+Snapshots are written to an S3-compatible store (MinIO locally) when
+`OCC_S3_*` is configured:
+
+- research section markdown → `sections/<slug>/<sha256>.md` (`documents.storage_key`);
+- F10 page payloads → `f10/<market>/<code>/<page>/<sha>.json`
+  (`f10_pages.storage_key`). The sidecar returns text/tables, not raw HTML bytes;
+  raw-HTML capture via `F10_SNAPSHOT_DIR` is still a sidecar follow-up.
+
+`occ snapshots upload` backfills existing sections; new ingestion/uploads happen
+automatically. Without the env vars, nothing changes and `storage_key` keeps the
+legacy local-style path.
+
+Changing the extractor prompt, model, or taxonomy triggers re-extraction from the
+snapshot store — not a refetch. This makes evals reproducible and keeps us polite
+to the sources.
 
 ## 10. Future: Moomoo / OpenD
 

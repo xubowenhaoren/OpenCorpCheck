@@ -12,7 +12,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/occ.js",
-    "test": "tsc -p ../../packages/core/tsconfig.json && tsc -p ../../packages/db/tsconfig.json && tsc -p ../../packages/retrieval/tsconfig.json && tsc -p ../../packages/ingest/tsconfig.json && tsc -p ../../packages/extract/tsconfig.json && tsc -p ../../packages/sources/eastmoney-f10/tsconfig.json && tsc -p tsconfig.json && vitest run"
+    "test": "tsc -p ../../packages/core/tsconfig.json && tsc -p ../../packages/db/tsconfig.json && tsc -p ../../packages/retrieval/tsconfig.json && tsc -p ../../packages/storage/tsconfig.json && tsc -p ../../packages/ingest/tsconfig.json && tsc -p ../../packages/extract/tsconfig.json && tsc -p ../../packages/sources/eastmoney-f10/tsconfig.json && tsc -p tsconfig.json && vitest run"
   },
   "dependencies": {
     "@modelcontextprotocol/node": "^2.1.2",
@@ -24,7 +24,8 @@
     "@occ/sources-eastmoney-f10": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "zod": "^4.6.7",
-    "@occ/extract": "workspace:*"
+    "@occ/extract": "workspace:*",
+    "@occ/storage": "workspace:*"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "^2.4.0",

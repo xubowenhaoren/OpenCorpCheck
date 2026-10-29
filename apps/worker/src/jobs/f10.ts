@@ -1,9 +1,12 @@
+import { createHash } from "node:crypto";
+
 import type { Job } from "pg-boss";
 
 import {
   FinanceAnalystClient,
   type Market,
 } from "@occ/sources-eastmoney-f10";
+import { createSnapshotStoreFromEnv } from "@occ/storage";
 
 import { config } from "../config.js";
 import {
@@ -14,6 +17,9 @@ import {
   upsertF10Page,
 } from "../db.js";
 import { QUEUES } from "../queues.js";
+
+/** Null unless OCC_S3_* is configured; a half-configured store throws at boot. */
+const snapshotStore = createSnapshotStoreFromEnv();
 
 export interface F10JobData {
   runId: string;
@@ -71,6 +77,32 @@ async function processF10Job(
       throw new Error(`F10 page returned HTTP ${page.http_status}`);
     }
 
+    // The sidecar returns text/tables but not raw HTML bytes, so the replayable
+    // snapshot is the structured page JSON. Raw-HTML capture remains a sidecar
+    // follow-up (F10_SNAPSHOT_DIR); the DB key always points at a real object
+    // when the store is configured.
+    let storageKey = page.storage_key ?? null;
+    if (snapshotStore) {
+      const payload = JSON.stringify({ meta: response.meta, page }, null, 2);
+      const hash = page.html_sha256 ?? sha256(payload);
+      try {
+        const object = await snapshotStore.put(
+          `f10/${data.market}/${data.code}/${data.page}/${hash}.json`,
+          payload,
+          "application/json",
+        );
+        storageKey = object.uri;
+      } catch (error) {
+        log({
+          event: "f10_snapshot_failed",
+          run: data.runId,
+          key: data.key,
+          page: data.page,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     await upsertF10Page({
       market: data.market,
       code: data.code,
@@ -80,7 +112,7 @@ async function processF10Job(
       textChars: page.text_chars,
       tableCount: page.table_count,
       htmlSha256: page.html_sha256 ?? null,
-      storageKey: page.storage_key ?? null,
+      storageKey,
       warnings: page.warnings,
     });
     await markJobCompleted(data.runId, queue, data.key);
@@ -114,4 +146,8 @@ async function processF10Job(
 
 function log(payload: Record<string, unknown>): void {
   console.error(JSON.stringify(payload));
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
 }

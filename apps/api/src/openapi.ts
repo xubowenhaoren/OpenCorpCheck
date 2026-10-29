@@ -241,6 +241,95 @@ export function openApiDocument() {
           responses: { "200": { description: "Review queue items" }, "400": errorResponse },
         },
       },
+      "/v1/review/items/{id}/decision": {
+        post: {
+          operationId: "decideReviewItem",
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["decision"],
+                  properties: {
+                    decision: {
+                      type: "string",
+                      enum: ["accepted", "rejected"],
+                    },
+                    reviewer: { type: "string", maxLength: 120 },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "Decision stored; accepted items write canonical rows" },
+            "400": errorResponse,
+            "404": errorResponse,
+          },
+        },
+      },
+      "/v1/review/batch": {
+        post: {
+          operationId: "decideReviewBatch",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["decision"],
+                  properties: {
+                    decision: {
+                      type: "string",
+                      enum: ["accepted", "rejected"],
+                    },
+                    ids: {
+                      type: "array",
+                      maxItems: 500,
+                      items: { type: "string" },
+                    },
+                    kind: { type: "string", enum: ["fact", "relation"] },
+                    company: { type: "string" },
+                    limit: {
+                      type: "integer",
+                      minimum: 1,
+                      maximum: 500,
+                      default: 200,
+                    },
+                    all: { type: "boolean", default: false },
+                    reviewer: { type: "string", maxLength: 120 },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "Batch decided; returns updated/skipped counts" },
+            "400": errorResponse,
+            "404": errorResponse,
+          },
+        },
+      },
+      "/v1/review/ui": {
+        get: {
+          operationId: "reviewUi",
+          responses: {
+            "200": {
+              description:
+                "Dependency-free HTML review console for the local API",
+            },
+          },
+        },
+      },
     },
   };
 }

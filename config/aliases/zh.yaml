@@ -1,0 +1,101 @@
+# Curated Chinese name aliases
+#
+# Hand-maintained names that research profiles and constituent snapshots do not
+# reliably contain. Keys are tickers exactly as stored in `securities.ticker`
+# (US uppercase; A/HK as the numeric code). Values are common Chinese names,
+# including the legal-name spelling and the short everyday name.
+#
+# These are *aliases*, not canonical names: ingestion never overwrites
+# `companies.display_name` from this file. `occ aliases sync` inserts the rows
+# idempotently and (optionally) re-indexes the company points so hybrid search
+# sees them too. Pinyin/initials aliases are derived automatically.
+
+version: 1
+as_of: "2026-10-28"
+
+aliases:
+  # ── NASDAQ-100 ────────────────────────────────────────────────
+  AAPL: ["苹果", "苹果公司"]
+  ABNB: ["爱彼迎"]
+  ADBE: ["奥多比", "Adobe公司"]
+  ADI: ["亚德诺", "亚德诺半导体"]
+  ADSK: ["欧特克"]
+  AEP: ["美国电力"]
+  AMAT: ["应用材料", "应用材料公司"]
+  AMD: ["超威半导体", "超微半导体"]
+  AMGN: ["安进", "安进公司"]
+  AMZN: ["亚马逊", "亚马逊公司"]
+  ARM: ["安谋", "安谋控股"]
+  ASML: ["阿斯麦", "阿斯麦控股"]
+  AVGO: ["博通", "博通公司"]
+  BKNG: ["缤客"]
+  BKR: ["贝克休斯"]
+  CDNS: ["楷登电子"]
+  CEG: ["星座能源"]
+  CMCSA: ["康卡斯特"]
+  COST: ["好市多", "开市客"]
+  CRWD: ["众击"]
+  CSCO: ["思科", "思科系统"]
+  CTAS: ["信达思"]
+  DXCM: ["德康医疗"]
+  EXC: ["爱克斯龙"]
+  FANG: ["钻石背能源"]
+  FAST: ["快扣"]
+  FTNT: ["飞塔"]
+  GEHC: ["通用电气医疗", "GE医疗"]
+  GILD: ["吉利德", "吉利德科学"]
+  GOOG: ["谷歌", "字母表"]
+  GOOGL: ["谷歌", "字母表"]
+  HON: ["霍尼韦尔"]
+  IDXX: ["爱德士"]
+  INTC: ["英特尔", "英特尔公司"]
+  INTU: ["财捷"]
+  ISRG: ["直觉外科"]
+  KLAC: ["科磊"]
+  LIN: ["林德", "林德集团"]
+  LRCX: ["拉姆研究"]
+  MAR: ["万豪", "万豪国际"]
+  MCHP: ["微芯科技"]
+  MDLZ: ["亿滋国际", "亿滋"]
+  MELI: ["美客多"]
+  META: ["脸书", "元宇宙平台"]
+  MNST: ["怪物饮料"]
+  MPWR: ["芯源系统"]
+  MRNA: ["莫德纳"]
+  MRVL: ["迈威尔科技", "迈威尔"]
+  MSFT: ["微软", "微软公司"]
+  MSTR: ["微策略"]
+  MU: ["美光", "美光科技"]
+  NFLX: ["奈飞", "网飞"]
+  NVDA: ["英伟达", "英伟达公司"]
+  NXPI: ["恩智浦"]
+  ORLY: ["奥莱利汽车"]
+  PANW: ["派拓网络"]
+  PAYX: ["沛齐"]
+  PCAR: ["帕卡"]
+  PDD: ["拼多多"]
+  PEP: ["百事", "百事公司"]
+  PLTR: ["帕兰提尔"]
+  PYPL: ["贝宝"]
+  QCOM: ["高通", "高通公司"]
+  REGN: ["再生元"]
+  RKLB: ["火箭实验室"]
+  ROP: ["儒博"]
+  ROST: ["罗斯百货"]
+  SBUX: ["星巴克"]
+  SNDK: ["闪迪"]
+  SNPS: ["新思科技"]
+  SPCX: ["太空探索技术公司", "太空叉"]
+  STX: ["希捷"]
+  TER: ["泰瑞达"]
+  TRI: ["汤森路透"]
+  TSLA: ["特斯拉", "特斯拉公司"]
+  TXN: ["德州仪器"]
+  VRTX: ["福泰制药"]
+  WDC: ["西部数据"]
+  WMT: ["沃尔玛"]
+  XEL: ["埃克西尔能源"]
+
+  # ── A / HK corpus ─────────────────────────────────────────────
+  "600519": ["贵州茅台", "茅台"]
+  "00700": ["腾讯", "腾讯控股"]

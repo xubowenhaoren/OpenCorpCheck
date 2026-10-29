@@ -24,6 +24,8 @@ phase0/out/live-*.log
 # Local Qdrant binary + storage
 .qdrant/
 .qdrant-initialized
+# Local MinIO binary + data
+.minio/
 
 # Local embedding sidecar runtime
 .embeddings/

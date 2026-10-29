@@ -17,6 +17,11 @@ curl localhost:8787/openapi.json
 | `GET /v1/search/companies` | hybrid/keyword/semantic company search + optional explain |
 | `GET /v1/search/documents` | chunk search with source citations |
 | `GET /v1/companies/{id-or-slug}` | profile, aliases, listings, indices, financials |
+| `GET /v1/review/queue` | pending/accepted/rejected review items |
+| `POST /v1/review/proposals` | stage a fact/relation proposal (never writes directly) |
+| `POST /v1/review/items/{id}/decision` | accept/reject one item; accepted items write canonical rows |
+| `POST /v1/review/batch` | accept/reject a filtered batch (`ids`, `kind`, `company`, or `all`) |
+| `GET /v1/review/ui` | dependency-free local review console |
 | `GET /openapi.json` | OpenAPI 3.1 document |
 
 Config comes from env (see [`.env.example`](../../.env.example)): `DATABASE_URL`,

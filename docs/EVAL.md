@@ -1,7 +1,8 @@
 # Search Evaluation
 
 > Status: measured on the fixture-isolated NDX-100 corpus · 2026-10-28
-> Related: [Data layer & hybrid search](SEARCH.md) · [NDX snapshot](../config/indices/ndx.yaml) · [Golden queries](../scripts/golden-queries.mjs)
+> (re-run after curated Chinese aliases; `Adboe` typo and `奈飞`/`好市多` fixed)
+> Related: [Data layer & hybrid search](SEARCH.md) · [NDX snapshot](../config/indices/ndx.yaml) · [Golden queries](../scripts/golden-queries.mjs) · [Curated aliases](../config/aliases/zh.yaml)
 
 ## Corpus
 
@@ -77,77 +78,83 @@ fixtures hidden.
 
 | Family | Cases | Top-1 | MRR@10 | nDCG@10 | Recall@5 | Zero | p50 | p95 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Ticker | 100 | **100%** | 1.000 | 1.000 | 100% | 0% | 178ms | 292ms |
-| English name | 100 | **100%** | 1.000 | 1.000 | 100% | 0% | 201ms | 300ms |
-| Typo | 24 | **95.8%** | 0.972 | 0.979 | 100% | 0% | 174ms | 233ms |
-| Pinyin | 16 | **100%** | 1.000 | 1.000 | 100% | 0% | 178ms | 220ms |
-| Natural language | 32 | 78.1% | 0.873 | 0.905 | **100%** | 0% | 236ms | 327ms |
-| Chinese name | 16 | 87.5% | 0.891 | 0.914 | 87.5% | 0% | 190ms | 236ms |
-| Documents | 10 | 80.0% | 0.900 | 0.926 | **100%** | 0% | 251ms | 317ms |
+| Ticker | 100 | **100%** | 1.000 | 1.000 | 100% | 0% | 182ms | 240ms |
+| English name | 100 | **100%** | 1.000 | 1.000 | 100% | 0% | 214ms | 275ms |
+| Typo | 24 | **100%** | 1.000 | 1.000 | 100% | 0% | 187ms | 259ms |
+| Pinyin | 16 | **100%** | 1.000 | 1.000 | 100% | 0% | 176ms | 234ms |
+| Natural language | 32 | 81.3% | 0.880 | 0.910 | 96.9% | 0% | 220ms | 300ms |
+| Chinese name | 16 | **100%** | 1.000 | 1.000 | 100% | 0% | 186ms | 218ms |
+| Documents | 10 | 80.0% | 0.900 | 0.926 | **100%** | 0% | 326ms | 473ms |
 
 ### Keyword (planner + sparse only)
 
 | Family | Cases | Top-1 | MRR@10 | nDCG@10 | Recall@5 | Zero | p50 | p95 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Ticker | 100 | 100% | 1.000 | 1.000 | 100% | 0% | 175ms | 227ms |
-| English name | 100 | 100% | 1.000 | 1.000 | 100% | 0% | 201ms | 269ms |
-| Typo | 24 | 79.2% | 0.792 | 0.792 | 79.2% | **20.8%** | 177ms | 234ms |
-| Pinyin | 16 | 100% | 1.000 | 1.000 | 100% | 0% | 168ms | 221ms |
-| Natural language | 32 | 78.1% | 0.841 | 0.865 | 93.8% | 0% | 237ms | 330ms |
-| Chinese name | 16 | 87.5% | 0.875 | 0.875 | 87.5% | 6.3% | 171ms | 284ms |
-| Documents | 10 | 60.0% | 0.743 | 0.805 | 90.0% | 0% | 233ms | 291ms |
+| Ticker | 100 | 100% | 1.000 | 1.000 | 100% | 0% | 168ms | 240ms |
+| English name | 100 | 100% | 1.000 | 1.000 | 100% | 0% | 213ms | 296ms |
+| Typo | 24 | 83.3% | 0.833 | 0.833 | 83.3% | **16.7%** | 175ms | 220ms |
+| Pinyin | 16 | 100% | 1.000 | 1.000 | 100% | 0% | 169ms | 245ms |
+| Natural language | 32 | 84.4% | 0.875 | 0.891 | 93.8% | 0% | 209ms | 299ms |
+| Chinese name | 16 | 100% | 1.000 | 1.000 | 100% | 0% | 184ms | 241ms |
+| Documents | 10 | 50.0% | 0.693 | 0.768 | 90.0% | 0% | 222ms | 286ms |
 
 ### Semantic (dense only)
 
 | Family | Cases | Top-1 | MRR@10 | nDCG@10 | Recall@5 | Zero | p50 | p95 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Ticker | 100 | 100% | 1.000 | 1.000 | 100% | 0% | 178ms | 279ms |
-| English name | 100 | 100% | 1.000 | 1.000 | 100% | 0% | 207ms | 303ms |
-| Typo | 24 | 95.8% | 0.972 | 0.979 | 100% | 0% | 182ms | 240ms |
-| Pinyin | 16 | 100% | 1.000 | 1.000 | 100% | 0% | 170ms | 286ms |
-| Natural language | 32 | 68.8% | 0.818 | 0.864 | 96.9% | 0% | 225ms | 383ms |
-| Chinese name | 16 | 87.5% | 0.904 | 0.926 | 93.8% | 0% | 183ms | 222ms |
-| Documents | 10 | **90.0%** | 0.911 | 0.930 | 90.0% | 0% | 227ms | 307ms |
+| Ticker | 100 | 100% | 1.000 | 1.000 | 100% | 0% | 175ms | 260ms |
+| English name | 100 | 100% | 1.000 | 1.000 | 100% | 0% | 207ms | 269ms |
+| Typo | 24 | **100%** | 1.000 | 1.000 | 100% | 0% | 171ms | 206ms |
+| Pinyin | 16 | 100% | 1.000 | 1.000 | 100% | 0% | 193ms | 242ms |
+| Natural language | 32 | 71.9% | 0.833 | 0.875 | 96.9% | 0% | 224ms | 350ms |
+| Chinese name | 16 | 100% | 1.000 | 1.000 | 100% | 0% | 170ms | 265ms |
+| Documents | 10 | **90.0%** | 0.911 | 0.930 | 90.0% | 0% | 216ms | 270ms |
 
 ### What the numbers mean
 
 - **Acceptance gates met**: ticker and English-name top-1 accuracy remain
-  **100%** in all three modes (target ≥ 90%). Exact identifier → alias → fuzzy
-  matches still sort ahead of unbounded BM25 scores.
+  **100%** in all three modes. Exact identifier → alias → fuzzy matches still
+  sort ahead of unbounded BM25 scores.
 - **Pinyin works because aliases exist, not because of the model.** Derived
   full-pinyin and initials aliases (`英伟达 → ywd`, `腾讯控股 → txkg`) make all
-  16 pinyin cases top-1 in every mode. Before the alias backfill these queries
-  had no exact path and fell back to fuzzy/semantic retrieval.
-- **Typo handling depends on the planner.** Hybrid/semantic reach 95.8% top-1;
-  keyword-only drops to 79.2% with a 20.8% zero-result rate. The one remaining
-  miss (`Adboe` → ADBE at rank 3) is listed in the known limits.
-- **Hybrid is the default for natural language.** It beats dense-only by 9.3
-  points of top-1 (78.1% vs 68.8%) and reaches 100% recall@5. Keyword-only is
-  level on top-1 (78.1%) but misses semantically paraphrased queries such as
+  16 pinyin cases top-1 in every mode.
+- **Typo handling depends on the planner.** Hybrid/semantic now reach 100%;
+  keyword-only stays at 83.3% with a 16.7% zero-result rate. The vector branch
+  recovers misspellings the sparse branch cannot.
+- **Hybrid is the default for natural language.** It beats dense-only by 9.4
+  points of top-1 (81.3% vs 71.9%) and reaches 96.9% recall@5. Keyword-only is
+  slightly better on top-1 (84.4%) but misses paraphrases such as
   `在线支付 数字钱包`.
-- **Chinese names are the weak spot.** 87.5% top-1: `奈飞` (NFLX) and `好市多`
-  (COST) rank 8 because those common Chinese names appear neither as aliases nor
-  in the English-titled profile sections. Curated Chinese aliases are the next
-  fix.
-- **Document search:** semantic-only wins top-1 (90% vs 80%), while hybrid
+- **Chinese names are fixed.** Curated aliases in
+  [`config/aliases/zh.yaml`](../config/aliases/zh.yaml) plus
+  `occ aliases sync` make the whole `zh-name` family top-1 in every mode,
+  including `奈飞` (NFLX) and `好市多` (COST).
+- **Document search:** semantic-only still wins top-1 (90% vs 80%), while hybrid
   reaches 100% recall@5. The hybrid top-1 miss is a same-company section rather
   than a wrong company, so the practical gap is small.
-- **Latency:** p95 is 220–383ms (meta `took_ms`), under the 400ms local target
-  on the full corpus. These are single-process numbers, not a load test.
+- **Latency:** company families are 218–300ms p95; document search measured
+  366–473ms across runs. The 400ms local target is met on most runs but not
+  consistently on this macOS VM while Postgres/Qdrant/BGE-M3/MinIO are all
+  resident. These are single-process numbers, not a load test.
 
 ## Known limits
 
 - The visible corpus is still NDX-100 plus 600519/00700. A500/HSI/SPX and the
   AI watchlist are not backfilled, so the golden set cannot cover them yet.
-- Chinese alias coverage for US companies is incomplete (see `奈飞`/`好市多`
-  above). The model writes Chinese section bodies but the snapshot names are
-  English, and ingestion only derives aliases from parsed names/tickers.
+- Curated Chinese aliases are hand-maintained. Add a ticker to
+  `config/aliases/zh.yaml`, run `occ aliases sync`, and company points are
+  re-indexed automatically; forgetting that step leaves Qdrant behind Postgres
+  for semantic recall (exact alias lookup still works).
 - Ambiguous natural-language queries use multi-expected sets; this measures
-  "did a reasonable company come first", not a unique ground truth.
+  "did a reasonable company come first", not a unique ground truth. Six
+  natural-language probes still rank the right company at 2–6, including
+  `独立站 电商 SaaS` (SHOP at 6).
 - The document probes are matched on `companyDisplayName`, which is lenient.
   Reading the returned chunk text is still manual.
 - The eval is single-process; for latency under concurrency use `autocannon`
   against the API separately.
 - HNSW dense retrieval is approximate, so near-tied semantic cases can move by
   one rank between runs (roughly ±3 points on a 32-case family). The 100-case
-  ticker/name and 16-case pinyin families were stable across reruns.
+  ticker/name and 16-case pinyin/zh-name families were stable across reruns.
+- Latency varies with the other local services; document-search p95 crossed
+  400ms in one of three runs on this VM.

@@ -1,6 +1,8 @@
 import {
   AppError,
   CompanyCardQuerySchema,
+  ReviewBatchDecisionSchema,
+  ReviewDecisionSchema,
   ReviewProposalSchema,
   ReviewQueueQuerySchema,
   SearchCompaniesQuerySchema,
@@ -12,9 +14,11 @@ import {
   type SearchResponse,
 } from "@occ/core";
 import { Hono } from "hono";
+import type { Context } from "hono";
 
 import { config } from "./config.js";
 import { openApiDocument } from "./openapi.js";
+import { reviewUiHtml } from "./review-ui.js";
 import type { CompanyService } from "./services/company.js";
 import type { ReviewService } from "./services/review.js";
 import type { SearchService } from "./services/search.js";
@@ -147,6 +151,47 @@ export function createApp(deps: AppDeps): Hono {
     });
   });
 
+  app.post("/v1/review/items/:id/decision", async (c) => {
+    const parsed = ReviewDecisionSchema.safeParse(await jsonBody(c));
+    if (!parsed.success) throw badRequest(parsed.error.issues);
+    const requestId = crypto.randomUUID();
+    const result = await deps.review.decide(
+      c.req.param("id"),
+      parsed.data,
+    );
+    c.header("x-request-id", requestId);
+    return c.json({
+      data: result,
+      meta: {
+        request_id: requestId,
+        as_of: new Date().toISOString(),
+        updated: result.updated,
+      },
+    });
+  });
+
+  app.post("/v1/review/batch", async (c) => {
+    const parsed = ReviewBatchDecisionSchema.safeParse(await jsonBody(c));
+    if (!parsed.success) throw badRequest(parsed.error.issues);
+    const requestId = crypto.randomUUID();
+    const result = await deps.review.decideBatch(parsed.data);
+    c.header("x-request-id", requestId);
+    return c.json({
+      data: result,
+      meta: {
+        request_id: requestId,
+        as_of: new Date().toISOString(),
+        decision: parsed.data.decision,
+        updated: result.updated,
+        skipped: result.skipped,
+      },
+    });
+  });
+
+  // Minimal, dependency-free review console for local use. It calls the JSON
+  // endpoints above; no build step and no external assets.
+  app.get("/v1/review/ui", (c) => c.html(reviewUiHtml()));
+
   app.get("/openapi.json", (c) => c.json(openApiDocument()));
 
   app.notFound((c) =>
@@ -208,10 +253,17 @@ function meta(
   };
 }
 
+async function jsonBody(c: Context): Promise<unknown> {
+  try {
+    return await c.req.json();
+  } catch {
+    throw new AppError("bad_request", "invalid JSON body");
+  }
+}
+
 function badRequest(
   issues: Array<{ path: readonly PropertyKey[]; message: string }>,
-): AppError {
-  return new AppError(
+): AppError {  return new AppError(
     "bad_request",
     issues
       .map(

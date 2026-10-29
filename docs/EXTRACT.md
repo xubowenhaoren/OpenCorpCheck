@@ -30,7 +30,17 @@ DEEPSEEK_API_KEY_FILE=DEEPSEEK_API_KEY.txt \
 
 # One company, force a re-run
 node apps/cli/dist/occ.js extract --tickers AAPL --relations none --force
+
+# Review queue: list, then decide one or a filtered batch
+node apps/cli/dist/occ.js review list --status pending --kind relation
+node apps/cli/dist/occ.js review approve --ids rvw_...,rvw_... --reviewer bowen
+node apps/cli/dist/occ.js review approve --kind relation --company AAPL --limit 20 --dry-run
+node apps/cli/dist/occ.js review reject --all --yes --limit 50 --reviewer bowen
 ```
+
+Batch decisions need a filter (`--ids`, `--kind`, `--company`, or
+`--all --yes`), so an empty request can never approve the whole queue.
+`--dry-run` prints the count without writing.
 
 `--all` scans `phase0/out/sections/*.md` (the Phase 0 corpus). `--index ndx` uses
 `config/indices/ndx.yaml` primary constituents; `--tickers` accepts `AAPL`,
@@ -100,6 +110,23 @@ LLM failures never fail ingest: deterministic data is kept, the error is
 recorded in `extraction_cache` (`stage='relations'`, `status='partial'`), and the
 batch reports it per company.
 
+## Reviewing the queue
+
+A decision is the only path from `inferred` to `verified`. Only `pending` items
+transition, so replays are idempotent (`updated` vs `skipped`).
+
+| Item | Accepted | Rejected |
+|---|---|---|
+| Extracted relation (`relations.review_id = item.id`) | edge → `verified` | edge → `rejected` |
+| Agent relation proposal (no row yet) | creates the edge (`verified`) + evidence | nothing written |
+| Agent fact proposal | inserts a `facts` row with an `agent_proposal` source | nothing written |
+
+The evidence URL is upserted as a `sources` row (`trust_tier='proposal'`), and
+the quote is stored on the fact/evidence row. Batch filters are `ids`, `kind`,
+and `company` (ticker/slug/ULID), capped at 500. The local API also serves a
+plain HTML console at `GET /v1/review/ui` (no build step, no external assets);
+it lists pending items and calls the same batch endpoint.
+
 ## Caching and idempotency
 
 - `extraction_cache(company_id, stage)` stores `input_sha256`, `prompt_hash`,
@@ -125,6 +152,9 @@ node apps/cli/dist/occ.js review list --status pending
 GET /v1/companies/AAPL?include=financials,facts,relations,events
 POST /v1/review/proposals        # agent proposals only; never writes facts directly
 GET  /v1/review/queue?status=pending
+POST /v1/review/items/{id}/decision   # {decision: accepted|rejected, reviewer?}
+POST /v1/review/batch                 # {decision, ids|kind|company|all, limit, reviewer?}
+GET  /v1/review/ui                    # local HTML console
 ```
 
 MCP exposes the same surface as `search_companies`, `get_company`,

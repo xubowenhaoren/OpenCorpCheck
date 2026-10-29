@@ -2,9 +2,17 @@
 import { parseArgs } from "node:util";
 
 import { config } from "./config.js";
+import {
+  aliasesCommand,
+  USAGE_OPTIONS as ALIASES_OPTIONS,
+} from "./aliases-command.js";
 import { extractCommand, USAGE_OPTIONS as EXTRACT_OPTIONS } from "./extract-command.js";
 import { ingestCommand, USAGE_OPTIONS as INGEST_OPTIONS } from "./ingest-command.js";
 import { seed } from "./seed.js";
+import {
+  snapshotsCommand,
+  USAGE_OPTIONS as SNAPSHOTS_OPTIONS,
+} from "./snapshots-command.js";
 import { syncFixtures } from "./sync-fixtures.js";
 
 const USAGE = `occ — OpenCorpCheck CLI
@@ -14,10 +22,15 @@ Usage:
   occ seed [--reset] [--skip-index]
   occ ingest [options]
   occ sync-fixtures [--dry-run]
+  occ aliases sync [options]
+  occ snapshots upload|check|list [options]
   occ search <query> [--mode hybrid|keyword|semantic] [--limit N] [--explain] [--json]
   occ documents <query> [--mode ...] [--limit N] [--company ID] [--json]
   occ company <id-or-ticker> [--include financials,facts,relations,events] [--json]
   occ review list [--status pending] [--kind fact|relation] [--limit N] [--json]
+  occ review approve [--ids i1,i2 | --kind fact|relation [--company REF] | --all --yes]
+                     [--limit N] [--reviewer NAME] [--dry-run] [--json]
+  occ review reject  (... same filters ...)
   occ propose fact --company <ref> --predicate <p> --value <json> [--quote ...] [--source-url ...] [--json]
   occ propose relation --src <ref> --dst <ref> --type <t> [--quote ...] [--source-url ...] [--json]
   occ extract [options]
@@ -25,6 +38,8 @@ Usage:
   occ config
 ${INGEST_OPTIONS}
 ${EXTRACT_OPTIONS}
+${ALIASES_OPTIONS}
+${SNAPSHOTS_OPTIONS}
 Environment:
   OCC_API_URL           default http://127.0.0.1:8787
   DATABASE_URL          default postgres://occ@127.0.0.1:5432/occdb
@@ -71,6 +86,12 @@ async function main(): Promise<void> {
       console.log(JSON.stringify(result, null, 2));
       return;
     }
+    case "aliases":
+      await aliasesCommand(rest);
+      return;
+    case "snapshots":
+      await snapshotsCommand(rest);
+      return;
     case "search":
       await searchCommand(rest, "companies");
       return;
@@ -100,37 +121,9 @@ async function main(): Promise<void> {
       printCompanyCard(body);
       return;
     }
-    case "review": {
-      if (rest[0] !== "list") {
-        throw new Error("usage: occ review list [--status pending] [--kind fact|relation]");
-      }
-      const { values } = parseArgs({
-        args: rest.slice(1),
-        options: {
-          status: { type: "string" },
-          kind: { type: "string" },
-          limit: { type: "string", default: "50" },
-          json: { type: "boolean" },
-        },
-      });
-      const url = new URL("/v1/review/queue", config.apiUrl);
-      if (values.status) url.searchParams.set("status", values.status);
-      if (values.kind) url.searchParams.set("kind", values.kind);
-      url.searchParams.set("limit", values.limit!);
-      const body = await api(`${url.pathname}${url.search}`);
-      if (values.json) {
-        console.log(JSON.stringify(body, null, 2));
-        return;
-      }
-      const data = (body as { data: { items: Array<Record<string, unknown>>; total: number } }).data;
-      console.log(`${data.total} review items`);
-      for (const item of data.items) {
-        console.log(
-          `${String(item.id).padEnd(30)} ${String(item.kind).padEnd(8)} ${String(item.status).padEnd(8)} ${String(item.createdAt).slice(0, 19)}`,
-        );
-      }
+    case "review":
+      await reviewCommand(rest);
       return;
-    }
     case "propose": {
       await proposeCommand(rest);
       return;
@@ -238,6 +231,128 @@ async function searchCommand(
       `explain: bm25=${explain.branches.bm25.length} dense=${explain.branches.dense.length} fused=${explain.fusion.length} qdrant=${explain.timings.qdrantMs}ms`,
     );
   }
+}
+
+async function reviewCommand(args: string[]): Promise<void> {
+  const subcommand = args[0];
+  if (subcommand === "list") {
+    const { values } = parseArgs({
+      args: args.slice(1),
+      options: {
+        status: { type: "string" },
+        kind: { type: "string" },
+        limit: { type: "string", default: "50" },
+        json: { type: "boolean" },
+      },
+    });
+    const url = new URL("/v1/review/queue", config.apiUrl);
+    if (values.status) url.searchParams.set("status", values.status);
+    if (values.kind) url.searchParams.set("kind", values.kind);
+    url.searchParams.set("limit", values.limit!);
+    const body = await api(`${url.pathname}${url.search}`);
+    if (values.json) {
+      console.log(JSON.stringify(body, null, 2));
+      return;
+    }
+    const data = (
+      body as { data: { items: Array<Record<string, unknown>>; total: number } }
+    ).data;
+    console.log(`${data.total} review items`);
+    for (const item of data.items) {
+      console.log(
+        `${String(item.id).padEnd(30)} ${String(item.kind).padEnd(8)} ${String(item.status).padEnd(8)} ${String(item.createdAt).slice(0, 19)}`,
+      );
+    }
+    return;
+  }
+
+  if (subcommand !== "approve" && subcommand !== "reject") {
+    throw new Error(
+      "usage: occ review list | approve | reject [--ids ...] [--kind ...] [--company ...] [--all --yes]",
+    );
+  }
+
+  const { values } = parseArgs({
+    args: args.slice(1),
+    options: {
+      ids: { type: "string" },
+      kind: { type: "string" },
+      company: { type: "string" },
+      all: { type: "boolean" },
+      yes: { type: "boolean" },
+      limit: { type: "string", default: "200" },
+      reviewer: { type: "string" },
+      "dry-run": { type: "boolean" },
+      json: { type: "boolean" },
+    },
+  });
+
+  const ids = values.ids
+    ?.split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const decision = subcommand === "approve" ? "accepted" : "rejected";
+  if (!ids?.length && !values.kind && !values.company && !values.all) {
+    throw new Error(
+      "review decision needs --ids, --kind, --company or --all (with --yes)",
+    );
+  }
+  if (
+    values.all &&
+    !ids?.length &&
+    !values.kind &&
+    !values.company &&
+    !values.yes
+  ) {
+    throw new Error("--all without --kind/--company requires explicit --yes");
+  }
+
+  if (values["dry-run"]) {
+    if (ids?.length) {
+      console.log(`would ${decision} ${ids.length} item(s)`);
+      return;
+    }
+    const url = new URL("/v1/review/queue", config.apiUrl);
+    url.searchParams.set("status", "pending");
+    if (values.kind) url.searchParams.set("kind", values.kind);
+    url.searchParams.set("limit", values.limit!);
+    const body = (await api(`${url.pathname}${url.search}`)) as {
+      data: { items: unknown[]; total: number };
+    };
+    const limit = Math.max(1, Number(values.limit) || 200);
+    console.log(
+      `would ${decision} up to ${Math.min(body.data.total, limit)} of ${body.data.total} pending item(s)` +
+        (values.company
+          ? ` · company filter ${values.company} is applied server-side`
+          : ""),
+    );
+    return;
+  }
+
+  const response = (await request("/v1/review/batch", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      decision,
+      ...(ids?.length ? { ids } : {}),
+      ...(values.kind ? { kind: values.kind } : {}),
+      ...(values.company ? { company: values.company } : {}),
+      limit: Math.max(1, Number(values.limit) || 200),
+      ...(values.all ? { all: true } : {}),
+      ...(values.reviewer ? { reviewer: values.reviewer } : {}),
+    }),
+  })) as {
+    data: { updated: number; skipped: number; items: unknown[] };
+    meta: { decision: string };
+  };
+
+  if (values.json) {
+    console.log(JSON.stringify(response, null, 2));
+    return;
+  }
+  console.log(
+    `${response.meta.decision}: updated ${response.data.updated}, skipped ${response.data.skipped}`,
+  );
 }
 
 async function proposeCommand(args: string[]): Promise<void> {

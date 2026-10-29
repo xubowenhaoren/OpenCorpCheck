@@ -368,6 +368,11 @@ Raw HTML/PDF is stored in MinIO by SHA-256. Re-extraction is a first-class opera
 the prompt/model, replay the snapshot, diff the facts. This is the difference between a demo
 and a database.
 
+Implemented today (`packages/storage`): an S3-compatible snapshot store (MinIO locally via
+`scripts/dev-minio.sh`) writes research sections to `sections/<slug>/<sha256>.md` and F10
+pages to `f10/<market>/<code>/<page>/<sha>.json` when `OCC_S3_*` is configured. Raw F10 HTML
+bytes still need sidecar support; the stored JSON contains the full text/tables payload.
+
 ### 5.4 Why not a graph database
 
 At ~1,000 companies and maybe 10^5 edges, Postgres recursive CTEs and indexed adjacency

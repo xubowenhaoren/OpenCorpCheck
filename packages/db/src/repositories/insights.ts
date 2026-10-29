@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   relationLabel,
   type CompanyFactView,
@@ -14,7 +16,7 @@ import {
   type ReviewStatus,
   type SourceRefView,
 } from "@occ/core";
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 
 import type { Db } from "../client.js";
 import {
@@ -482,4 +484,276 @@ export async function getReviewItem(
     .where(eq(reviewQueue.id, id))
     .limit(1);
   return row ? toReviewItem(row) : null;
+}
+
+export interface ReviewDecisionFilter {
+  /** Explicit queue item ids. */
+  ids?: string[];
+  kind?: ReviewKind;
+  /** Matches `payload.companyId` (fact) or the source company (relation). */
+  companyId?: string;
+  limit?: number;
+  /** Explicit opt-in to every pending item; requires a `limit`. */
+  all?: boolean;
+}
+
+export interface ReviewDecisionOutcome {
+  updated: number;
+  skipped: number;
+  items: ReviewItemView[];
+}
+
+type ReviewTx = Pick<Db, "select" | "insert" | "update" | "delete" | "execute">;
+
+/**
+ * Move pending review items to `accepted`/`rejected` and apply the canonical
+ * write for accepted items:
+ *
+ *   - extracted relations (`relations.review_id = item.id`) → status verified/rejected;
+ *   - accepted relation proposals without a row → create the edge + evidence;
+ *   - accepted fact proposals → insert a `facts` row with an `agent_proposal` source.
+ *
+ * Only pending rows transition, so retries are idempotent. Rejected items never
+ * create rows. A human decision is the only path from `inferred` to `verified`.
+ */
+export async function decideReviewItems(
+  db: Db,
+  filter: ReviewDecisionFilter,
+  decision: { status: "accepted" | "rejected"; reviewer?: string },
+): Promise<ReviewDecisionOutcome> {
+  const ids = filter.ids?.filter(Boolean) ?? [];
+  if (
+    !filter.all &&
+    ids.length === 0 &&
+    !filter.kind &&
+    !filter.companyId
+  ) {
+    throw new Error("review decision needs ids, kind, company or all");
+  }
+  const limit = Math.max(1, Math.min(filter.limit ?? 200, 500));
+  const pendingConditions = [eq(reviewQueue.status, "pending")];
+  if (ids.length > 0) pendingConditions.push(inArray(reviewQueue.id, ids));
+  if (filter.kind) pendingConditions.push(eq(reviewQueue.kind, filter.kind));
+  if (filter.companyId) {
+    pendingConditions.push(
+      sql`${reviewQueue.payload}->>'companyId' = ${filter.companyId}`,
+    );
+  }
+  const where = and(...pendingConditions);
+
+  return db.transaction(async (tx) => {
+    const candidates = await tx
+      .select()
+      .from(reviewQueue)
+      .where(where)
+      .orderBy(asc(reviewQueue.createdAt))
+      .limit(limit)
+      .for("update");
+
+    if (candidates.length === 0) {
+      return { updated: 0, skipped: ids.length, items: [] };
+    }
+
+    // Count before the update: afterwards the updated rows are no longer
+    // `pending`, so a post-update count would under-report skipped items.
+    const [selectedTotalRow] = await tx
+      .select({ value: sql<number>`count(*)::int` })
+      .from(reviewQueue)
+      .where(where);
+
+    const now = new Date();
+    const idsToUpdate = candidates.map((row) => row.id);
+    const updatedRows = await tx
+      .update(reviewQueue)
+      .set({
+        status: decision.status,
+        reviewer: decision.reviewer ?? null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(reviewQueue.status, "pending"),
+          inArray(reviewQueue.id, idsToUpdate),
+        ),
+      )
+      .returning();
+
+    for (const row of updatedRows) {
+      await applyDecision(tx, row, decision.status, now);
+    }
+
+    let skipped = 0;
+    if (ids.length > 0) {
+      skipped = Math.max(0, ids.length - updatedRows.length);
+    } else {
+      skipped = Math.max(
+        0,
+        (selectedTotalRow?.value ?? 0) - updatedRows.length,
+      );
+    }
+
+    return {
+      updated: updatedRows.length,
+      skipped,
+      items: updatedRows.map(toReviewItem),
+    };
+  });
+}
+
+async function applyDecision(
+  tx: ReviewTx,
+  row: ReviewRow,
+  status: "accepted" | "rejected",
+  now: Date,
+): Promise<void> {
+  const payload = asRecord(row.payload);
+  const evidence = asRecord(row.evidence);
+
+  if (row.kind === "relation") {
+    const linked = await tx
+      .select({ id: relations.id })
+      .from(relations)
+      .where(eq(relations.reviewId, row.id));
+    if (linked.length > 0) {
+      const relationStatus = status === "accepted" ? "verified" : "rejected";
+      await tx
+        .update(relations)
+        .set({ status: relationStatus })
+        .where(
+          inArray(
+            relations.id,
+            linked.map((relation) => relation.id),
+          ),
+        );
+      return;
+    }
+
+    if (status !== "accepted") return;
+    const srcCompanyId = stringField(payload, "srcCompanyId");
+    const dstCompanyId = stringField(payload, "dstCompanyId");
+    const type = stringField(payload, "type");
+    if (!srcCompanyId || !dstCompanyId || !type) return;
+
+    const relationId = `rel_proposal_${row.id}`;
+    await tx
+      .insert(relations)
+      .values({
+        id: relationId,
+        srcCompanyId,
+        dstCompanyId,
+        type,
+        status: "verified",
+        confidence: numberField(evidence, "confidence"),
+        extractorVersion: "review-v1",
+        reviewId: row.id,
+      })
+      .onConflictDoNothing({ target: relations.id });
+
+    const quote = stringField(evidence, "quote") ?? null;
+    const sourceUrl = stringField(evidence, "sourceUrl");
+    const sourceId = sourceUrl
+      ? await ensureProposalSource(tx, sourceUrl, now)
+      : null;
+    if (quote || sourceId) {
+      await tx
+        .insert(relationEvidence)
+        .values({
+          relationId,
+          sourceId,
+          quote,
+          publishedAt: now,
+        })
+        .onConflictDoNothing();
+    }
+    return;
+  }
+
+  if (row.kind !== "fact" || status !== "accepted") return;
+
+  const companyId = stringField(payload, "companyId");
+  const predicate = stringField(payload, "predicate");
+  if (
+    !companyId ||
+    !predicate ||
+    payload.value === undefined ||
+    payload.value === null
+  ) {
+    return;
+  }
+
+  const sourceUrl = stringField(evidence, "sourceUrl");
+  const sourceId = sourceUrl
+    ? await ensureProposalSource(tx, sourceUrl, now)
+    : null;
+  await tx
+    .insert(facts)
+    .values({
+      id: `fact_proposal_${row.id}`,
+      companyId,
+      predicate,
+      value: payload.value,
+      sourceId,
+      quote: stringField(evidence, "quote") ?? null,
+      method: "agent_proposal",
+      confidence: numberField(evidence, "confidence"),
+      extractorVersion: "review-v1",
+      sourceRefs: [],
+      observedAt: now,
+    })
+    .onConflictDoNothing({ target: facts.id });
+}
+
+async function ensureProposalSource(
+  tx: ReviewTx,
+  url: string,
+  now: Date,
+): Promise<string> {
+  const id = `src_proposal_${sha1(url).slice(0, 20)}`;
+  let domain: string | null = null;
+  try {
+    domain = new URL(url).hostname;
+  } catch {
+    // Keep the raw URL and a null domain for non-http evidence.
+  }
+  await tx
+    .insert(sources)
+    .values({
+      id,
+      url,
+      canonicalUrl: url,
+      domain,
+      title: "Agent proposal evidence",
+      fetchedAt: now,
+      trustTier: "proposal",
+      license: "agent-proposal",
+      robotsOk: true,
+    })
+    .onConflictDoNothing({ target: sources.id });
+  return id;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringField(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function numberField(
+  record: Record<string, unknown>,
+  key: string,
+): number | null {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function sha1(value: string): string {
+  return createHash("sha1").update(value).digest("hex");
 }

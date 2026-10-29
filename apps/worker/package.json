@@ -11,7 +11,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/cli.js work",
-    "test": "tsc -p ../../packages/core/tsconfig.json && tsc -p ../../packages/db/tsconfig.json && tsc -p ../../packages/retrieval/tsconfig.json && tsc -p ../../packages/ingest/tsconfig.json && tsc -p ../../packages/extract/tsconfig.json && tsc -p ../../packages/sources/eastmoney-f10/tsconfig.json && tsc -p tsconfig.json && vitest run"
+    "test": "tsc -p ../../packages/core/tsconfig.json && tsc -p ../../packages/db/tsconfig.json && tsc -p ../../packages/retrieval/tsconfig.json && tsc -p ../../packages/storage/tsconfig.json && tsc -p ../../packages/ingest/tsconfig.json && tsc -p ../../packages/extract/tsconfig.json && tsc -p ../../packages/sources/eastmoney-f10/tsconfig.json && tsc -p tsconfig.json && vitest run"
   },
   "dependencies": {
     "@occ/core": "workspace:*",
@@ -22,7 +22,8 @@
     "yaml": "^2.9.1",
     "zod": "^4.6.7",
     "@occ/extract": "workspace:*",
-    "@occ/db": "workspace:*"
+    "@occ/db": "workspace:*",
+    "@occ/storage": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

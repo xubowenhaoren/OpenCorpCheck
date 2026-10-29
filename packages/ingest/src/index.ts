@@ -1,3 +1,4 @@
+export * from "./curated-aliases.js";
 export * from "./ingest.js";
 export * from "./ndx.js";
 export * from "./pinyin.js";

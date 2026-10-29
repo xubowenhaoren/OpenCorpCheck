@@ -3,11 +3,15 @@ import { createHash } from "node:crypto";
 import {
   AppError,
   RelationTypeSchema,
+  type ReviewBatchDecision,
+  type ReviewBatchResult,
+  type ReviewDecision,
   type ReviewItemView,
   type ReviewProposal,
   type ReviewQueueQuery,
 } from "@occ/core";
 import {
+  decideReviewItems,
   getReviewItem,
   listReviewItems,
   resolveCompanyId,
@@ -54,6 +58,12 @@ export class ReviewService {
       const companyId = await resolveCompanyId(this.db, ref);
       if (!companyId) {
         throw new AppError("not_found", `company not found: ${ref}`);
+      }
+      if (!textField(payload, ["predicate"])) {
+        throw new AppError("bad_request", "fact proposal requires predicate");
+      }
+      if (!("value" in payload) || payload.value === null) {
+        throw new AppError("bad_request", "fact proposal requires value");
       }
       payload.companyId = companyId;
     } else {
@@ -110,5 +120,54 @@ export class ReviewService {
     query: ReviewQueueQuery,
   ): Promise<{ items: ReviewItemView[]; total: number }> {
     return listReviewItems(this.db, query);
+  }
+
+  /** Decide one item. Already-decided items are returned unchanged. */
+  async decide(
+    id: string,
+    input: ReviewDecision,
+  ): Promise<{ item: ReviewItemView; updated: boolean }> {
+    const outcome = await decideReviewItems(
+      this.db,
+      { ids: [id], limit: 1 },
+      { status: input.decision, reviewer: input.reviewer },
+    );
+    const item = outcome.items[0] ?? (await getReviewItem(this.db, id));
+    if (!item) {
+      throw new AppError("not_found", `review item not found: ${id}`);
+    }
+    return { item, updated: outcome.updated > 0 };
+  }
+
+  /**
+   * Decide a filtered batch. A non-empty filter is mandatory (`ids`, `kind`,
+   * `company`, or `all: true`) so a blank request cannot approve everything.
+   */
+  async decideBatch(input: ReviewBatchDecision): Promise<ReviewBatchResult> {
+    if (!input.all && !input.ids?.length && !input.kind && !input.company) {
+      throw new AppError(
+        "bad_request",
+        "batch decision requires ids, kind, company or all=true",
+      );
+    }
+    let companyId: string | undefined;
+    if (input.company) {
+      const resolved = await resolveCompanyId(this.db, input.company);
+      if (!resolved) {
+        throw new AppError("not_found", `company not found: ${input.company}`);
+      }
+      companyId = resolved;
+    }
+    return decideReviewItems(
+      this.db,
+      {
+        ids: input.ids,
+        kind: input.kind,
+        companyId,
+        limit: input.limit,
+        all: input.all,
+      },
+      { status: input.decision, reviewer: input.reviewer },
+    );
   }
 }

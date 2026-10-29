@@ -1,11 +1,14 @@
 # OpenCorpCheck — Context Transfer
 
 > 交接日期：2026-10-27（P2 更新：2026-10-28；语料清洗 + 评测扩编：2026-10-28；
-> P3.1/P3.2 公司情报层：2026-10-28）
-> 当前阶段：Phase 0 + Phase 1 + P2 + P2.5 + P3.1/P3.2 已完成。真实语料已与
-> synthetic fixture 隔离（默认只搜索 102 家真实 profile），golden query 扩到 7 个
-> family、含 MRR@10/nDCG@10；公司卡片 API + CLI + MCP 已能读 cited 财务/事实/关系，
-> 关系抽取走 deepseek-flash + 审核队列。Docker 封装全部 TODO。
+> P3.1/P3.2 公司情报层：2026-10-28；运维补缺：中文 alias + 审核队列批量 + MinIO
+> 快照：2026-10-28）
+> 当前阶段：Phase 0 + Phase 1 + P2 + P2.5 + P3.1/P3.2 + 运维补缺已完成。真实语料
+> 已与 synthetic fixture 隔离（默认只搜索 102 家真实 profile），golden query 扩到 7
+> 个 family、含 MRR@10/nDCG@10；公司卡片 API + CLI + MCP 已能读 cited 财务/事实/关系，
+> 关系抽取走 deepseek-flash + 审核队列。中文 curated alias 已接入（zh-name top1
+> 100%）；审核队列支持批量 accept/reject + 本地 HTML console；section/F10 快照已写入
+> S3 兼容存储（本地 MinIO）。Docker 封装全部 TODO。
 > 下一阶段：P3 剩余（deep_research MCP、ACP sidebar）或 P4（A500/HSI/SPX 快照 +
 > A/HK 全量 backfill），由用户决定。
 >
@@ -159,6 +162,7 @@ OpenCorpCheck/
     f10-financials/SKILL.md        # F10 来源层级、页面选择、引用纪律
   config/universe.yaml             # 4 个指数 + 24 家 AI watchlist
   config/indices/ndx.yaml          # NASDAQ-100 成分股快照（官方 Nasdaq，带 as_of/license）
+  config/aliases/zh.yaml           # curated 中文 alias（奈飞/好市多/茅台…）
   docs/
     ARCHITECTURE.md                # 完整平台设计（Phase 1+ 的主要参考）
     EXTRACT.md                     # P3：财务/事实/关系抽取、审核队列与读取方式
@@ -173,11 +177,15 @@ OpenCorpCheck/
     ingest/                        # section markdown → documents/chunks → Qdrant
     extract/                       # section markdown → financials/facts/relations
     retrieval/                     # tokenizer / BM25 / BGE-M3 / Qdrant / RRF-DBSF
+    storage/                       # S3/MinIO snapshot store（@aws-sdk/client-s3）
     sources/eastmoney-f10/         # TS adapter：Zod 校验 + summary/full 投影
   services/
     finance-analyst/               # Python sidecar：A/HK/US F10（uv + Playwright）
   scripts/
     dev-db.sh                      # 本地 Postgres 17 init/start/stop
+    dev-qdrant.sh                  # Qdrant 1.18 原生二进制
+    dev-embeddings.sh              # BGE-M3 / reranker sidecar
+    dev-minio.sh                   # 本地 MinIO（brew install minio 或 MINIO_BIN）
   phase0/
     README.md                      # Phase 0 快速开始/排错
     .env.example                   # DEEPSEEK_API_KEY 占位
@@ -337,7 +345,8 @@ npm run validate
   缺口处写“未验证”。注意：模型会用 bash grep dsh spill 文件读被 `--json` 8KiB 截断的
   完整 F10 结果——这是特性不是 bug。
 - [x] P2 数据层（Drizzle/Qdrant）已完成，见 §6 P2。
-- [ ] 待办：A500/HSI/SPX 成分股快照（P4；NDX 已完成）、MinIO 快照上传。
+- [x] MinIO/S3 快照上传（2026-10-28，`packages/storage` + `occ snapshots`）。
+- [ ] 待办：A500/HSI/SPX 成分股快照（P4；NDX 已完成）。
 - 运行方式见 [`services/finance-analyst/README.md`](services/finance-analyst/README.md)。
 
 ### P1 — 东方财富 F10 sidecar（用户明确要求优先）
@@ -422,7 +431,8 @@ npm run validate
       `scripts/dev-embeddings.sh`、`scripts/e2e-search.sh`。
 - [x] 合成 fixture 语料：24 家公司、31 篇文档；全部 `fixture://` + `trust_tier='fixture'`，
       不是真实研究数据。
-- [ ] MinIO 快照上传。（worker/F10 → documents/chunks 已由 `packages/ingest` 打通）
+- [x] MinIO/S3 快照上传（2026-10-28）。worker/F10 → documents/chunks 已由
+      `packages/ingest` 打通；section 与 F10 JSON 快照由 `packages/storage` 上传。
 - [ ] index constituent 快照（P4）与实体解析。
 
 以下是原始 P2 设计（已完成部分以上方进度为准）：
@@ -470,8 +480,9 @@ npm run validate
   research p50 143s / p95 221s，ingest p50 15s，4.94M input / 1.57M output tokens，
   0 failed / 0 dead letter；1,428 个 profile chunk、100 条 NDX membership。
 - [x] Golden query 评测（`scripts/eval-search.mjs`，结果见 `docs/EVAL.md`）：
-  hybrid 下 ticker / 英文名 **top1 100%**、natural language top1 78.1% /
-  recall@5 100%、pinyin 100%、typo 95.8%；p95 220–383ms。
+  hybrid 下 ticker / 英文名 / typo / pinyin / zh-name **top1 100%**、
+  natural language 81.3%（recall@5 96.9%）、documents 80%（recall@5 100%）；
+  公司 family p95 218–300ms，documents p95 366–473ms。
   顺带修复 exact identifier/alias/fuzzy 排在 BM25 原始分数之后的问题
   （keyword 模式英文名 top1 从 2% → 100%）。
 - [x] **语料清洗（fixture isolation，2026-10-28）**：
@@ -493,8 +504,9 @@ npm run validate
   - 新增 pinyin alias 派生：中文 alias → 全拼 + 首字母（`英伟达 → ywd`），
     seed 与 ingest 共用 `packages/ingest/src/pinyin.ts`；旧语料由
     `occ sync-fixtures` 回填（46 条更新 / 92 条新增 alias）。
-  - 已知缺口：NFLX 无“奈飞”alias、COST 无“好市多”alias，zh-name top1 87.5%；
-    `Adboe` typo 排 ADBE 第 3。下一轮补 curated 中文 alias。
+  - 已知缺口（2026-10-28 已修复）：原 NFLX 无“奈飞”alias、COST 无“好市多”alias，
+    zh-name top1 87.5%，`Adboe` 排 ADBE 第 3；现由
+    `config/aliases/zh.yaml` + `occ aliases sync` 补到 100%。
 
 **目标**：跑通真实数据闭环，测 backfill pipeline 速度 + hybrid search 质量。
 
@@ -525,7 +537,7 @@ npm run validate
 6. **验收**：
    - [x] 100 家都有 section；失败公司可单独重跑；
    - [x] 至少 90 家进入 `documents/chunks`（实际 100 家 / 1,428 chunks）；
-   - [x] ticker / 英文名 top1 100%；中文名 top1 87.5%（奈飞/好市多缺 alias）；
+   - [x] ticker / 英文名 / 中文名 top1 100%（中文名由 curated alias 补齐）；
    - [x] 记录 100 家 backfill wall time（约 42 分钟）与 p50/p95；
    - [x] 搜索 p95（不含 rerank）220–383ms，整体 < 400ms。
 
@@ -560,6 +572,24 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
   每条关系都有 evidence + 待审核条目，无自环；AAPL FY2025 营收 416,161 百万美元，
   600519 2025 营收 1,721 亿元；AAPL→GOOGL `buys_from` 带来源 URL；
   不加 `--force` 重跑命中关系缓存、不再调 LLM。
+- [x] 运维补缺（2026-10-28）：
+  - **curated 中文 alias**：`config/aliases/zh.yaml` + `occ aliases sync`
+    （插 alias + pinyin 形式，并重索引 company point）。82 个 ticker / 81 家公司，
+    新增 281 条 alias；zh-name eval 87.5% → **100%**（奈飞/好市多 top1）。
+  - **审核队列批量**：`occ review approve|reject --ids|--kind|--company|--all --yes`
+    （`--dry-run` 预览）；API `POST /v1/review/items/{id}/decision`、
+    `POST /v1/review/batch`；本地 console `GET /v1/review/ui`。accept 抽取关系
+    → `verified`、reject → `rejected`；accept fact proposal → `facts` 行 +
+    `trust_tier='proposal'` source；只有 pending 迁移，重复调用幂等。
+  - **MinIO/S3 快照**：`packages/storage`（`@aws-sdk/client-s3`）+
+    `occ snapshots upload|check|list` + `scripts/dev-minio.sh`。102/102 section
+    已上传为 `sections/<slug>/<sha256>.md`；ingest 对新/变更 section 自动上传。
+    F10 页面以结构化 JSON 上传为 `f10/<market>/<code>/<page>/<sha>.json`；
+    `documents.storage_key` / `f10_pages.storage_key` 现在是真实 `s3://` URI。
+    raw HTML 仍待 sidecar 返回 bytes。
+  - 验收：`pnpm -r test` 全绿；`node scripts/e2e-search.mjs` 43/43；hybrid eval
+    ticker/name/typo/pinyin/zh-name 全 100%、natural 81.3%（recall@5 96.9%）、
+    documents 80%（recall@5 100%）；快照重跑 0 上传 / 102 existing。
 
 **还没做（P3 剩余）**：`deep_research` MCP 入队、dsh ACP sidebar、新闻文档入库。
 
@@ -605,7 +635,8 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 - 注意：Electron 不跑 crawler/Playwright；那些在 worker/finance-analyst 容器里。
 - **当前替代方案（不要删）**：`scripts/dev-db.sh`（Postgres 17）、
   `scripts/dev-qdrant.sh`（Qdrant 1.18 原生 arm64）、`scripts/dev-embeddings.sh`
-  （BGE-M3 sidecar）、`scripts/e2e-search.sh`。这些就是本机的「散装」运行方式。
+  （BGE-M3 sidecar）、`scripts/dev-minio.sh`（MinIO；`brew install minio` 或
+  `MINIO_BIN`）、`scripts/e2e-search.sh`。这些就是本机的「散装」运行方式。
 
 ### P6 — 评测 / 质量
 
@@ -639,6 +670,12 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
     但默认搜索不可见；`is_fixture` 同时存在于 Postgres 和 Qdrant payload，搜索默认
     `must_not`，只有 `include_fixtures=true` 才返回。不要用删除 fixture 的方式“清洗”，
     否则 E2E 和 mock 流水线会失去基线。
+13. **中文常用名走 curated 文件**：`config/aliases/zh.yaml` + `occ aliases sync`，
+    不要在代码里硬编码，也不要指望模型从英文 profile 里“猜”出奈飞/好市多。新增
+    中文名只改 YAML，再跑一次 sync（会顺带重索引 company point）。
+14. **快照存储是可选 S3 兼容层**：未配置 `OCC_S3_*` 时 ingest/worker 完全不变；
+    配置后 section markdown 和 F10 JSON 都会上传，上传失败只告警、不阻塞入库。
+    F10 raw HTML 需要 sidecar 未来返回 bytes，当前快照是结构化 page JSON。
 
 ---
 
@@ -661,12 +698,16 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 | MCP 工具不出现 | 先 `corepack pnpm -r build`；sidecar 要在 `:8090`；检查 `--dump-config` 里 `mcp-finance-analyst` 是否被 `insert` 进去 |
 | 本机 Postgres 启动失败 `postmaster became multithreaded` | macOS 需要有效 locale：`scripts/dev-db.sh` 已设 `LC_ALL=en_US.UTF-8`；或手动 export |
 | F10 enqueue 报 sidecar unreachable | enqueue 需要调 `GET /v1/f10/pages/{market}` 解析 preset；先起 sidecar，或显式传 `--pages cwfx,gsgk` |
+| `f10.page` 有 1 个 failed / 死信 | 那是 2026-10-27 的 **FAILCO 假 ticker 负向测试**（sidecar 停机时验证死信）；sidecar 起来后直接抓 FAILCO 仍会 `EmptyRender`，不是真实故障。真实重跑用 `enqueue f10 --tickers AAPL:US --pages cwfx,gsgk --force` |
 | worker 队列深度/`--drain` 数字不对 | worker 直接读 `pgboss.job`，假设默认 `pgboss` schema；换 schema 需同步改 `apps/worker/src/queues.ts` |
 | **`scripts/e2e-search.sh` 会 `occ seed --reset`，清空目标 DB + Qdrant** | 不要对真实研究语料运行；`occ seed`（即使不带 `--reset`）也会重写 24 家 seed 公司的 alias 和 company point。用 `node scripts/e2e-search.mjs` 直接跑 live 语料，或把 `DATABASE_URL`/`OCC_QDRANT_*` 指向一次性资源 |
 | 旧语料没有 `is_fixture` payload / pinyin alias | 跑一次 `npm run sync:fixtures`（幂等）：重算 flag、回填 pinyin、修补 Qdrant payload |
 | 默认搜索搜不到 fixture-only 公司（OpenAI/CATL/Cambricon 等） | 这是设计行为；调试时加 `include_fixtures=true`，真实 research 入库后自动转正 |
-| 中文常用名搜不到（奈飞/好市多） | 目前 alias 只从 profile 的 name/ticker 派生；下一轮补 curated 中文 alias，见 `docs/EVAL.md` |
-| pinyin alias 依赖 `pinyin-pro` | 只在 ingest/CLI 侧；搜索侧不需要该依赖。新增中文 alias 时用 `pinyinVariants`/`pinyinAliasForms` |
+| 中文常用名搜不到 | 先加到 `config/aliases/zh.yaml`，再跑 `occ aliases sync`（它会重索引 company point）；只改文件不跑 sync 不生效 |
+| MinIO 官方下载 410 | 2026-10 起 `dl.min.io` 返回 410；本机用 `brew install minio`，或设 `MINIO_BIN` 指向任意 S3 兼容二进制；`scripts/dev-minio.sh` 会优先用 PATH 里的 `minio` |
+| 快照上传报 hash mismatch | `documents.sha256` 与 section 文件不一致：先 `occ ingest --force` 再 `occ snapshots upload`，不要强行上传不同内容 |
+| 审核 accept/reject 语义 | 只有 `pending` 会迁移；accept 抽取关系→`verified`、accept fact proposal→写 `facts` + proposal source；reject 关系→`rejected`（不删行）。批量必须有 `--ids/--kind/--company/--all --yes` |
+| pinyin alias 依赖 `pinyin-pro` | 只在 ingest/CLI 侧；搜索侧不需要该依赖。新增中文 alias 时用 `pinyinVariants`/`pinyinAliasForms`，`occ aliases sync` 已自动生成 |
 | **phase0 `npm run research -- --mock` 会无条件覆盖 `out/sections/` 并重组 `magnificent-seven.md` 等交付物** | 验证流水线后必须 `git checkout -- phase0/out/` 并删除 mock sections（2026-10-28 踩过，已恢复）；中间 section 想保留时先备份 |
 | **旧版 worker 默认把 runs/sections 写进 `phase0/`（2026-10-28 已改）** | 曾覆盖 Phase 0 的 MAG7 事件日志，`phase0 && npm run validate` 因此 FAIL；已提交的 `magnificent-seven.md` 未受影响。现在 worker 默认写 `.occ/runs`、`.occ/sections`（`OCC_WORKER_SECTIONS_DIR`，兼容旧的 `OCC_SECTIONS_DIR`）。要重新校验 Phase 0 只能重跑那 7 家 |
 | `occ extract --relations llm` 报 key 缺失 | 用 `DEEPSEEK_API_KEY_FILE=DEEPSEEK_API_KEY.txt` 或 export `DEEPSEEK_API_KEY`；模型固定 `deepseek-flash`（`OCC_EXTRACT_MODEL` 可改，但不要用 Pro） |
@@ -702,8 +743,15 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 - [x] 语料隔离：`occ sync-fixtures` 后默认只返回 102 家真实 profile；
       `include_fixtures=true` 才返回 14 家 fixture-only 公司 / 31 篇 fixture 文档。
 - [x] 评测扩编：`scripts/golden-queries.mjs` 7 个 family；hybrid ticker/name
-      top1 100%、pinyin 100%、typo 95.8%、natural 78.1%（recall@5 100%）、
-      zh-name 87.5%；结果写进 `docs/EVAL.md`。
+      top1 100%、pinyin 100%、typo 100%、natural 81.3%（recall@5 96.9%）、
+      zh-name 100%；结果写进 `docs/EVAL.md`。
+- [x] 中文 alias：`config/aliases/zh.yaml` 覆盖 NDX + A/HK；`occ aliases sync`
+      插入 281 条并重索引 77 家公司；奈飞/好市多/开市客等 top1。
+- [x] 审核队列：`occ review approve|reject` 批量 + `POST /v1/review/batch` +
+      `/v1/review/ui`；accept 关系→verified、accept fact→materialize，幂等。
+- [x] 快照：`packages/storage` + `occ snapshots upload|check|list`；
+      102/102 section、2 个 F10 page JSON 已上传；重跑 0 新上传。
+- [x] `corepack pnpm -r test` 全绿；`node scripts/e2e-search.mjs` 43/43。
 - [x] P3.1/P3.2：`packages/extract` + migration `0003/0004` + 公司卡片 API +
       `occ company/review/propose/extract` + 5 个 MCP 公司工具；
       `docs/EXTRACT.md` 记录命令、关系类型、校验规则和已知限制。
