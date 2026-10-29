@@ -10,6 +10,8 @@ import {
 
 import { createApp, type HealthReport } from "./app.js";
 import { config, publicConfig } from "./config.js";
+import { CompanyService } from "./services/company.js";
+import { ReviewService } from "./services/review.js";
 import { SearchService } from "./services/search.js";
 
 const { db, pool } = createDb(config.databaseUrl);
@@ -41,6 +43,8 @@ const engine = new SearchEngine({
 });
 
 const search = new SearchService({ db, engine, reranker });
+const company = new CompanyService(db);
+const review = new ReviewService(db);
 
 async function health(): Promise<HealthReport> {
   const [database, qdrantOk, embeddingReport] = await Promise.all([
@@ -86,7 +90,7 @@ async function checkEmbeddings(): Promise<{
   }
 }
 
-const app = createApp({ search, health });
+const app = createApp({ search, company, review, health });
 
 const server = serve(
   { fetch: app.fetch, port: config.apiPort, hostname: "127.0.0.1" },

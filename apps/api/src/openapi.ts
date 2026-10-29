@@ -134,13 +134,111 @@ export function openApiDocument() {
               in: "path",
               required: true,
               schema: { type: "string" },
-              description: "Internal ULID or slug",
+              description: "Internal ULID, slug or ticker (AAPL, 600519, 00700)",
+            },
+            {
+              name: "include",
+              in: "query",
+              schema: { type: "string" },
+              description:
+                "Comma-separated: financials,facts,relations,events. Omit for all.",
+            },
+            {
+              name: "financial_limit",
+              in: "query",
+              schema: { type: "integer", minimum: 1, maximum: 200, default: 20 },
+            },
+            {
+              name: "fact_limit",
+              in: "query",
+              schema: { type: "integer", minimum: 1, maximum: 200, default: 30 },
+            },
+            {
+              name: "relation_limit",
+              in: "query",
+              schema: { type: "integer", minimum: 1, maximum: 200, default: 20 },
+            },
+            {
+              name: "event_limit",
+              in: "query",
+              schema: { type: "integer", minimum: 1, maximum: 100, default: 10 },
+            },
+            {
+              name: "relation_status",
+              in: "query",
+              schema: {
+                type: "string",
+                enum: ["reported", "inferred", "verified", "rejected"],
+              },
             },
           ],
           responses: {
-            "200": { description: "Company profile, aliases, listings, financials" },
+            "200": {
+              description:
+                "Company card: profile, counts, financials, facts, relations (in/out), events",
+            },
+            "400": errorResponse,
             "404": errorResponse,
           },
+        },
+      },
+      "/v1/review/proposals": {
+        post: {
+          operationId: "createReviewProposal",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["kind", "payload"],
+                  properties: {
+                    kind: { type: "string", enum: ["fact", "relation"] },
+                    payload: { type: "object" },
+                    evidence: { type: "object" },
+                    idempotency_key: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "201": { description: "Proposal stored in the review queue" },
+            "200": { description: "Idempotent replay of an existing proposal" },
+            "400": errorResponse,
+            "404": errorResponse,
+          },
+        },
+      },
+      "/v1/review/queue": {
+        get: {
+          operationId: "listReviewQueue",
+          parameters: [
+            {
+              name: "status",
+              in: "query",
+              schema: {
+                type: "string",
+                enum: ["pending", "accepted", "rejected"],
+              },
+            },
+            {
+              name: "kind",
+              in: "query",
+              schema: { type: "string", enum: ["fact", "relation"] },
+            },
+            {
+              name: "limit",
+              in: "query",
+              schema: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+            },
+            {
+              name: "offset",
+              in: "query",
+              schema: { type: "integer", minimum: 0, default: 0 },
+            },
+          ],
+          responses: { "200": { description: "Review queue items" }, "400": errorResponse },
         },
       },
     },

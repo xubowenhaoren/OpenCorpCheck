@@ -1,8 +1,12 @@
 import {
   AppError,
+  CompanyCardQuerySchema,
+  ReviewProposalSchema,
+  ReviewQueueQuerySchema,
   SearchCompaniesQuerySchema,
   SearchDocumentsQuerySchema,
   toAppError,
+  type CompanyCardResponse,
   type CompanyHit,
   type DocumentHit,
   type SearchResponse,
@@ -11,6 +15,8 @@ import { Hono } from "hono";
 
 import { config } from "./config.js";
 import { openApiDocument } from "./openapi.js";
+import type { CompanyService } from "./services/company.js";
+import type { ReviewService } from "./services/review.js";
 import type { SearchService } from "./services/search.js";
 
 export interface HealthReport {
@@ -22,6 +28,8 @@ export interface HealthReport {
 
 export interface AppDeps {
   search: SearchService;
+  company: CompanyService;
+  review: ReviewService;
   health: () => Promise<HealthReport>;
 }
 
@@ -74,38 +82,67 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   app.get("/v1/companies/:id", async (c) => {
-    const bundle = await deps.search.getCompany(c.req.param("id"));
-    if (!bundle) {
-      throw new AppError("not_found", `company not found: ${c.req.param("id")}`);
-    }
-    const company = bundle.company;
-    return c.json({
-      data: {
-        id: company.id,
-        slug: company.slug,
-        legalName: company.legalName,
-        displayName: company.displayName,
-        country: company.country,
-        website: company.website,
-        coverageTier: company.coverageTier,
-        description: company.description,
-        sector: company.sector,
-        aliases: bundle.aliases.map((alias) => alias.alias),
-        tickers: bundle.securities.map((security) => ({
-          ticker: security.ticker,
-          exchange: security.exchange,
-          currency: security.currency,
-        })),
-        indices: bundle.indices.map((entry) => ({
-          indexCode: entry.indexCode,
-          asOf: entry.asOf,
-          weight: entry.weight,
-        })),
-        financials: bundle.financials,
-      },
+    const parsed = CompanyCardQuerySchema.safeParse(
+      Object.fromEntries(new URL(c.req.url).searchParams),
+    );
+    if (!parsed.success) throw badRequest(parsed.error.issues);
+    const requestId = crypto.randomUUID();
+    const started = performance.now();
+    const card = await deps.company.getCard(c.req.param("id"), parsed.data);
+    const body: CompanyCardResponse = {
+      data: card,
       meta: {
-        request_id: crypto.randomUUID(),
+        request_id: requestId,
         as_of: new Date().toISOString(),
+        took_ms: Math.round(performance.now() - started),
+        company_ref: c.req.param("id"),
+        include:
+          parsed.data.include ?? ["financials", "facts", "relations", "events"],
+      },
+    };
+    c.header("x-request-id", requestId);
+    return c.json(body);
+  });
+
+  app.post("/v1/review/proposals", async (c) => {
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      throw new AppError("bad_request", "invalid JSON body");
+    }
+    const parsed = ReviewProposalSchema.safeParse(raw);
+    if (!parsed.success) throw badRequest(parsed.error.issues);
+    const requestId = crypto.randomUUID();
+    const result = await deps.review.createProposal(parsed.data);
+    c.header("x-request-id", requestId);
+    return c.json(
+      {
+        data: result.item,
+        meta: {
+          request_id: requestId,
+          as_of: new Date().toISOString(),
+          created: result.created,
+        },
+      },
+      result.created ? 201 : 200,
+    );
+  });
+
+  app.get("/v1/review/queue", async (c) => {
+    const parsed = ReviewQueueQuerySchema.safeParse(
+      Object.fromEntries(new URL(c.req.url).searchParams),
+    );
+    if (!parsed.success) throw badRequest(parsed.error.issues);
+    const requestId = crypto.randomUUID();
+    const result = await deps.review.list(parsed.data);
+    c.header("x-request-id", requestId);
+    return c.json({
+      data: { items: result.items, total: result.total },
+      meta: {
+        request_id: requestId,
+        as_of: new Date().toISOString(),
+        total: result.total,
       },
     });
   });
