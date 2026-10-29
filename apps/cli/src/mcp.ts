@@ -10,14 +10,18 @@
 
 import { McpServer } from "@modelcontextprotocol/server";
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import { RelationTypeSchema } from "@occ/core";
 import {
   FinanceAnalystClient,
   projectScrapeResult,
 } from "@occ/sources-eastmoney-f10";
 import { z } from "zod";
 
+import { config } from "./config.js";
+
 const VERSION = "0.1.0";
 const SCRAPE_TIMEOUT_MS = 180_000;
+const API_TIMEOUT_MS = 15_000;
 
 const client = new FinanceAnalystClient();
 
@@ -36,6 +40,54 @@ function jsonResult(payload: unknown, isError = false) {
 function errorResult(tool: string, error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return jsonResult(`${tool} failed: ${message}`, true);
+}
+
+async function apiRequest(
+  path: string,
+  init?: RequestInit,
+): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetch(`${config.apiUrl.replace(/\/+$/, "")}${path}`, {
+      ...init,
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `OpenCorpCheck API unavailable at ${config.apiUrl} (${message}); start it with 'pnpm dev:api'`,
+    );
+  }
+  const text = await response.text();
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = text;
+  }
+  if (!response.ok) {
+    throw new Error(`API ${response.status}: ${text.slice(0, 500)}`);
+  }
+  return body;
+}
+
+async function apiGet(path: string): Promise<unknown> {
+  return apiRequest(path);
+}
+
+async function apiPost(path: string, body: unknown): Promise<unknown> {
+  return apiRequest(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+async function resolveCompanyRef(ref: string): Promise<string> {
+  const body = (await apiGet(
+    `/v1/companies/${encodeURIComponent(ref)}?include=`,
+  )) as { data: { company: { id: string } } };
+  return body.data.company.id;
 }
 
 const server = new McpServer({
@@ -132,6 +184,233 @@ server.registerTool(
       return jsonResult(await client.pages(market));
     } catch (error) {
       return errorResult("f10_pages", error);
+    }
+  },
+);
+
+server.registerTool(
+  "search_companies",
+  {
+    title: "Search companies",
+    description:
+      "Search the internal OpenCorpCheck company database by name, ticker, alias, " +
+      "pinyin or natural language. Returns ranked candidates with matchType and score. " +
+      "Call this first when you only have a name; then use get_company with the ticker/slug.",
+    inputSchema: z.object({
+      query: z.string().min(1).max(200).describe("Company name, ticker, alias or query"),
+      mode: z
+        .enum(["hybrid", "keyword", "semantic"])
+        .optional()
+        .default("hybrid"),
+      limit: z.number().int().min(1).max(20).optional().default(5),
+      market: z.string().optional().describe("A, HK, US (comma-separated)"),
+      index: z.string().optional().describe("Index codes (comma-separated)"),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  async ({ query, mode, limit, market, index }) => {
+    try {
+      const url = new URL("/v1/search/companies", config.apiUrl);
+      url.searchParams.set("q", query);
+      url.searchParams.set("mode", mode);
+      url.searchParams.set("limit", String(limit));
+      if (market) url.searchParams.set("market", market);
+      if (index) url.searchParams.set("index", index);
+      return jsonResult(await apiGet(`${url.pathname}${url.search}`));
+    } catch (error) {
+      return errorResult("search_companies", error);
+    }
+  },
+);
+
+server.registerTool(
+  "get_company",
+  {
+    title: "Get company card",
+    description: [
+      "Get one company card from the internal database: profile, counts, financials,",
+      "facts, relations (outgoing/incoming) and recent events.",
+      "",
+      "Pass a ULID, slug or ticker (AAPL, 600519, 00700). Use include to trim heavy",
+      "sections (exercise caution on token budget). Financial facts carry periodKind,",
+      "periodLabel, sourceRefs and a source URL. Relations with status='inferred' are",
+      "unreviewed machine extraction: cite their evidence quote/url and never present",
+      "them as audited or verified.",
+    ].join("\n"),
+    inputSchema: z.object({
+      company: z.string().min(1).describe("ULID, slug or ticker"),
+      include: z
+        .array(z.enum(["financials", "facts", "relations", "events"]))
+        .optional()
+        .describe("Sections to include; omit for all"),
+      financial_limit: z.number().int().min(1).max(200).optional(),
+      fact_limit: z.number().int().min(1).max(200).optional(),
+      relation_limit: z.number().int().min(1).max(200).optional(),
+      event_limit: z.number().int().min(1).max(100).optional(),
+      relation_status: z
+        .enum(["reported", "inferred", "verified", "rejected"])
+        .optional(),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  async ({
+    company,
+    include,
+    financial_limit,
+    fact_limit,
+    relation_limit,
+    event_limit,
+    relation_status,
+  }) => {
+    try {
+      const url = new URL(
+        `/v1/companies/${encodeURIComponent(company)}`,
+        config.apiUrl,
+      );
+      if (include) url.searchParams.set("include", include.join(","));
+      if (financial_limit) {
+        url.searchParams.set("financial_limit", String(financial_limit));
+      }
+      if (fact_limit) url.searchParams.set("fact_limit", String(fact_limit));
+      if (relation_limit) {
+        url.searchParams.set("relation_limit", String(relation_limit));
+      }
+      if (event_limit) url.searchParams.set("event_limit", String(event_limit));
+      if (relation_status) {
+        url.searchParams.set("relation_status", relation_status);
+      }
+      return jsonResult(await apiGet(`${url.pathname}${url.search}`));
+    } catch (error) {
+      return errorResult("get_company", error);
+    }
+  },
+);
+
+server.registerTool(
+  "search_documents",
+  {
+    title: "Search research documents",
+    description:
+      "Search internal research chunks (company profiles today, news later). " +
+      "Optionally restrict to one company by ticker/slug/id. Returns chunk text with " +
+      "company and source metadata; cite the returned source URL.",
+    inputSchema: z.object({
+      query: z.string().min(1).max(400),
+      company: z
+        .string()
+        .optional()
+        .describe("Restrict to a company (ULID, slug or ticker)"),
+      doc_type: z.string().optional(),
+      mode: z
+        .enum(["hybrid", "keyword", "semantic"])
+        .optional()
+        .default("hybrid"),
+      limit: z.number().int().min(1).max(20).optional().default(5),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  async ({ query, company, doc_type, mode, limit }) => {
+    try {
+      const url = new URL("/v1/search/documents", config.apiUrl);
+      url.searchParams.set("q", query);
+      url.searchParams.set("mode", mode);
+      url.searchParams.set("limit", String(limit));
+      if (doc_type) url.searchParams.set("doc_type", doc_type);
+      if (company) {
+        url.searchParams.set("company_id", await resolveCompanyRef(company));
+      }
+      return jsonResult(await apiGet(`${url.pathname}${url.search}`));
+    } catch (error) {
+      return errorResult("search_documents", error);
+    }
+  },
+);
+
+server.registerTool(
+  "propose_fact",
+  {
+    title: "Propose a fact",
+    description:
+      "Propose a company fact for human review. This never writes the fact directly; " +
+      "it returns a pending review id. Always include a literal quote and source_url " +
+      "when available so the reviewer can verify it.",
+    inputSchema: z.object({
+      company: z.string().min(1).describe("ULID, slug or ticker"),
+      predicate: z.string().min(1).max(64),
+      value: z.unknown().describe("JSON value"),
+      quote: z.string().optional(),
+      source_url: z.string().optional(),
+      confidence: z.number().min(0).max(1).optional(),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  async ({ company, predicate, value, quote, source_url, confidence }) => {
+    try {
+      return jsonResult(
+        await apiPost("/v1/review/proposals", {
+          kind: "fact",
+          payload: { company, predicate, value, confidence },
+          evidence: {
+            ...(quote ? { quote } : {}),
+            ...(source_url ? { sourceUrl: source_url } : {}),
+          },
+        }),
+      );
+    } catch (error) {
+      return errorResult("propose_fact", error);
+    }
+  },
+);
+
+server.registerTool(
+  "propose_relation",
+  {
+    title: "Propose a company relationship",
+    description: [
+      "Propose a company-to-company relationship for human review. This never writes",
+      "the edge directly; it returns a pending review id.",
+      "",
+      "src is the subject and type encodes direction: 'supplies' = src supplies dst;",
+      "'buys_from' = src buys from dst; 'owns' = src owns a stake in dst; 'parent_of'",
+      "= src is dst's parent; 'competes_with'/'partners_with' are symmetric.",
+      "",
+      "Include the literal quote and source_url. Relations extracted by the system are",
+      "stored as status='inferred' until a human accepts them.",
+    ].join("\n"),
+    inputSchema: z.object({
+      src: z.string().min(1).describe("Subject company (ULID, slug or ticker)"),
+      dst: z.string().min(1).describe("Object company (ULID, slug or ticker)"),
+      type: RelationTypeSchema,
+      quote: z.string().optional(),
+      source_url: z.string().optional(),
+      confidence: z.number().min(0).max(1).optional(),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  async ({ src, dst, type, quote, source_url, confidence }) => {
+    try {
+      return jsonResult(
+        await apiPost("/v1/review/proposals", {
+          kind: "relation",
+          payload: { src, dst, type, confidence },
+          evidence: {
+            ...(quote ? { quote } : {}),
+            ...(source_url ? { sourceUrl: source_url } : {}),
+          },
+        }),
+      );
+    } catch (error) {
+      return errorResult("propose_relation", error);
     }
   },
 );

@@ -9,6 +9,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const MCP_ENTRY = fileURLToPath(new URL("../dist/mcp.js", import.meta.url));
 
 const scrapeRequests: unknown[] = [];
+const apiRequests: string[] = [];
+const proposalRequests: unknown[] = [];
 
 const scrapeFixture = {
   meta: {
@@ -98,6 +100,106 @@ beforeAll(async () => {
       });
       return;
     }
+
+    const url = new URL(request.url ?? "/", "http://fixture");
+    apiRequests.push(`${request.method} ${request.url}`);
+
+    if (url.pathname === "/v1/search/companies") {
+      return sendJson(response, {
+        data: {
+          hits: [
+            {
+              id: "cmp_aapl",
+              slug: "apple",
+              legalName: "Apple Inc.",
+              displayName: "Apple Inc.",
+              tickers: [{ ticker: "AAPL", exchange: "NASDAQ" }],
+              matchType: "identifier",
+              score: 1,
+            },
+          ],
+        },
+        meta: { total: 1 },
+      });
+    }
+    if (url.pathname.startsWith("/v1/companies/")) {
+      return sendJson(response, {
+        data: {
+          company: {
+            id: "cmp_aapl",
+            slug: "apple",
+            legalName: "Apple Inc.",
+            displayName: "Apple Inc.",
+            coverageTier: "index_member",
+            aliases: ["苹果"],
+            tickers: [{ ticker: "AAPL", exchange: "NASDAQ" }],
+            indices: ["NDX"],
+          },
+          counts: {
+            financials: 29,
+            facts: 17,
+            relationsOutgoing: 1,
+            relationsIncoming: 0,
+            events: 6,
+          },
+          financials: [
+            {
+              id: "ff_1",
+              companyId: "cmp_aapl",
+              statement: "income",
+              item: "revenue",
+              periodKind: "annual",
+              periodEnd: "2025-09-27",
+              value: 416161000000,
+              unit: "currency",
+              currency: "USD",
+              method: "deterministic_table_v1",
+              sourceRefs: [3],
+            },
+          ],
+        },
+        meta: { include: url.searchParams.get("include") },
+      });
+    }
+    if (url.pathname === "/v1/search/documents") {
+      return sendJson(response, {
+        data: {
+          hits: [
+            {
+              chunkId: "chunk_1",
+              documentId: "doc_1",
+              companyId: "cmp_aapl",
+              companyDisplayName: "Apple Inc.",
+              text: "Apple designs iPhone.",
+              matchType: "hybrid",
+              score: 0.03,
+            },
+          ],
+        },
+        meta: { total: 1, citations: [] },
+      });
+    }
+    if (url.pathname === "/v1/review/proposals" && request.method === "POST") {
+      let body = "";
+      request.on("data", (chunk) => {
+        body += chunk;
+      });
+      request.on("end", () => {
+        proposalRequests.push(JSON.parse(body));
+        response.statusCode = 201;
+        sendJson(response, {
+          data: {
+            id: "rvw_1",
+            kind: "relation",
+            payload: {},
+            status: "pending",
+            createdAt: new Date().toISOString(),
+          },
+          meta: { created: true },
+        });
+      });
+      return;
+    }
     response.statusCode = 404;
     response.end();
   });
@@ -111,6 +213,7 @@ beforeAll(async () => {
     env: {
       ...(process.env as Record<string, string>),
       OCC_FINANCE_ANALYST_URL: sidecarUrl,
+      OCC_API_URL: sidecarUrl,
     },
     stderr: "pipe",
   });
@@ -126,13 +229,24 @@ afterAll(async () => {
 });
 
 describe("occ-f10 MCP server", () => {
-  it("advertises the F10 tools with citation guidance", async () => {
+  it("advertises F10 and company tools with citation guidance", async () => {
     const { tools } = await mcp.listTools();
     const names = tools.map((tool) => tool.name).sort();
-    expect(names).toEqual(["f10_pages", "f10_scrape"]);
+    expect(names).toEqual([
+      "f10_pages",
+      "f10_scrape",
+      "get_company",
+      "propose_fact",
+      "propose_relation",
+      "search_companies",
+      "search_documents",
+    ]);
     const scrape = tools.find((tool) => tool.name === "f10_scrape")!;
     expect(scrape.description).toMatch(/cite the page url/i);
     expect(scrape.inputSchema.required).toEqual(["market", "code"]);
+    const company = tools.find((tool) => tool.name === "get_company")!;
+    expect(company.description).toMatch(/unreviewed machine extraction/i);
+    expect(company.description).toMatch(/never present/i);
   });
 
   it("lists pages for a market", async () => {
@@ -166,6 +280,69 @@ describe("occ-f10 MCP server", () => {
       code: "600519",
       pages: ["cwfx"],
       capture_xhr: true,
+    });
+  });
+
+  it("returns a company card through the API", async () => {
+    apiRequests.length = 0;
+    const result = await mcp.callTool({
+      name: "get_company",
+      arguments: { company: "AAPL", include: ["financials"] },
+    });
+    expect(result.isError).toBeFalsy();
+    const payload = JSON.parse(contentText(result)) as {
+      data: { company: { displayName: string } };
+    };
+    expect(payload.data.company.displayName).toBe("Apple Inc.");
+    expect(apiRequests[0]).toContain("/v1/companies/AAPL");
+    expect(apiRequests[0]).toContain("include=financials");
+  });
+
+  it("searches companies and documents", async () => {
+    apiRequests.length = 0;
+    const companies = await mcp.callTool({
+      name: "search_companies",
+      arguments: { query: "AAPL" },
+    });
+    expect(companies.isError).toBeFalsy();
+    const companyPayload = JSON.parse(contentText(companies)) as {
+      data: { hits: Array<{ id: string }> };
+    };
+    expect(companyPayload.data.hits[0]?.id).toBe("cmp_aapl");
+
+    const documents = await mcp.callTool({
+      name: "search_documents",
+      arguments: { query: "iPhone", company: "AAPL" },
+    });
+    expect(documents.isError).toBeFalsy();
+    expect(apiRequests.some((entry) => entry.includes("/v1/companies/AAPL"))).toBe(
+      true,
+    );
+    expect(
+      apiRequests.some((entry) => entry.includes("company_id=cmp_aapl")),
+    ).toBe(true);
+  });
+
+  it("posts relation proposals to the review queue", async () => {
+    proposalRequests.length = 0;
+    const result = await mcp.callTool({
+      name: "propose_relation",
+      arguments: {
+        src: "AAPL",
+        dst: "GOOGL",
+        type: "buys_from",
+        quote: "Google 是模型供应商",
+        source_url: "https://example.com/source",
+      },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(proposalRequests[0]).toMatchObject({
+      kind: "relation",
+      payload: { src: "AAPL", dst: "GOOGL", type: "buys_from" },
+      evidence: {
+        quote: "Google 是模型供应商",
+        sourceUrl: "https://example.com/source",
+      },
     });
   });
 });
