@@ -77,6 +77,10 @@ export const config = {
   npmCache: process.env.OCC_NPM_CACHE ?? path.join(os.tmpdir(), "occ-npm-cache"),
   dshVersion: "0.2.1-rc.3",
   model: process.env.OCC_RESEARCH_MODEL ?? "deepseek-flash",
+  extractModel: process.env.OCC_EXTRACT_MODEL ?? "deepseek-flash",
+  extractRelations:
+    process.env.OCC_EXTRACT_RELATIONS === "llm" ? ("llm" as const) : ("none" as const),
+  deepseekApiKey: process.env.DEEPSEEK_API_KEY,
   permissionMode: "read-only",
   promptTemplate: path.join(repoRoot, "phase0", "prompts", "company.md"),
   mockSection: path.join(repoRoot, "phase0", "fixtures", "mock-section.md"),

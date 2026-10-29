@@ -245,6 +245,12 @@ importers:
       '@occ/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@occ/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@occ/extract':
+        specifier: workspace:*
+        version: link:../../packages/extract
       '@occ/ingest':
         specifier: workspace:*
         version: link:../../packages/ingest

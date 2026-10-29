@@ -4,11 +4,18 @@ import path from "node:path";
 import type { Job } from "pg-boss";
 
 import {
+  DeepSeekClient,
+  extractCompany,
+  type ExtractResult,
+} from "@occ/extract";
+import {
   exchangeForMarket,
   ingestSection,
+  parseSectionMarkdown,
   type IngestTarget,
 } from "@occ/ingest";
 import type { CoverageTier, Market } from "@occ/core";
+import type { Db } from "@occ/db";
 
 import { config } from "../config.js";
 import {
@@ -33,6 +40,8 @@ export interface IngestJobData {
   indexAsOf?: string;
   coverageTier?: CoverageTier;
   force?: boolean;
+  /** Run deterministic extraction after ingest (default true). */
+  extract?: boolean;
 }
 
 export async function handleIngestJobs(
@@ -87,6 +96,17 @@ async function processIngestJob(job: Job<IngestJobData>): Promise<void> {
       force: data.force,
       model: config.model,
     });
+    const extraction = data.extract === false
+      ? null
+      : await runExtraction(ctx.db, {
+          companyId: result.companyId,
+          slug: result.slug,
+          sectionPath,
+          ticker: data.ticker,
+          market,
+          runId: data.runId,
+          key: data.key,
+        });
     await markJobCompleted(data.runId, queue, data.key);
     log({
       event: "ingest_job_completed",
@@ -97,6 +117,7 @@ async function processIngestJob(job: Job<IngestJobData>): Promise<void> {
       chunks: result.chunks,
       indexedChunks: result.indexedChunks,
       durationMs: Date.now() - startedAt,
+      extraction,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -110,6 +131,74 @@ async function processIngestJob(job: Job<IngestJobData>): Promise<void> {
       retryCount: job.retryCount,
     });
     throw error;
+  }
+}
+
+async function runExtraction(
+  db: Db,
+  params: {
+    companyId: string;
+    slug: string;
+    sectionPath: string;
+    ticker: string;
+    market: Market;
+    runId: string;
+    key: string;
+  },
+): Promise<Record<string, unknown>> {
+  const startedAt = Date.now();
+  try {
+    const markdown = fs.readFileSync(params.sectionPath, "utf8");
+    const parsed = parseSectionMarkdown(markdown);
+    const chat =
+      config.extractRelations === "llm" && config.deepseekApiKey
+        ? new DeepSeekClient({
+            apiKey: config.deepseekApiKey,
+            model: config.extractModel,
+          })
+        : undefined;
+    const result: ExtractResult = await extractCompany({
+      db,
+      companyId: params.companyId,
+      markdown,
+      parsed,
+      market: params.market,
+      companyTicker: params.ticker,
+      profileSourceId: `src_research_${params.slug}`,
+      relations: config.extractRelations,
+      chat,
+      model: config.extractModel,
+    });
+    log({
+      event: "extract_completed",
+      run: params.runId,
+      key: params.key,
+      financialFacts: result.financialFacts,
+      facts: result.facts,
+      relations: result.relations,
+      relationsSkipped: result.relationsSkipped,
+      errors: result.errors,
+      durationMs: Date.now() - startedAt,
+    });
+    return {
+      financialFacts: result.financialFacts,
+      facts: result.facts,
+      relations: result.relations,
+      skipped: result.skipped,
+      relationsSkipped: result.relationsSkipped,
+      errors: result.errors.length,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Extraction is a follow-up enrichment: never fail the ingest job for it.
+    log({
+      event: "extract_failed",
+      run: params.runId,
+      key: params.key,
+      error: message,
+      durationMs: Date.now() - startedAt,
+    });
+    return { error: message };
   }
 }
 
