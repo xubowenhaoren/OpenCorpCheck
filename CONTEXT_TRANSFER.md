@@ -1,11 +1,13 @@
 # OpenCorpCheck — Context Transfer
 
-> 交接日期：2026-10-27（P2 更新：2026-10-28；语料清洗 + 评测扩编：2026-10-28）
-> 当前阶段：Phase 0 + Phase 1 + P2 + P2.5 已完成。真实语料已与 synthetic fixture
-> 隔离（默认只搜索 102 家真实 profile），golden query 扩到 7 个 family、含 MRR@10/
-> nDCG@10。Docker 封装全部 TODO。
-> 下一阶段：P3（MCP / CLI / dsh ACP sidebar + fact/relation 抽取）或 P4（A500/HSI/SPX
-> 快照 + A/HK 全量 backfill），由用户决定。
+> 交接日期：2026-10-27（P2 更新：2026-10-28；语料清洗 + 评测扩编：2026-10-28；
+> P3.1/P3.2 公司情报层：2026-10-28）
+> 当前阶段：Phase 0 + Phase 1 + P2 + P2.5 + P3.1/P3.2 已完成。真实语料已与
+> synthetic fixture 隔离（默认只搜索 102 家真实 profile），golden query 扩到 7 个
+> family、含 MRR@10/nDCG@10；公司卡片 API + CLI + MCP 已能读 cited 财务/事实/关系，
+> 关系抽取走 deepseek-flash + 审核队列。Docker 封装全部 TODO。
+> 下一阶段：P3 剩余（deep_research MCP、ACP sidebar）或 P4（A500/HSI/SPX 快照 +
+> A/HK 全量 backfill），由用户决定。
 >
 > **本机约束（2026-10-28 用户确认）**：这台电脑是 macOS 虚拟机，**暂时不能跑 Docker**。
 > 所有 Docker / Compose / 镜像 / 多架构 / GHCR 封装工作全部标记为 TODO，换机器后再做。
@@ -159,6 +161,7 @@ OpenCorpCheck/
   config/indices/ndx.yaml          # NASDAQ-100 成分股快照（官方 Nasdaq，带 as_of/license）
   docs/
     ARCHITECTURE.md                # 完整平台设计（Phase 1+ 的主要参考）
+    EXTRACT.md                     # P3：财务/事实/关系抽取、审核队列与读取方式
     DATA_SOURCES.md                # 数据源矩阵 + F10 复用方案
     PRIOR_ART.md                   # 竞品/开源生态扫描
   apps/
@@ -168,6 +171,7 @@ OpenCorpCheck/
     core/                          # Zod 契约、类型、ULID
     db/                            # Drizzle schema + migrations
     ingest/                        # section markdown → documents/chunks → Qdrant
+    extract/                       # section markdown → financials/facts/relations
     retrieval/                     # tokenizer / BM25 / BGE-M3 / Qdrant / RRF-DBSF
     sources/eastmoney-f10/         # TS adapter：Zod 校验 + summary/full 投影
   services/
@@ -531,6 +535,36 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 
 ### P3 — API / CLI / MCP / dsh ACP sidebar
 
+**进度（2026-10-28）：P3.1 + P3.2 已完成。** 详见 [`docs/EXTRACT.md`](docs/EXTRACT.md)。
+
+- [x] `packages/extract`：确定性抽取 + deepseek-flash 关系抽取。
+  - 财务表格（US/A/HK 单位与期间写法）、公司快照、分部收入、近 12 个月大事；
+  - 引用解析（Markdown link 与东方财富裸 URL）、每行带 `source_refs` 与真实 URL；
+  - 关系类型参考 Wikidata/schema.org + 开源供应链 KG；只允许库内公司；
+    quote 必须是原文子串、ref 必须存在，否则丢弃；
+  - 关系写 `status='inferred'` + `relation_evidence` + `review_queue`；
+  - `extraction_cache` 按 section hash + prompt hash 缓存，重跑不重复调用 LLM。
+- [x] DB：migration `0003_extraction.sql`（`period_kind/period_label/source_refs`、
+  `review_queue.dedupe_key`、`extraction_cache`、evidence 唯一约束）。
+- [x] API：`GET /v1/companies/:id?include=...` 公司卡片（ticker/slug/ULID）；
+  `POST /v1/review/proposals`（201/重复 200）；`GET /v1/review/queue`。
+- [x] CLI：`occ company <ref> --include ...`、`occ review list`、
+  `occ propose fact|relation`、`occ extract --all|--index ndx|--tickers ...`。
+- [x] MCP：新增 `search_companies`、`get_company`、`search_documents`、
+  `propose_fact`、`propose_relation`（加 F10 共 7 个工具）。
+- [x] worker：ingest 成功后跑确定性抽取（失败不影响入库）；
+  `OCC_EXTRACT_RELATIONS=llm` 可开启 LLM 关系（默认 none）。
+- [x] worker 产物目录隔离：默认 `.occ/runs` / `.occ/sections`。
+- 验收（2026-10-28，live）：102 家、0 错误；2,834 条 `financial_facts`、
+  1,200 条 `facts`、64 条 `inferred` 关系（35 家公司有边，ARM 8 条）；
+  每条关系都有 evidence + 待审核条目，无自环；AAPL FY2025 营收 416,161 百万美元，
+  600519 2025 营收 1,721 亿元；AAPL→GOOGL `buys_from` 带来源 URL；
+  不加 `--force` 重跑命中关系缓存、不再调 LLM。
+
+**还没做（P3 剩余）**：`deep_research` MCP 入队、dsh ACP sidebar、新闻文档入库。
+
+原始 P3 设计（保留）：
+
 - Hono + Zod + OpenAPI + SSE；`/v1/search/companies`、`/v1/companies/{id}`、
   `/v1/research`、`/v1/runs/{id}/events` 等。
 - `occ` CLI + `occ mcp --stdio`；MCP tools：`resolve_entity`、`search_companies`、
@@ -635,6 +669,9 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 | pinyin alias 依赖 `pinyin-pro` | 只在 ingest/CLI 侧；搜索侧不需要该依赖。新增中文 alias 时用 `pinyinVariants`/`pinyinAliasForms` |
 | **phase0 `npm run research -- --mock` 会无条件覆盖 `out/sections/` 并重组 `magnificent-seven.md` 等交付物** | 验证流水线后必须 `git checkout -- phase0/out/` 并删除 mock sections（2026-10-28 踩过，已恢复）；中间 section 想保留时先备份 |
 | **旧版 worker 默认把 runs/sections 写进 `phase0/`（2026-10-28 已改）** | 曾覆盖 Phase 0 的 MAG7 事件日志，`phase0 && npm run validate` 因此 FAIL；已提交的 `magnificent-seven.md` 未受影响。现在 worker 默认写 `.occ/runs`、`.occ/sections`（`OCC_WORKER_SECTIONS_DIR`，兼容旧的 `OCC_SECTIONS_DIR`）。要重新校验 Phase 0 只能重跑那 7 家 |
+| `occ extract --relations llm` 报 key 缺失 | 用 `DEEPSEEK_API_KEY_FILE=DEEPSEEK_API_KEY.txt` 或 export `DEEPSEEK_API_KEY`；模型固定 `deepseek-flash`（`OCC_EXTRACT_MODEL` 可改，但不要用 Pro） |
+| 关系是 `inferred`，不是审计事实 | API/MCP 都返回 `status`；引用要给 `evidence.quote` + source URL；人工审核前不要当 verified |
+| 财年结束日同时是 Q4 结束日 | `financial_facts_uq` 已含 `period_kind`（migration 0004），确定性 id 也含 period_kind；不要退回四列唯一键 |
 | 没有 `--approval-policy`（rc.3） | 用 `DSH_PERMISSION_MODE=read-only`；不要在命令里加不存在的 flag |
 | `deepseek-official` 搜索每次是一次模型 turn | 预算控制；必要时用 `search-api.patch.yml` 切直接 HTTP |
 | 来源偏 stockanalysis、SEC 少 | Phase 1 接 F10 + SEC XBRL；profile 标注未验证项 |
@@ -667,6 +704,10 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 - [x] 评测扩编：`scripts/golden-queries.mjs` 7 个 family；hybrid ticker/name
       top1 100%、pinyin 100%、typo 95.8%、natural 78.1%（recall@5 100%）、
       zh-name 87.5%；结果写进 `docs/EVAL.md`。
+- [x] P3.1/P3.2：`packages/extract` + migration `0003/0004` + 公司卡片 API +
+      `occ company/review/propose/extract` + 5 个 MCP 公司工具；
+      `docs/EXTRACT.md` 记录命令、关系类型、校验规则和已知限制。
+- [ ] P3 剩余：`deep_research` MCP 入队、dsh ACP sidebar、新闻文档入库。
 - [ ] 不要把 `deepseek-v4-pro` 写回配置。
 - [ ] 不要提交任何 key、token、cookie、`.env`。
 

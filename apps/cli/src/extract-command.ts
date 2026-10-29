@@ -142,26 +142,45 @@ export async function extractCommand(args: string[]): Promise<void> {
       .map((entry) => entry.target.ticker);
 
     const results = await mapLimit(runnable, concurrency, async (entry) => {
-      const markdown = fs.readFileSync(entry.target.sectionPath, "utf8");
-      const parsed = parseSectionMarkdown(markdown);
-      const bundle = await getCompanyBundle(db, entry.companyId);
-      const result = await extractCompany({
-        db,
-        companyId: entry.companyId,
-        markdown,
-        parsed,
-        market: entry.target.market,
-        companyTicker: entry.target.ticker,
-        profileSourceId: bundle
-          ? `src_research_${bundle.company.slug}`
-          : undefined,
-        relations,
-        chat,
-        model: config.extractModel,
-        universe,
-        force: Boolean(values.force),
-      });
-      return { ticker: entry.target.ticker, ...result };
+      try {
+        const markdown = fs.readFileSync(entry.target.sectionPath, "utf8");
+        const parsed = parseSectionMarkdown(markdown);
+        const bundle = await getCompanyBundle(db, entry.companyId);
+        const result = await extractCompany({
+          db,
+          companyId: entry.companyId,
+          markdown,
+          parsed,
+          market: entry.target.market,
+          companyTicker: entry.target.ticker,
+          profileSourceId: bundle
+            ? `src_research_${bundle.company.slug}`
+            : undefined,
+          relations,
+          chat,
+          model: config.extractModel,
+          universe,
+          force: Boolean(values.force),
+        });
+        return { ticker: entry.target.ticker, ...result };
+      } catch (error) {
+        // One bad section must not abort the whole batch.
+        return {
+          ticker: entry.target.ticker,
+          companyId: entry.companyId,
+          skipped: false,
+          financialFacts: 0,
+          facts: 0,
+          relations: 0,
+          relationsSkipped: false,
+          errors: [
+            {
+              stage: "extract",
+              message: error instanceof Error ? error.message : String(error),
+            },
+          ],
+        };
+      }
     });
 
     const summary = {

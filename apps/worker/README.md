@@ -9,14 +9,18 @@ the Phase 0 pattern of running companies one at a time in one process.
 | Queue | Job | Handler |
 |---|---|---|
 | `research.company` | one company → one dsh headless turn | [jobs/research.ts](src/jobs/research.ts) |
-| `ingest.company` | one finished section → documents/chunks + Qdrant | [jobs/ingest.ts](src/jobs/ingest.ts) |
-| `f10.page` | one company × one F10 page | [jobs/f10.ts](src/jobs/f10.ts) |
+| `ingest.company` | one finished section → documents/chunks + Qdrant | [jobs/ingest.ts](src/jobs/ingest.ts) || `f10.page` | one company × one F10 page | [jobs/f10.ts](src/jobs/f10.ts) |
 | `*.dead` | exhausted jobs | marks the DB row `dead` |
 
 - **Granularity**: research is one job per company; F10 is one job per page, so a
   failed page retries without re-crawling the company. Ingestion is one job per
   company, enqueued automatically when a research section is written (including
   cache hits). Use `--no-ingest` to disable it for a run.
+- **Extraction after ingest**: a successful ingest (including an unchanged
+  `skipped` section) also runs deterministic financial/fact extraction from the
+  section markdown. Failures are logged as `extract_failed` and never fail the
+  ingest job. LLM relation extraction is opt-in with `OCC_EXTRACT_RELATIONS=llm`
+  (default `none`, so bulk backfills do not spend tokens silently).
 - **Concurrency**: pg-boss `localConcurrency` — research defaults to 4, ingest to
   4, F10 to 4 (`OCC_RESEARCH_CONCURRENCY`, `OCC_INGEST_CONCURRENCY`,
   `OCC_F10_CONCURRENCY`). The sidecar still caps Playwright at 2 pages globally
