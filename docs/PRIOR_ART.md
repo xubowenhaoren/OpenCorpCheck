@@ -85,12 +85,12 @@ The "spine and satellites" framing comes from a useful 2026 write-up,
 
 ## What this means for OpenCorpCheck
 
-1. **Do not build a 200M-entity registry.** Scope to four indices (~1,000 companies after
-   dedupe) + on-demand private companies. That is enough for a compelling global demo and
-   keeps crawl/storage/eval costs sane.
+1. **Do not build a 200M-entity registry.** Scope to STAR 50 + ChiNext 50 + HSI +
+   NASDAQ-100 (~280 companies after dedupe) + on-demand private companies. That is enough
+   for a compelling global demo and keeps crawl/storage/eval costs sane.
 2. **The moat is the data layer + provenance + search quality.** DeerFlow/dsh can already
-   generate a research report. They cannot answer "which A500 companies supply Apple, and
-   what changed in the last 12 months?" with cited, queryable facts.
+   generate a research report. They cannot answer "which STAR 50 / ChiNext 50 companies
+   supply Apple, and what changed in the last 12 months?" with cited, queryable facts.
 3. **Build on the ecosystem, don't rebuild it.** Crawlee for fetching, DeepSeek Harness for
    the agent runtime, Qdrant for hybrid retrieval, GLEIF/SEC/CNINFO/HKEX for facts.
 4. **Distribution through DeepSeek Harness is a real advantage.** dsh has 263k+ stars and a

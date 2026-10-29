@@ -139,8 +139,9 @@ fixtures hidden.
 
 ## Known limits
 
-- The visible corpus is still NDX-100 plus 600519/00700. A500/HSI/SPX and the
-  AI watchlist are not backfilled, so the golden set cannot cover them yet.
+- The visible corpus is still NDX-100 plus 600519/00700. STAR 50 / ChiNext 50
+  (the revised A-share scope), HSI and the AI watchlist are not backfilled yet,
+  so the golden set cannot cover them. S&P 500 is out of scope.
 - Curated Chinese aliases are hand-maintained. Add a ticker to
   `config/aliases/zh.yaml`, run `occ aliases sync`, and company points are
   re-indexed automatically; forgetting that step leaves Qdrant behind Postgres

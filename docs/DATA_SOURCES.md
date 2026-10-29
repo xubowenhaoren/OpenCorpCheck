@@ -42,7 +42,8 @@ must change before it becomes a database source, and the licensing constraints.
 - Nasdaq index data is proprietary. Keep the snapshot for internal demo/research with
   attribution; do **not** redistribute it as a licensed dataset. Refresh by re-fetching
   and replacing the file (new `as_of`), never by editing tickers by hand.
-- A500 / HSI / S&P 500 snapshots are still P4.
+- STAR 50 (`000688`, SSE), ChiNext 50 (`399673`, SZSE) and HSI snapshots are still P4.
+  S&P 500 is not planned (2026-10-29 scope change).
 
 ## 3. Reused assets from `finance_analyst`
 

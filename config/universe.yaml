@@ -1,7 +1,13 @@
 # OpenCorpCheck universe seed
 #
-# v1 = four index snapshots + a curated AI watchlist + on-demand private companies.
+# v1 = four index snapshots (STAR 50 + ChiNext 50 + HSI + NASDAQ-100) +
+# a curated AI watchlist + on-demand private companies.
 # Entity resolution dedupes companies that appear in both an index and the watchlist.
+#
+# Scope note (2026-10-29): the A-share backfill is 科创50 + 创业板50, HSI is
+# unchanged, and the S&P 500 (SPX) backfill is cancelled. NASDAQ-100 is done.
+# Legacy synthetic rows in apps/cli/src/seed-data.ts still use A500/SPX labels
+# for E2E compatibility; they are fixtures, not the v1 universe.
 #
 # status:   listed | private | verify
 # category: model_lab | ai_search | ai_coding | robotics | ai_infra | ai_chips |
@@ -9,23 +15,23 @@
 # coverage: index_member | ai_watchlist | discovered | stub
 
 version: 1
-as_of: "2026-10-27"
+as_of: "2026-10-29"
 
 indices:
-  - code: "000510"
-    name: "CSI A500"
+  - code: "000688"
+    name: "STAR 50 (科创50)"
     market: A
-    source: csindex
+    source: sse
+    refresh: weekly
+  - code: "399673"
+    name: "ChiNext 50 (创业板50)"
+    market: A
+    source: szse
     refresh: weekly
   - code: "HSI"
     name: "Hang Seng Index"
     market: HK
     source: hsi
-    refresh: weekly
-  - code: "SPX"
-    name: "S&P 500"
-    market: US
-    source: spglobal
     refresh: weekly
   - code: "NDX"
     name: "NASDAQ-100"

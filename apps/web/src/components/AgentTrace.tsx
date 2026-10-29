@@ -1,7 +1,11 @@
 import {
+  activityHeadline,
   buildSourceLedger,
   describeTool,
   formatDuration,
+  groupCountLabel,
+  groupStatusLabel,
+  groupToolCalls,
   isActiveStatus,
   planSteps,
   toolErrorSummary,
@@ -134,21 +138,16 @@ export function AgentTrace({
   usage,
 }: AgentTraceProps) {
   const { lang, t } = useLang();
-  const steps = calls.length;
   const ledger = buildSourceLedger(answer, calls);
   const cited = ledger.filter((item) => item.cited);
   const consulted = ledger.filter((item) => !item.cited);
-  const duration =
-    typeof elapsedMs === "number"
-      ? formatDuration(elapsedMs, lang)
-      : formatDuration(0, lang);
-  const summary = streaming
-    ? t("agent.trace.running", { steps })
-    : t("agent.trace.summary", {
-        steps,
-        sources: cited.length,
-        duration,
-      });
+  const groups = groupToolCalls(calls, lang);
+  const summary = activityHeadline(calls, {
+    ...(typeof elapsedMs === "number" ? { elapsedMs } : {}),
+    streaming,
+    sources: cited.length,
+    lang,
+  });
   const planLines = planSteps(plan);
   const usageLine = usageSummary(usage, lang);
 
@@ -176,9 +175,29 @@ export function AgentTrace({
           </div>
         ) : null}
 
-        <div className="trace-tools">
-          {calls.map((call) => (
-            <ToolCard key={call.callId} call={call} />
+        <div className="trace-groups">
+          {groups.map((group) => (
+            <section
+              className={`trace-group ${statusClass(group.status)}`}
+              key={group.key}
+            >
+              <div className="trace-group-head">
+                <span className="trace-dot" aria-hidden="true" />
+                <span className="trace-group-label">
+                  {groupCountLabel(group, lang)}
+                </span>
+                {group.status !== "completed" ? (
+                  <span className="trace-group-status">
+                    {groupStatusLabel(group, lang)}
+                  </span>
+                ) : null}
+              </div>
+              <div className="trace-group-calls">
+                {group.calls.map((call) => (
+                  <ToolCard key={call.callId} call={call} />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
 

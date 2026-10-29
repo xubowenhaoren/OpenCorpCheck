@@ -36,6 +36,8 @@ export interface AgentServiceOptions {
   turnTimeoutMs?: number;
   /** Tool calls allowed before the runtime cancels a turn. */
   maxToolCalls?: number;
+  /** Abort when the same tool call repeats this many times; 0 disables. */
+  maxRepeatedToolCalls?: number;
   /** Dispose the dsh process after this much idle time; 0 disables. */
   idleTimeoutMs?: number;
 }
@@ -213,11 +215,14 @@ export class AgentService {
       permissionMode: this.options.permissionMode ?? "read-only",
       ...(this.options.dshPatch ? { patch: this.options.dshPatch } : {}),
       limits: {
-        ...(this.options.turnTimeoutMs
+        ...(this.options.turnTimeoutMs !== undefined
           ? { timeoutMs: this.options.turnTimeoutMs }
           : {}),
-        ...(this.options.maxToolCalls
+        ...(this.options.maxToolCalls !== undefined
           ? { maxToolCalls: this.options.maxToolCalls }
+          : {}),
+        ...(this.options.maxRepeatedToolCalls !== undefined
+          ? { maxRepeatedToolCalls: this.options.maxRepeatedToolCalls }
           : {}),
       },
       env: { DEEPSEEK_API_KEY: apiKey },

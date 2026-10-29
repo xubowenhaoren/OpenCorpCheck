@@ -13,9 +13,10 @@ research layer**, not a generic "deep research" wrapper.
 
 Twelve decisions define the architecture:
 
-1. **Scope the universe**: A500 + HSI + S&P 500 + NASDAQ-100 (~1,000 deduped companies) +
-   a curated AI watchlist (OpenAI, Anthropic, DeepSeek, Kimi/Moonshot, Zhipu, ...) + private
-   companies discovered on demand. Not 200M legal entities.
+1. **Scope the universe**: STAR 50 (科创50) + ChiNext 50 (创业板50) + HSI + NASDAQ-100
+   (~280 deduped companies) + a curated AI watchlist (OpenAI, Anthropic, DeepSeek,
+   Kimi/Moonshot, Zhipu, ...) + private companies discovered on demand. Not 200M legal
+   entities. The S&P 500 backfill was cancelled on 2026-10-29; NDX is already backfilled.
 2. **TypeScript end-to-end**: web, API, workers, CLI, MCP, dsh integration, Electron. One
    debugger, one type system, one toolchain. Python appears only as an isolated Playwright
    scraper sidecar (reusing `finance_analyst`), never in the API request path.
@@ -61,7 +62,8 @@ Twelve decisions define the architecture:
 
 ### 1.2 v1 scope
 
-- **Universe**: four index snapshots, refreshed weekly; ~1,000 companies after dedupe.
+- **Universe**: four index snapshots (STAR 50, ChiNext 50, HSI, NASDAQ-100), refreshed
+  weekly; ~280 companies after dedupe. S&P 500 was dropped from the v1 backfill.
 - **AI watchlist**: a curated seed of hot private/listed AI companies that are not necessarily
   index members — OpenAI, Anthropic, xAI, Mistral, Perplexity, DeepSeek, Moonshot/Kimi,
   Zhipu, MiniMax, Baichuan, StepFun, 01.AI, ByteDance, Huawei, SenseTime, iFlytek,
@@ -285,7 +287,7 @@ OpenCorpCheck/
   services/
     finance-analyst/     # Python + Playwright sidecar: aif10 + EDGAR + HKEX scrapers
   config/
-    universe.yaml        # four indices + AI watchlist
+    universe.yaml        # four indices (STAR 50 / ChiNext 50 / HSI / NDX) + AI watchlist
   packages/
     core/                # Zod schemas, domain types, IDs, errors
     db/                  # Drizzle schema, migrations, repositories
@@ -375,8 +377,8 @@ bytes still need sidecar support; the stored JSON contains the full text/tables 
 
 ### 5.4 Why not a graph database
 
-At ~1,000 companies and maybe 10^5 edges, Postgres recursive CTEs and indexed adjacency
-queries are sufficient. Neo4j adds an operational dependency without solving a v1 problem.
+At a few hundred companies today (design headroom ~1,000) and maybe 10^5 edges, Postgres
+recursive CTEs and indexed adjacency queries are sufficient. Neo4j adds an operational dependency without solving a v1 problem.
 The UI can render an ego network from a single `/relations?depth=2` query. Revisit if the
 graph exceeds ~10^7 edges or needs complex path algorithms.
 
@@ -401,7 +403,7 @@ is on page 87 of this PDF".
 
 ```mermaid
 flowchart TD
-  I["Index snapshots<br/>A500 · HSI · S&P 500 · NDX"] --> U["Universe build + entity resolution"]
+  I["Index snapshots<br/>STAR 50 · ChiNext 50 · HSI · NDX"] --> U["Universe build + entity resolution"]
   U --> B["BFS coverage mission"]
   B --> H["Hub pages: about, products, IR, newsroom"]
   H --> P1["Company profile v1"]
@@ -433,7 +435,7 @@ Adapters to build first:
 
 | Adapter | What | Notes |
 |---|---|---|
-| `index-snapshot` | A500/HSI/S&P 500/NDX constituents + weights | Official source first; Wikipedia/AAStocks fallback; store `as_of` |
+| `index-snapshot` | STAR 50 / ChiNext 50 / HSI / NDX constituents + weights | Official source first; Wikipedia/AAStocks fallback; store `as_of`. S&P 500 is out of scope. |
 | `eastmoney-f10` | A/HK/US profile, financial/organizational analysis, shareholders, events, research reports, peer comparison, dividends, capital operations | Reuse `finance_analyst/scripts/aif10_scraper.py` via the Python sidecar; add JSON/tables/snapshots |
 | `sec-edgar` | Submissions, companyfacts, 10-K/10-Q/8-K, 13F/13D/13G | Public domain; User-Agent + ~10 req/s; XBRL first |
 | `cninfo` | A-share announcements + annual/interim reports | Official disclosure; PDFs |

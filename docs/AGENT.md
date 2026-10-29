@@ -102,7 +102,8 @@ reduces them to human summaries and links.
 | `OCC_AGENT_PERMISSION_MODE` | `read-only` |
 | `OCC_AGENT_DSH_PATCH` | `.dsh/acp.patch.yml` (`none` disables) |
 | `OCC_AGENT_TURN_TIMEOUT_MS` | `180000` (3 min per turn) |
-| `OCC_AGENT_MAX_TOOL_CALLS` | `30` per turn |
+| `OCC_AGENT_MAX_TOOL_CALLS` | `80` per turn |
+| `OCC_AGENT_MAX_REPEATED_TOOL_CALLS` | `4` (same tool + input; `0` disables) |
 | `OCC_AGENT_IDLE_TIMEOUT_MS` | `600000` (10 min; `0` disables) |
 | `OCC_DSH_VERSION` | `0.2.1-rc.3` |
 | `OCC_NPM_CACHE` | `$TMPDIR/occ-npm-cache` |
@@ -129,12 +130,32 @@ Measured 2026-10-29 with the same question (“goog 今天股价大跌，是什�
 `high` 76.9 s / 15 tool calls / 11 sources; `low` 61.8 s / 13 tool calls / 4
 sources. Both finish well inside the 180 s turn cap.
 
-`DshAcpRuntime.prompt()` enforces two hard limits per turn: wall-clock
-`OCC_AGENT_TURN_TIMEOUT_MS` and `OCC_AGENT_MAX_TOOL_CALLS` tool calls. When a
-limit is hit the runtime sends `session/cancel`, waits up to 5 s for dsh's
-`stop`, then emits a `notice` plus `run.failed` instead of hanging silently.
-The sidebar counts `tool.called` events, so the limit also stops the
-"14 tool calls · 0 sources · no answer" loop.
+`DshAcpRuntime.prompt()` enforces three per-turn guards:
+
+- **Wall clock** — `OCC_AGENT_TURN_TIMEOUT_MS`.
+- **Search budget** — `OCC_AGENT_MAX_TOOL_CALLS` tool calls (default 80, unique
+  `callId`s only). A market-event question legitimately fans out into one
+  search followed by 10–20 fetches; the 2026-10-29 “goog 股价大跌” run made 32
+  distinct calls in 95 s with no repeats. A flat 30-call cap was therefore a
+  false positive, not loop protection.
+- **Repetition** — `OCC_AGENT_MAX_REPEATED_TOOL_CALLS` (default 4): stop when
+  the same `(tool, kind, canonical input)` repeats. This catches an actual
+  loop early without punishing a broad sweep that keeps finding new sources.
+
+When any guard trips, the runtime does **not** just fail: it sends
+`session/cancel`, waits up to 5 s for dsh's `stop`, emits a localized `notice`,
+then starts a second prompt with tools effectively disabled (“停止调用任何工具，
+只根据已收集资料回答”). The user gets a cited answer from the partial evidence
+instead of `Turn stopped after 30 tool calls`. If dsh never acknowledges the
+cancel, or the follow-up still tries to call a tool, the turn fails with
+`agent.limit.failed`. Notices and failures carry a stable `code`
+(`agent.limit.budget|repetition|timeout|failed`) so the React sidebar can render
+them in Chinese or English; raw runtime strings stay English.
+
+The sidebar counts `tool.called` events per `callId`, so a duplicated ACP event
+cannot exhaust the budget. The limit no longer stops the “14 tool calls · 0
+sources · no answer” loop silently either: the live activity panel shows the
+step and consulted-source counts while the turn runs.
 
 ### Cancellation and idle disposal
 
@@ -173,29 +194,48 @@ never injected as HTML.
 
 **Trajectory**
 
-- A collapsed `<details class="agent-trace">` under each answer summarises
-  “执行过程 N 步 · M 个来源 · 42s”; expanding it shows:
-  1. plan entries (`plan` event),
-  2. one card per `tool.called` / `tool.updated` call,
-  3. a deduplicated source ledger split into 已引用 / 仅查阅,
-  4. token usage when dsh reports it.
-- Cards map ACP data to human labels (`apps/web/src/lib/agent-trace.ts`):
-  `web_search` → 搜索网页 (query, result count, domains); `web_fetch` → 打开网页
-  (URL, HTTP status); `mcp__occ__search_companies` → 查找公司;
-  `get_company` → 查看公司资料; `search_documents` → 检索资料;
-  `deep_research` → 发起深度研究; `get_run` → 查询研究进度; F10 tools and
-  `propose_*` have their own labels. Unknown tools fall back to 使用工具.
+The UI has two layers, both progressive disclosure:
+
+1. **Live activity panel** ([`AgentActivity.tsx`](../apps/web/src/components/AgentActivity.tsx))
+   — while the model is researching and has not written any answer text, a
+   transient card sits at the top of the assistant bubble. It shows a rotating
+   orb, “正在研究”, a ticking elapsed time, the step count and consulted
+   sources. The current tool group is expanded with a shimmering running line;
+   finished groups collapse to one check-marked line; new calls automatically
+   fold the previous group. Repeated calls merge by kind (“搜索了 3 次网页”,
+   “打开了 9 个网页”, “查找公司 2 次”) instead of one card per call. Only the
+   last four groups are shown; older ones roll into “此前 N 组操作”.
+2. **Collapsed trace** ([`AgentTrace.tsx`](../apps/web/src/components/AgentTrace.tsx))
+   — as soon as answer text starts streaming, the live panel is replaced by a
+   one-line summary under the answer:
+   “工作了 57s · 打开了 9 个网页 · 搜索了 3 次网页 · 运行了 1 条命令 ·
+   另有 2 类操作 · 7 个来源”. Expanding it shows the plan, grouped tool cards,
+   the deduplicated source ledger (已引用 / 仅查阅) and token usage.
+
+- Groups are built by [`groupToolCalls`](../apps/web/src/lib/agent-trace.ts):
+  `web_search`, `web_fetch`, shell and each MCP tool get their own bucket.
+  A mixed group reports only its failures (“1 个失败”) instead of painting the
+  whole group red.
+- Cards map ACP data to human labels: `web_search` → 搜索网页 (query, result
+  count, domains); `web_fetch` → 打开网页 (URL, HTTP status);
+  `mcp__occ__search_companies` → 查找公司; `get_company` → 查看公司资料;
+  `search_documents` → 检索资料; `deep_research` → 发起深度研究; `get_run` →
+  查询研究进度; F10 tools and `propose_*` have their own labels. Unknown tools
+  fall back to 使用工具.
 - Status is shown as text (排队中 / 进行中 / 已完成 / 失败 / 已取消), not colour
   alone. There is no raw JSON, token stream or `thought.delta` in the trace;
   tool output is rendered as a summary plus links.
 - `packages/agent/src/runtime.ts` caps `rawInput`/`rawOutput` before SSE
   (4 KB / 16 KB, shape-preserving) so a fetched page cannot flood the browser.
-- `deep_research` appears as a tool card; a first-class sub-agent card with
-  `get_run` progress polling and event persistence is still reserved (see
+- Animations respect `prefers-reduced-motion`; the panel is a live region
+  (`role="status"`), and the ticking clock is `aria-hidden` to avoid screen
+  reader chatter.
+- `deep_research` still appears as a tool card; a first-class sub-agent card
+  with `get_run` progress polling and event persistence is still reserved (see
   [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §6 P3.4).
 
-Build size after adding Markdown: main JS 393 KB (gzip 121 KB); lazy Markdown
-chunk 163 KB (gzip 49 KB); CSS 40 KB (gzip 8 KB).
+Build size after the activity panel: main JS 400.2 KB (gzip 123 KB); lazy
+Markdown chunk 162.7 KB (gzip 49 KB); CSS 45.5 KB (gzip 9.3 KB).
 
 ## Permissions and safety
 
@@ -216,6 +256,14 @@ chunk 163 KB (gzip 49 KB); CSS 40 KB (gzip 8 KB).
 - Prompt asking for `search_companies 苹果` produced
   `tool.called mcp__occ__search_companies {"query":"苹果","limit":5}` and the
   answer `AAPL — Apple Inc.` — the stdio MCP attachment is working.
+- Budget-fix regression (2026-10-29 PM): the question that previously tripped
+  `OCC_AGENT_MAX_TOOL_CALLS` (“goog 今天股价大跌，是什么原因？”) now finishes
+  in **57 s / 15 tool calls / 7 sources** with a Markdown answer, six citation
+  chips and no limit notice. The failed session had made 32 distinct calls; the
+  runtime no longer treats breadth as a loop.
+- Deterministic SSE replay (mock events, 1440×1100 + 390×900) verified the live
+  activity panel, group folding, mixed-group “1 个失败” label, one-line final
+  summary, expanded trace and `scrollWidth == innerWidth`; no console errors.
 
 ## Limits / next
 
@@ -229,17 +277,19 @@ chunk 163 KB (gzip 49 KB); CSS 40 KB (gzip 8 KB).
 - The API also serves a local console (`/v1/agent/ui`). That console is a
   dependency-free debug view: it still shows raw tool names/JSON and does not
   render Markdown. The consumer experience is `apps/web`.
-- **Known issue (2026-10-29): the 30-call cap can stop legitimate research.**
-  A broad market question made 32 calls (18 `web_fetch`, 6 `bash`,
-  5 `web_search`) and was cancelled by `OCC_AGENT_MAX_TOOL_CALLS` before it
-  produced an answer. The session log
-  (`.occ/dsh-acp-home/sessions/.../c643c443-…/session.v4.jsonl.zstd`) is kept
-  for root-cause work; details and investigation steps are in
-  [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §6 P3.4 “已知问题 2”. Do not
-  simply raise the number: add repetition detection / a budget warning first.
-- The trajectory is currently a permanent collapsed block. The next UX pass
-  should make each tool call appear transiently and auto-collapse on completion
-  (Grok-like), merging repeated calls into one activity line.
+- **Fixed 2026-10-29: the flat 30-call cap stopped legitimate research.** A
+  broad market question made 32 distinct calls (18 `web_fetch`, 6 `bash`,
+  5 `web_search`, 3 MCP) in 95 s and was cancelled before answering. The
+  session log (`.occ/dsh-acp-home/sessions/.../c643c443-…`) showed no repeated
+  `(tool, input)` pair — it was breadth, not a loop. The budget is now 80 calls
+  plus a repetition guard and a forced-answer follow-up (see
+  “Turn budget and the ACP patch”). Re-running the same question with the new
+  runtime completed in 57 s / 15 calls and produced a cited answer with no
+  limit notice.
+- The live activity panel replaced the permanent collapsed block: each tool
+  call appears transiently, finished groups fold to one line, repeated calls
+  merge, and the answer starts with a single summary line. Event persistence,
+  replay and a first-class sub-agent card are still reserved.
 - **Trajectory is client-side only.** Tool cards, plan and the source ledger are
   built from the live SSE stream; nothing is persisted. `thought.delta` is
   deliberately not rendered. A first-class sub-agent card (deep-research job

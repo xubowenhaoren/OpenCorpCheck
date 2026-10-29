@@ -1,17 +1,19 @@
 # OpenCorpCheck
 
-**Open, agentic company intelligence for A500 · Hang Seng Index · S&P 500 · NASDAQ-100.**
+**Open, agentic company intelligence for STAR 50 · ChiNext 50 · Hang Seng Index · NASDAQ-100.**
 
 > Status: P3 complete + P3.5 web UI — agent research (`deep_research` → pg-boss),
-> a DeepSeek Harness ACP sidebar with the `occ` MCP tools attached, Google News RSS
-> documents across the 102-company corpus, and a React/Vite UI with search, company
-> pages (financials / relationship graph / news / sources), NDX-100 browse and the
-> live assistant sidebar · 2026-10-29
+> a DeepSeek Harness ACP sidebar with the `occ` MCP tools attached, live tool-call
+> trajectory + GFM Markdown, Google News RSS documents across the 102-company corpus,
+> and a React/Vite UI with search, company pages (financials / relationship graph /
+> news / sources), NDX-100 browse and the live assistant sidebar · 2026-10-29
 
 OpenCorpCheck is an open-source, AI-native alternative to commercial company-intelligence
 products (the "企查查" category). It builds a cited, queryable profile for every company in
-four major indices — plus private companies discovered on demand — and exposes it through a
-web/desktop UI, a CLI, an MCP server, and a DeepSeek Harness agent sidebar.
+four indices — STAR 50 (科创50), ChiNext 50 (创业板50), Hang Seng Index and NASDAQ-100 —
+plus private companies discovered on demand, and exposes it through a web/desktop UI, a
+CLI, an MCP server, and a DeepSeek Harness agent sidebar. (The S&P 500 backfill was
+cancelled in the 2026-10-29 scope change; NASDAQ-100 is already backfilled.)
 
 Phase 0 is a narrow spike: a minimal DeepSeek Harness headless run + a distilled BFS/DFS
 skill that produces cited company profiles. No UI, no database. See
@@ -19,7 +21,9 @@ skill that produces cited company profiles. No UI, no database. See
 
 The web UI is implemented in [`apps/web`](apps/web/README.md): search, company pages with
 financials / relationship graph / news / sources, NASDAQ-100 browse, and the live ACP
-assistant sidebar. Agent trajectory / sub-agent visualization is designed but not built.
+assistant sidebar. Tool-use trajectory (live activity panel + grouped static trace) and
+GFM Markdown are built; a first-class sub-agent card and event persistence are designed
+but not built.
 
 ## Why
 
@@ -32,9 +36,10 @@ assistant sidebar. Agent trajectory / sub-agent visualization is designed but no
 
 ## What
 
-- **Universe**: ~1,000 index members (A500, HSI, S&P 500, NASDAQ-100), deduplicated across
-  markets, plus a curated AI watchlist (OpenAI, Anthropic, DeepSeek, Kimi/Moonshot, ...)
-  and on-demand private companies.
+- **Universe**: ~280 index members (STAR 50, ChiNext 50, Hang Seng, NASDAQ-100),
+  deduplicated across markets, plus a curated AI watchlist (OpenAI, Anthropic, DeepSeek,
+  Kimi/Moonshot, ...) and on-demand private companies. NASDAQ-100 is backfilled; A/HK are
+  the next backfill target. S&P 500 was removed from the v1 plan.
 - **BFS coverage**: discover and refresh company basics, products, IR hubs, and news.
 - **DFS diligence**: follow annual reports, filings, earnings calls, and product docs to
   extract cited financials and relationships.

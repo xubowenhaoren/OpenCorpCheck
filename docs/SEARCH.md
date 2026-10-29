@@ -77,7 +77,8 @@ curl 'http://127.0.0.1:8787/v1/health'
 curl 'http://127.0.0.1:8787/openapi.json'
 ```
 
-Response envelope:
+Response envelope (the synthetic fixture corpus still carries legacy A500/SPX
+index labels; the v1 backfill plan is STAR 50 + ChiNext 50 + HSI + NDX):
 
 ```json
 {
@@ -218,9 +219,12 @@ now sort ahead of unbounded BM25 scores. Full method and comparisons:
   so it does not download the second model.
 - The `occ` CLI currently calls the API for search; entity resolution, graph
   queries, and MCP search tools land in P3.
-- Index constituent snapshots (P4) are not loaded yet; the seeded `A500`/`HSI`/
-  `SPX`/`NDX` memberships are fixture metadata. NDX is the exception: the
-  backfill writes real `index_memberships`.
+- Index constituent snapshots (P4) are not loaded yet; the seeded legacy
+  `A500`/`HSI`/`SPX`/`NDX` memberships are fixture metadata. NDX is the
+  exception: the backfill writes real `index_memberships`. The v1 backfill plan
+  is **STAR 50 (`000688`) + ChiNext 50 (`399673`) + HSI + NDX**; S&P 500 was
+  cancelled on 2026-10-29. Existing fixtures keep the old A500/SPX labels for
+  E2E compatibility.
 - `scripts/e2e-search.sh` runs `occ seed --reset`, which **truncates the target
   database and Qdrant collections**. `occ seed` without `--reset` is also not
   safe on a shared corpus: it rewrites the 24 seed companies' aliases and

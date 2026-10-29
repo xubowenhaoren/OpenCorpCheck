@@ -608,6 +608,180 @@ export function describeTool(
   };
 }
 
+/** Stable bucket for merging repeated calls of the same kind. */
+export function toolGroupKey(call: AgentToolCall): string {
+  const name = normalizeToolName(call);
+  const kind = (call.kind ?? "").toLowerCase();
+  if (kind === "search" || name === "web_search" || name === "search") {
+    return "search";
+  }
+  if (kind === "fetch" || name === "web_fetch" || name === "fetch") {
+    return "fetch";
+  }
+  if (
+    kind === "execute" ||
+    name === "bash" ||
+    name === "shell" ||
+    name === "terminal"
+  ) {
+    return "command";
+  }
+  if (MCP_LABELS[name]) return `mcp:${name}`;
+  return "other";
+}
+
+export interface ToolGroup {
+  key: string;
+  /** Human label, e.g. 搜索网页 / 打开网页 / 查找公司. */
+  label: string;
+  calls: AgentToolCall[];
+  /** Aggregated status: in_progress | completed | failed | cancelled. */
+  status: string;
+  /** Failed calls inside the group (a mixed group is not wholly failed). */
+  failedCount: number;
+}
+
+export function groupToolCalls(
+  calls: AgentToolCall[],
+  lang: TraceLang,
+): ToolGroup[] {
+  const groups = new Map<string, ToolGroup>();
+  for (const call of calls) {
+    const key = toolGroupKey(call);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.calls.push(call);
+    } else {
+      groups.set(key, {
+        key,
+        label: describeTool(call, lang).label,
+        calls: [call],
+        status: "completed",
+        failedCount: 0,
+      });
+    }
+  }
+  for (const group of groups.values()) {
+    group.status = aggregateStatus(group.calls);
+    group.failedCount = group.calls.filter(
+      (call) => call.status === "failed",
+    ).length;
+  }
+  return [...groups.values()];
+}
+
+function aggregateStatus(calls: AgentToolCall[]): string {
+  if (calls.some((call) => isActiveStatus(call.status))) return "in_progress";
+  if (calls.some((call) => call.status === "failed")) return "failed";
+  if (calls.every((call) => call.status === "cancelled")) return "cancelled";
+  return "completed";
+}
+
+/** One human phrase for a merged group, e.g. 「搜索了 4 次网页」. */
+export function groupCountLabel(group: ToolGroup, lang: TraceLang): string {
+  const count = group.calls.length;
+  if (group.key === "search") {
+    return lang === "zh"
+      ? count === 1
+        ? "搜索了网页"
+        : `搜索了 ${count} 次网页`
+      : count === 1
+        ? "Searched the web"
+        : `Searched the web ${count}×`;
+  }
+  if (group.key === "fetch") {
+    return text(lang, `打开了 ${count} 个网页`, `Opened ${count} pages`);
+  }
+  if (group.key === "command") {
+    return text(lang, `运行了 ${count} 条命令`, `Ran ${count} commands`);
+  }
+  return count === 1
+    ? group.label
+    : text(lang, `${group.label} ${count} 次`, `${group.label} ×${count}`);
+}
+
+/** Status line for a merged group; a mixed group reports only its failures. */
+export function groupStatusLabel(
+  group: ToolGroup,
+  lang: TraceLang,
+): string {
+  if (group.status === "failed") {
+    return group.failedCount === group.calls.length
+      ? text(lang, "失败", "Failed")
+      : text(lang, `${group.failedCount} 个失败`, `${group.failedCount} failed`);
+  }
+  if (group.status === "cancelled") {
+    return text(lang, "已取消", "Cancelled");
+  }
+  if (group.status === "in_progress") {
+    return text(lang, "进行中", "Running");
+  }
+  return "";
+}
+
+export interface ActivityHeadlineOptions {
+  elapsedMs?: number;
+  streaming: boolean;
+  /** Cited sources, appended after the action phrases when finished. */
+  sources?: number;
+  lang: TraceLang;
+}
+
+/**
+ * The single collapsed line: "工作了 13s · 搜索了 4 次网页 · 打开了 6 个网页".
+ *
+ * While streaming it is a live ticker; once finished it becomes the default
+ * summary under the answer (the full timeline stays behind the disclosure).
+ */
+export function activityHeadline(
+  calls: AgentToolCall[],
+  options: ActivityHeadlineOptions,
+): string {
+  const lang = options.lang;
+  if (options.streaming) {
+    const duration =
+      typeof options.elapsedMs === "number"
+        ? formatDuration(Math.max(options.elapsedMs, 1_000), lang)
+        : "";
+    return [
+      text(lang, "正在研究", "Researching"),
+      text(lang, `${calls.length} 步`, `${calls.length} steps`),
+      duration,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  const parts: string[] = [];
+  if (typeof options.elapsedMs === "number") {
+    const duration = formatDuration(options.elapsedMs, lang);
+    parts.push(text(lang, `工作了 ${duration}`, `Worked for ${duration}`));
+  }
+  const groups = groupToolCalls(calls, lang);
+  // Lead with the dominant activity (usually web fetches); insertion order is
+  // preserved for ties via the stable sort.
+  const ranked = [...groups].sort(
+    (a, b) => b.calls.length - a.calls.length,
+  );
+  const shown = ranked.slice(0, 3);
+  for (const group of shown) {
+    parts.push(groupCountLabel(group, lang));
+  }
+  if (groups.length > shown.length) {
+    parts.push(
+      text(
+        lang,
+        `另有 ${groups.length - shown.length} 类操作`,
+        `${groups.length - shown.length} more kinds`,
+      ),
+    );
+  }
+  if (options.sources) {
+    parts.push(text(lang, `${options.sources} 个来源`, `${options.sources} sources`));
+  }
+  return parts.join(" · ");
+}
+
 /** Deduplicated URLs for the source ledger; cited ones sort first. */
 export function buildSourceLedger(
   answer: string,

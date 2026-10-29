@@ -22,6 +22,7 @@ import {
   type AgentToolCall,
   type UsageSummary,
 } from "../lib/agent-trace";
+import { AgentActivity } from "./AgentActivity";
 import { AgentTrace } from "./AgentTrace";
 
 // Code-split: the Markdown parser only loads once an assistant answer renders.
@@ -175,6 +176,7 @@ export function AgentSidebar() {
     let assistantText = "";
     let flushTimer: number | null = null;
     let finished = false;
+    const seenCalls = new Set<string>();
 
     setMessages((previous) => [
       ...previous,
@@ -278,6 +280,7 @@ export function AgentSidebar() {
             flushText();
             const callId = asString(event.callId);
             if (!callId) return;
+            seenCalls.add(callId);
             updateAssistant((message) => ({
               ...message,
               tools: mergeTool(message.tools, {
@@ -327,13 +330,19 @@ export function AgentSidebar() {
           if (event.type === "notice") {
             const title = asString(event.title);
             const description = asString(event.description);
-            if (title || description) {
+            const code = asString(event.code);
+            const fallback = [title, description].filter(Boolean).join(" · ");
+            const localized = code
+              ? t(code, { steps: seenCalls.size })
+              : fallback;
+            const text = localized === code ? fallback : localized;
+            if (text) {
               setMessages((previous) => [
                 ...previous,
                 {
                   id: crypto.randomUUID(),
                   role: "system",
-                  text: [title, description].filter(Boolean).join(" · "),
+                  text,
                   status: "done",
                   startedAt: Date.now(),
                   tools: [],
@@ -344,8 +353,10 @@ export function AgentSidebar() {
             return;
           }
           if (event.type === "run.failed") {
-            const message = asString(event.error) || t("agent.error");
-            finish("error", message);
+            const code = asString(event.code);
+            const fallback = asString(event.error) || t("agent.error");
+            const localized = code ? t(code) : fallback;
+            finish("error", localized === code ? fallback : localized);
             return;
           }
           if (event.type === "run.completed") {
@@ -454,9 +465,23 @@ export function AgentSidebar() {
               const hasTrace =
                 message.role === "assistant" &&
                 (message.tools.length > 0 || message.plan.length > 0);
+              // While researching and before any answer text arrives, show the
+              // transient activity panel; the collapsed trace takes over as
+              // soon as the model starts writing.
+              const live =
+                message.role === "assistant" &&
+                message.status === "streaming" &&
+                !message.text &&
+                message.tools.length > 0;
               return (
                 <div className={`msg ${message.role}`} key={message.id}>
                   <div className="bubble">
+                    {live ? (
+                      <AgentActivity
+                        calls={message.tools}
+                        startedAt={message.startedAt}
+                      />
+                    ) : null}
                     {message.text ? (
                       message.role === "assistant" ? (
                         <Suspense
@@ -471,7 +496,7 @@ export function AgentSidebar() {
                       ) : (
                         <Linkified text={message.text} />
                       )
-                    ) : message.status === "streaming" ? (
+                    ) : !live && message.status === "streaming" ? (
                       <span className="agent-status">
                         <span className="spinner" />
                         {t("agent.thinking")}
@@ -492,7 +517,7 @@ export function AgentSidebar() {
                         ))}
                       </div>
                     ) : null}
-                    {hasTrace ? (
+                    {hasTrace && !live ? (
                       <AgentTrace
                         calls={message.tools}
                         answer={message.text}
@@ -505,16 +530,6 @@ export function AgentSidebar() {
                         streaming={message.status === "streaming"}
                         usage={message.usage}
                       />
-                    ) : null}
-                    {message.role === "assistant" &&
-                    message.status !== "streaming" &&
-                    message.tools.length > 0 ? (
-                      <div className="msg-meta">
-                        {t("agent.footer", {
-                          tools: message.tools.length,
-                          sources: urls.length,
-                        })}
-                      </div>
                     ) : null}
                   </div>
                 </div>

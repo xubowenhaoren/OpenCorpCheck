@@ -73,6 +73,7 @@ const agent = new AgentService({
   dshPatch: config.agentDshPatch,
   turnTimeoutMs: config.agentTurnTimeoutMs,
   maxToolCalls: config.agentMaxToolCalls,
+  maxRepeatedToolCalls: config.agentMaxRepeatedToolCalls,
   idleTimeoutMs: config.agentIdleTimeoutMs,
 });
 

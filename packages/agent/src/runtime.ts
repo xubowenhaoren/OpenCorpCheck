@@ -21,21 +21,70 @@ const VERSION = "0.1.0";
 const STDERR_TAIL = 8_000;
 const TIMEOUT = Symbol("turn-timeout");
 
-/** Hard limits for one prompt turn. */
+/**
+ * Hard limits for one prompt turn.
+ *
+ * The tool-call limit is a runaway guard, not a research quota. A market-event
+ * question legitimately fans out into one search followed by many fetches
+ * (measured: 32 distinct calls, no repeats), so the budget is deliberately
+ * generous and a separate repetition guard catches actual loops.
+ */
 export interface TurnLimits {
   /** Wall-clock limit for one turn. */
   timeoutMs: number;
-  /** Tool calls allowed before the runtime cancels the turn. */
+  /** Tool calls allowed before the runtime stops searching. */
   maxToolCalls: number;
+  /**
+   * Stop once the same `(tool, kind, input)` call repeats this many times.
+   * Unlike a flat call budget this does not punish a broad sweep that keeps
+   * discovering new sources. `0` disables the repetition guard.
+   */
+  maxRepeatedToolCalls: number;
+  /** Time allowed for the forced "answer from gathered evidence" follow-up. */
+  followUpTimeoutMs: number;
   /** How long to wait for dsh to report `stop` after a cancel. */
   cancelGraceMs: number;
 }
 
 export const DEFAULT_TURN_LIMITS: TurnLimits = {
   timeoutMs: 180_000,
-  maxToolCalls: 30,
+  maxToolCalls: 80,
+  maxRepeatedToolCalls: 4,
+  followUpTimeoutMs: 45_000,
   cancelGraceMs: 5_000,
 };
+
+/**
+ * Sent as a second prompt after a limit cancel. dsh has no in-turn steering,
+ * so the only way to turn partial evidence into an answer is to stop the
+ * research turn and ask for a synthesis turn with tools effectively disabled.
+ */
+const FORCE_ANSWER_PROMPT = [
+  "已达到本轮检索上限。",
+  "请立即停止调用任何工具，只根据本轮对话中已经获得的资料直接回答用户的问题。",
+  "保留关键数字和来源链接；没有证据的部分明确写“未验证”，不要再搜索。",
+].join("\n");
+
+type LimitReason = "tool-budget" | "repetition" | "timeout";
+
+type SegmentOutcome =
+  | { kind: "completed"; stopReason: string; response?: unknown }
+  | {
+      kind: "limit";
+      reason: LimitReason;
+      detail: string;
+      toolCalls: number;
+      /** dsh acknowledged the cancel with a `stop`. */
+      stopped: boolean;
+    };
+
+function limitNoticeCode(reason: LimitReason): string {
+  return reason === "repetition"
+    ? "agent.limit.repetition"
+    : reason === "timeout"
+      ? "agent.limit.timeout"
+      : "agent.limit.budget";
+}
 
 export interface McpServerSpec {
   name: string;
@@ -223,7 +272,109 @@ export class DshAcpRuntime {
       ...DEFAULT_TURN_LIMITS,
       ...this.options.limits,
     };
+    try {
+      yield { type: "run.started", sessionId, prompt: text };
+
+      let outcome = yield* this.runSegment(session, sessionId, text, {
+        timeoutMs: limits.timeoutMs,
+        maxToolCalls: limits.maxToolCalls,
+        maxRepeatedToolCalls: limits.maxRepeatedToolCalls,
+        cancelGraceMs: limits.cancelGraceMs,
+      });
+
+      if (outcome.kind === "completed") {
+        yield {
+          type: "run.completed",
+          stopReason: outcome.stopReason,
+          response: outcome.response,
+        };
+        return;
+      }
+
+      if (!outcome.stopped) {
+        yield {
+          type: "notice",
+          severity: "warning",
+          title: "Turn stopped",
+          description: outcome.detail,
+          code: "agent.limit.failed",
+        };
+        yield {
+          type: "run.failed",
+          error: outcome.detail,
+          code: "agent.limit.failed",
+        };
+        return;
+      }
+
+      // Partial research is still useful: stop searching and ask for a
+      // synthesis answer from the evidence already in context.
+      yield {
+        type: "notice",
+        severity: "warning",
+        title: "Stopped searching; answering from gathered evidence",
+        description: outcome.detail,
+        code: limitNoticeCode(outcome.reason),
+      };
+
+      outcome = yield* this.runSegment(session, sessionId, FORCE_ANSWER_PROMPT, {
+        timeoutMs: limits.followUpTimeoutMs,
+        maxToolCalls: 0,
+        maxRepeatedToolCalls: 0,
+        cancelGraceMs: limits.cancelGraceMs,
+      });
+
+      if (outcome.kind === "completed") {
+        yield {
+          type: "run.completed",
+          stopReason: outcome.stopReason,
+          response: outcome.response,
+        };
+        return;
+      }
+
+      yield {
+        type: "notice",
+        severity: "warning",
+        title: "No answer produced",
+        description: outcome.detail,
+        code: "agent.limit.failed",
+      };
+      yield {
+        type: "run.failed",
+        error:
+          "Stopped searching, but the model did not produce an answer. Try a narrower question.",
+        code: "agent.limit.failed",
+      };
+    } catch (error) {
+      yield {
+        type: "run.failed",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      this.busy.delete(sessionId);
+    }
+  }
+
+  /**
+   * One `session/prompt` segment. Returns when dsh stops or when a limit is
+   * hit; in the latter case it cancels and waits briefly for the `stop` so the
+   * session is reusable for the forced-answer follow-up.
+   */
+  private async *runSegment(
+    session: ActiveSession,
+    sessionId: string,
+    text: string,
+    limits: {
+      timeoutMs: number;
+      maxToolCalls: number;
+      maxRepeatedToolCalls: number;
+      cancelGraceMs: number;
+    },
+  ): AsyncGenerator<AgentEvent, SegmentOutcome> {
     const deadline = Date.now() + limits.timeoutMs;
+    const counted = new Set<string>();
+    const signatures = new Map<string, number>();
     let toolCalls = 0;
     // One outstanding read at a time. A timed-out race must not leave a stale
     // waiter behind, or it would swallow the `stop` message that follows the
@@ -238,76 +389,87 @@ export class DshAcpRuntime {
       if (result !== TIMEOUT) pending = null;
       return result;
     };
-    let limitHit: { title: string; message: string } | null = null;
-    try {
-      yield { type: "run.started", sessionId, prompt: text };
-      const response = session.prompt(text);
-      // The events below carry the outcome; this only prevents an unhandled
-      // rejection when we cancel the turn ourselves.
-      void response.catch(() => undefined);
+    let limit: { reason: LimitReason; detail: string } | null = null;
 
-      for (;;) {
-        for (const event of this.drainPermissionEvents(sessionId)) yield event;
-        const remaining = deadline - Date.now();
-        const message =
-          remaining > 0
-            ? await nextWithin(remaining)
-            : TIMEOUT;
-        if (message === TIMEOUT) {
-          limitHit = {
-            title: "Answer stopped: time limit",
-            message: `Turn stopped after ${Math.round(
-              limits.timeoutMs / 1000,
-            )}s (OCC_AGENT_TURN_TIMEOUT_MS). Ask a narrower question or raise the limit.`,
+    const response = session.prompt(text);
+    // The events below carry the outcome; this only prevents an unhandled
+    // rejection when we cancel the turn ourselves.
+    void response.catch(() => undefined);
+
+    for (;;) {
+      for (const event of this.drainPermissionEvents(sessionId)) yield event;
+      const remaining = deadline - Date.now();
+      const message = remaining > 0 ? await nextWithin(remaining) : TIMEOUT;
+      if (message === TIMEOUT) {
+        limit = {
+          reason: "timeout",
+          detail: `Turn stopped after ${Math.round(
+            limits.timeoutMs / 1_000,
+          )}s (OCC_AGENT_TURN_TIMEOUT_MS).`,
+        };
+        break;
+      }
+      if (message.kind === "stop") {
+        return {
+          kind: "completed",
+          stopReason: message.stopReason,
+          response: message.response,
+        };
+      }
+      const event = mapUpdate(message.update);
+      if (!event) continue;
+      yield event;
+      if (
+        event.type !== "tool.called" ||
+        message.update.sessionUpdate !== "tool_call" ||
+        counted.has(event.callId)
+      ) {
+        continue;
+      }
+      counted.add(event.callId);
+      toolCalls += 1;
+      if (toolCalls > limits.maxToolCalls) {
+        limit = {
+          reason: "tool-budget",
+          detail: `Reached the ${limits.maxToolCalls}-step search budget (OCC_AGENT_MAX_TOOL_CALLS).`,
+        };
+        break;
+      }
+      if (limits.maxRepeatedToolCalls > 0) {
+        const signature = toolSignature(message.update);
+        const repeats = (signatures.get(signature) ?? 0) + 1;
+        signatures.set(signature, repeats);
+        if (repeats >= limits.maxRepeatedToolCalls) {
+          limit = {
+            reason: "repetition",
+            detail: `Detected the same tool call ${repeats} times in one turn (OCC_AGENT_MAX_REPEATED_TOOL_CALLS).`,
           };
           break;
         }
-        if (message.kind === "stop") {
-          yield {
-            type: "run.completed",
-            stopReason: message.stopReason,
-            response: message.response,
-          };
-          return;
-        }
-        const event = mapUpdate(message.update);
-        if (!event) continue;
-        yield event;
-        if (event.type === "tool.called") {
-          toolCalls += 1;
-          if (toolCalls > limits.maxToolCalls) {
-            limitHit = {
-              title: "Answer stopped: tool-call limit",
-              message: `Turn stopped after ${limits.maxToolCalls} tool calls to avoid an endless loop (OCC_AGENT_MAX_TOOL_CALLS).`,
-            };
-            break;
-          }
-        }
       }
-
-      // Limit reached: cancel, then wait briefly for dsh to finish the turn.
-      await this.cancel(sessionId).catch(() => undefined);
-      const graceDeadline = Date.now() + limits.cancelGraceMs;
-      for (;;) {
-        const grace = graceDeadline - Date.now();
-        if (grace <= 0) break;
-        const message = await nextWithin(grace);
-        if (message === TIMEOUT || message.kind === "stop") break;
-      }
-      yield {
-        type: "notice",
-        severity: "warning",
-        title: limitHit.title,
-      };
-      yield { type: "run.failed", error: limitHit.message };
-    } catch (error) {
-      yield {
-        type: "run.failed",
-        error: error instanceof Error ? error.message : String(error),
-      };
-    } finally {
-      this.busy.delete(sessionId);
     }
+
+    // Limit reached: cancel, then wait briefly for dsh to finish the turn.
+    await this.cancel(sessionId).catch(() => undefined);
+    let stopped = false;
+    const graceDeadline = Date.now() + limits.cancelGraceMs;
+    for (;;) {
+      const grace = graceDeadline - Date.now();
+      if (grace <= 0) break;
+      const message = await nextWithin(grace);
+      if (message === TIMEOUT) break;
+      if (message.kind === "stop") {
+        stopped = true;
+        break;
+      }
+    }
+    return {
+      kind: "limit",
+      reason: limit.reason,
+      detail: limit.detail,
+      toolCalls,
+      stopped,
+    };
   }
 
   async cancel(sessionId: string): Promise<void> {
@@ -443,6 +605,42 @@ function truncateDeep(
     return result;
   }
   return value;
+}
+
+/**
+ * Stable key for "the model asked for exactly the same thing again".
+ *
+ * Object keys are sorted so an equivalent payload always hashes the same;
+ * the string is capped because a tool input occasionally carries a long body.
+ */
+function toolSignature(
+  update: Extract<SessionUpdate, { sessionUpdate: "tool_call" }>,
+): string {
+  let input = "";
+  try {
+    input = canonicalJson(update.rawInput).slice(0, 4_000);
+  } catch {
+    // Circular/non-JSON payload: fall back to the title for the signature.
+  }
+  return [
+    update.name ?? "",
+    update.kind ?? "",
+    input || update.title || "",
+  ].join("|");
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === undefined || value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value !== "object") return String(value);
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+    .join(",")}}`;
 }
 
 function mapUpdate(update: SessionUpdate): AgentEvent | null {

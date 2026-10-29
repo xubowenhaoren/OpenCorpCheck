@@ -43,7 +43,7 @@ function nonNegativeIntEnv(name: string, fallback: number): number {
 
 /**
  * ACP overlay for the sidebar. `none` (or a missing file) disables it; the
- * default overlay sets reasoningEffort=medium plus the profile's provider/model.
+ * default overlay sets reasoningEffort=low plus the profile's provider/model.
  */
 function agentPatchPath(): string | undefined {
   const raw = process.env.OCC_AGENT_DSH_PATCH?.trim();
@@ -105,7 +105,11 @@ export const config = {
   agentPermissionMode: process.env.OCC_AGENT_PERMISSION_MODE ?? "read-only",
   agentDshPatch: agentPatchPath(),
   agentTurnTimeoutMs: intEnv("OCC_AGENT_TURN_TIMEOUT_MS", 180_000),
-  agentMaxToolCalls: intEnv("OCC_AGENT_MAX_TOOL_CALLS", 30),
+  agentMaxToolCalls: intEnv("OCC_AGENT_MAX_TOOL_CALLS", 80),
+  agentMaxRepeatedToolCalls: nonNegativeIntEnv(
+    "OCC_AGENT_MAX_REPEATED_TOOL_CALLS",
+    4,
+  ),
   agentIdleTimeoutMs: nonNegativeIntEnv("OCC_AGENT_IDLE_TIMEOUT_MS", 600_000),
   deepseekApiKey: secretEnv(
     "DEEPSEEK_API_KEY",

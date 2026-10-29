@@ -27,7 +27,14 @@ export type AgentEvent =
     }
   | { type: "plan"; entries: unknown[] }
   | { type: "usage"; used: number; size: number; cost?: unknown }
-  | { type: "notice"; severity: string; title: string; description?: string }
+  | {
+      type: "notice";
+      severity: string;
+      title: string;
+      description?: string;
+      /** Stable code so the UI can localize runtime-generated notices. */
+      code?: string;
+    }
   | {
       type: "permission.requested";
       callId?: string;
@@ -40,4 +47,4 @@ export type AgentEvent =
       stopReason: string;
       response?: unknown;
     }
-  | { type: "run.failed"; error: string };
+  | { type: "run.failed"; error: string; code?: string };

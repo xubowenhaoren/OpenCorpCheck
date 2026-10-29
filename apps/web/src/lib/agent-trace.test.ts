@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  activityHeadline,
   buildSourceLedger,
   describeTool,
   extractUrls,
   formatDuration,
+  groupCountLabel,
+  groupToolCalls,
   planSteps,
   toolErrorSummary,
   type AgentToolCall,
@@ -192,5 +195,88 @@ describe("tool trajectory", () => {
     expect(formatDuration(4_200, "zh")).toBe("4.2s");
     expect(formatDuration(42_000, "en")).toBe("42s");
     expect(formatDuration(72_000, "en")).toBe("1m 12s");
+  });
+
+  it("merges repeated calls into one human activity line", () => {
+    const calls = [
+      call({
+        callId: "a",
+        tool: "web_search",
+        kind: "search",
+        input: { query: "alphabet" },
+      }),
+      call({
+        callId: "b",
+        tool: "web_fetch",
+        kind: "fetch",
+        input: { url: "https://example.com/a" },
+      }),
+      call({
+        callId: "c",
+        tool: "web_search",
+        kind: "search",
+        input: { query: "goog" },
+      }),
+    ];
+
+    const groups = groupToolCalls(calls, "zh");
+    expect(groups.map((group) => group.key)).toEqual(["search", "fetch"]);
+    expect(groups[0].calls).toHaveLength(2);
+    expect(groupCountLabel(groups[0], "zh")).toBe("搜索了 2 次网页");
+    expect(groupCountLabel(groups[1], "zh")).toBe("打开了 1 个网页");
+
+    expect(
+      activityHeadline(calls, {
+        elapsedMs: 13_000,
+        streaming: false,
+        sources: 2,
+        lang: "zh",
+      }),
+    ).toBe("工作了 13s · 搜索了 2 次网页 · 打开了 1 个网页 · 2 个来源");
+  });
+
+  it("keeps separate MCP tools in separate groups and aggregates status", () => {
+    const calls = [
+      call({
+        callId: "a",
+        tool: "mcp__occ__search_companies",
+        kind: "other",
+        status: "completed",
+        input: { query: "apple" },
+      }),
+      call({
+        callId: "b",
+        tool: "mcp__occ__search_companies",
+        kind: "other",
+        status: "in_progress",
+        input: { query: "microsoft" },
+      }),
+      call({
+        callId: "c",
+        tool: "mcp__occ__get_company",
+        kind: "other",
+        status: "completed",
+        input: { company: "AAPL" },
+      }),
+    ];
+
+    const groups = groupToolCalls(calls, "zh");
+    expect(groups.map((group) => group.key)).toEqual([
+      "mcp:search_companies",
+      "mcp:get_company",
+    ]);
+    expect(groups[0].status).toBe("in_progress");
+    expect(groups[1].status).toBe("completed");
+    expect(groupCountLabel(groups[0], "zh")).toBe("查找公司 2 次");
+  });
+
+  it("shows a live ticker headline while researching", () => {
+    expect(
+      activityHeadline([], {
+        elapsedMs: 12_000,
+        streaming: true,
+        lang: "zh",
+      }),
+    ).toBe("正在研究 · 0 步 · 12s");
   });
 });

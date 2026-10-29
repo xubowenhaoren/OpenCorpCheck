@@ -173,7 +173,8 @@ must be running, or dsh startup fails).
 
 - `config/universe.yaml` covers the AI watchlist; `config/indices/ndx.yaml` is
   the NASDAQ-100 constituent snapshot (100 primary listings, official Nasdaq
-  source, `as_of` recorded). A500/HSI/SPX constituent snapshots are still P4.
+  source, `as_of` recorded). STAR 50 (`000688`) / ChiNext 50 (`399673`) / HSI
+  snapshots are still P4; S&P 500 was cancelled on 2026-10-29.
 - Live queue counts query `pgboss.job` directly, assuming the default schema.
 - Token/cost is logged per job but not summed per run.
 - Snapshots: ingest uploads each section to `sections/<slug>/<sha256>.md`;
