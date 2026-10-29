@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 
 import type { Market } from "@occ/core";
 import {
+  clearDeterministicFacts,
   getExtractionCache,
   relationId,
   replaceInferredRelations,
@@ -373,6 +374,11 @@ export async function extractCompany(input: ExtractInput): Promise<ExtractResult
     const executor = tx as unknown as Db;
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtext(${`occ:extract:${companyId}`}))`,
+    );
+    await clearDeterministicFacts(
+      executor,
+      companyId,
+      DETERMINISTIC_EXTRACTOR_VERSION,
     );
     await upsertFinancialFacts(executor, financialRows);
     await upsertFacts(executor, factRows);

@@ -196,6 +196,30 @@ export async function upsertCitationSources(
   return map;
 }
 
+/** Remove previous deterministic output so changed values do not linger. */
+export async function clearDeterministicFacts(
+  db: Db,
+  companyId: string,
+  extractorVersion: string,
+): Promise<void> {
+  await db
+    .delete(financialFacts)
+    .where(
+      and(
+        eq(financialFacts.companyId, companyId),
+        eq(financialFacts.extractorVersion, extractorVersion),
+      ),
+    );
+  await db
+    .delete(facts)
+    .where(
+      and(
+        eq(facts.companyId, companyId),
+        eq(facts.extractorVersion, extractorVersion),
+      ),
+    );
+}
+
 export async function upsertFinancialFacts(
   db: Db,
   rows: NewFinancialFact[],
