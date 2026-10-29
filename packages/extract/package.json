@@ -1,0 +1,35 @@
+{
+  "name": "@occ/extract",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic facts/financials extraction from research section markdown",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p ../core/tsconfig.json && tsc -p ../db/tsconfig.json && tsc -p ../ingest/tsconfig.json && tsc -p tsconfig.json && vitest run"
+  },
+  "dependencies": {
+    "@occ/core": "workspace:*",
+    "@occ/db": "workspace:*",
+    "@occ/ingest": "workspace:*",
+    "zod": "^4.6.7",
+    "drizzle-orm": "^0.45.4"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "5.9.3",
+    "vitest": "^5.0.5"
+  }
+}
