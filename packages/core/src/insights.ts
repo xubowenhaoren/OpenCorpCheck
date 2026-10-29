@@ -12,10 +12,12 @@ export const RelationTypeSchema = z.enum([
   "parent_of",
   "invests_in",
   "supplies",
+  "buys_from",
   "competes_with",
   "partners_with",
   "joint_venture_with",
   "licenses_to",
+  "licenses_from",
   "other",
 ]);
 export type RelationType = z.infer<typeof RelationTypeSchema>;
@@ -26,16 +28,16 @@ export const RelationLabelSchema = z.enum([
   "parent_of",
   "invests_in",
   "supplies",
+  "buys_from",
   "competes_with",
   "partners_with",
   "joint_venture_with",
   "licenses_to",
+  "licenses_from",
   "other",
   "owned_by",
   "subsidiary_of",
   "invested_by",
-  "buys_from",
-  "licenses_from",
 ]);
 export type RelationLabel = z.infer<typeof RelationLabelSchema>;
 
@@ -68,7 +70,9 @@ const INVERSE_LABEL: Partial<Record<RelationType, RelationLabel>> = {
   parent_of: "subsidiary_of",
   invests_in: "invested_by",
   supplies: "buys_from",
+  buys_from: "supplies",
   licenses_to: "licenses_from",
+  licenses_from: "licenses_to",
 };
 
 /** Label for an edge as seen from the company the caller asked about. */

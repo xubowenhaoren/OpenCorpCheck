@@ -3,11 +3,14 @@ import { sql } from "drizzle-orm";
 import type { Market } from "@occ/core";
 import {
   getExtractionCache,
+  relationId,
+  replaceInferredRelations,
   upsertCitationSources,
   upsertExtractionCache,
   upsertFacts,
   upsertFinancialFacts,
   type Db,
+  type InferredRelationInput,
   type NewFact,
   type NewFinancialFact,
 } from "@occ/db";
@@ -20,11 +23,20 @@ import {
 import { parseDataCutoff, parseSourceChapter } from "./citations.js";
 import { extractFinancials } from "./financials.js";
 import { parseFiscalYearEnd } from "./periods.js";
+import {
+  buildRelationRequest,
+  loadRelationUniverse,
+  runRelationRequest,
+} from "./relations/extract.js";
+import type { ChatClient } from "./relations/llm.js";
+import type { UniverseCompany } from "./relations/prompt.js";
 import { extractSegmentFacts } from "./segments.js";
 import { extractSnapshotFacts, type FactDraft } from "./snapshot.js";
 import { extractTimelineFacts } from "./timeline.js";
 
 export const DETERMINISTIC_EXTRACTOR_VERSION = "deterministic-v1";
+export const RELATION_EXTRACTOR_VERSION = "relations-v1";
+export const DEFAULT_RELATION_MODEL = "deepseek-flash";
 
 export interface ExtractError {
   stage: string;
@@ -37,10 +49,18 @@ export interface ExtractInput {
   markdown: string;
   parsed: ParsedSection;
   market: Market;
+  /** Listing ticker, used only in the relation prompt. */
+  companyTicker?: string;
   /** Source row for the research profile, used when a row has no citation. */
   profileSourceId?: string;
   force?: boolean;
   now?: Date;
+  /** `llm` enables deepseek-flash relation extraction; default is `none`. */
+  relations?: "none" | "llm";
+  chat?: ChatClient;
+  model?: string;
+  /** Preloaded visible-company universe (batch mode avoids N queries). */
+  universe?: UniverseCompany[];
 }
 
 export interface ExtractResult {
@@ -48,6 +68,9 @@ export interface ExtractResult {
   skipped: boolean;
   financialFacts: number;
   facts: number;
+  relations: number;
+  relationsSkipped: boolean;
+  relationsError?: string;
   errors: ExtractError[];
 }
 
@@ -89,7 +112,7 @@ export async function extractCompany(input: ExtractInput): Promise<ExtractResult
   const inputSha256 = sha256Text(input.markdown);
   const errors: ExtractError[] = [];
 
-  if (!input.force) {
+  if (!input.force && input.relations !== "llm") {
     const cached = await getExtractionCache(db, companyId, "deterministic");
     if (
       cached &&
@@ -104,6 +127,8 @@ export async function extractCompany(input: ExtractInput): Promise<ExtractResult
         skipped: true,
         financialFacts: stats?.financialFacts ?? 0,
         facts: stats?.facts ?? 0,
+        relations: 0,
+        relationsSkipped: false,
         errors: [],
       };
     }
@@ -170,6 +195,137 @@ export async function extractCompany(input: ExtractInput): Promise<ExtractResult
   const now = input.now ?? new Date();
   const sourceByRef = await upsertCitationSources(db, citations, now);
 
+  let relationRows: InferredRelationInput[] = [];
+  let relationState:
+    | {
+        ran: boolean;
+        skipped: boolean;
+        error?: string;
+        promptHash: string;
+        accepted: number;
+        raw: number;
+        dropped: number;
+        tokensInput: number;
+        tokensOutput: number;
+      }
+    | null = null;
+
+  if (input.relations === "llm") {
+    const relationChapter = chapter(input.parsed, "关键关系");
+    if (relationChapter) {
+      if (!input.chat) {
+        const message = "relations=llm requires a chat client";
+        errors.push({ stage: "relations", message });
+        relationState = {
+          ran: false,
+          skipped: false,
+          error: message,
+          promptHash: "",
+          accepted: 0,
+          raw: 0,
+          dropped: 0,
+          tokensInput: 0,
+          tokensOutput: 0,
+        };
+      } else {
+        const universe = input.universe ?? (await loadRelationUniverse(db));
+        const request = buildRelationRequest({
+          companyId,
+          companyName: input.parsed.displayName,
+          companyTicker: input.companyTicker,
+          chapterText: relationChapter.text,
+          citations: citations.map((citation) => ({
+            ref: citation.ref,
+            title: citation.title,
+            publisher: citation.publisher,
+          })),
+          universe,
+        });
+        if (!request) {
+          relationState = {
+            ran: false,
+            skipped: false,
+            promptHash: "",
+            accepted: 0,
+            raw: 0,
+            dropped: 0,
+            tokensInput: 0,
+            tokensOutput: 0,
+          };
+        } else {
+          const cached = await getExtractionCache(db, companyId, "relations");
+          const cacheHit =
+            !input.force &&
+            cached?.status === "ok" &&
+            cached.inputSha256 === inputSha256 &&
+            cached.promptHash === request.promptHash;
+          if (cacheHit) {
+            relationState = {
+              ran: false,
+              skipped: true,
+              promptHash: request.promptHash,
+              accepted: 0,
+              raw: 0,
+              dropped: 0,
+              tokensInput: 0,
+              tokensOutput: 0,
+            };
+          } else {
+            const result = await runRelationRequest(request, input.chat);
+            if (result.error) {
+              errors.push({ stage: "relations", message: result.error });
+              relationState = {
+                ran: false,
+                skipped: false,
+                error: result.error,
+                promptHash: result.promptHash,
+                accepted: 0,
+                raw: result.rawCount,
+                dropped: result.dropped.length,
+                tokensInput: result.inputTokens,
+                tokensOutput: result.outputTokens,
+              };
+            } else {
+              relationRows = result.relations.map((relation) => {
+                const ref = relation.refs.find((value) =>
+                  sourceByRef.has(value),
+                );
+                return {
+                  id: relationId({
+                    srcCompanyId: companyId,
+                    dstCompanyId: relation.dstCompanyId,
+                    type: relation.type,
+                    quote: relation.quote,
+                  }),
+                  srcCompanyId: companyId,
+                  dstCompanyId: relation.dstCompanyId,
+                  type: relation.type,
+                  confidence: relation.confidence,
+                  quote: relation.quote,
+                  sourceRefs: relation.refs,
+                  sourceId: ref
+                    ? sourceByRef.get(ref)
+                    : input.profileSourceId,
+                  extractorVersion: RELATION_EXTRACTOR_VERSION,
+                };
+              });
+              relationState = {
+                ran: true,
+                skipped: false,
+                promptHash: result.promptHash,
+                accepted: relationRows.length,
+                raw: result.rawCount,
+                dropped: result.dropped.length,
+                tokensInput: result.inputTokens,
+                tokensOutput: result.outputTokens,
+              };
+            }
+          }
+        }
+      }
+    }
+  }
+
   const financialRows: NewFinancialFact[] = financials.map((draft) => {
     const sourced = withSource(draft, sourceByRef, input.profileSourceId);
     return {
@@ -220,6 +376,9 @@ export async function extractCompany(input: ExtractInput): Promise<ExtractResult
     );
     await upsertFinancialFacts(executor, financialRows);
     await upsertFacts(executor, factRows);
+    if (relationState?.ran) {
+      await replaceInferredRelations(executor, companyId, relationRows);
+    }
     await upsertExtractionCache(executor, {
       companyId,
       stage: "deterministic",
@@ -234,6 +393,26 @@ export async function extractCompany(input: ExtractInput): Promise<ExtractResult
       error: errors.length > 0 ? errors.map((entry) => entry.message).join("; ") : undefined,
       durationMs: Date.now() - started,
     });
+    if (relationState && !relationState.skipped) {
+      await upsertExtractionCache(executor, {
+        companyId,
+        stage: "relations",
+        inputSha256,
+        promptHash: relationState.promptHash,
+        model: input.model ?? DEFAULT_RELATION_MODEL,
+        status: relationState.error ? "partial" : "ok",
+        stats: {
+          accepted: relationState.accepted,
+          raw: relationState.raw,
+          dropped: relationState.dropped,
+          extractorVersion: RELATION_EXTRACTOR_VERSION,
+        },
+        error: relationState.error,
+        tokensInput: relationState.tokensInput,
+        tokensOutput: relationState.tokensOutput,
+        durationMs: Date.now() - started,
+      });
+    }
   });
 
   return {
@@ -241,6 +420,9 @@ export async function extractCompany(input: ExtractInput): Promise<ExtractResult
     skipped: false,
     financialFacts: financialRows.length,
     facts: factRows.length,
+    relations: relationRows.length,
+    relationsSkipped: relationState?.skipped ?? false,
+    relationsError: relationState?.error,
     errors,
   };
 }

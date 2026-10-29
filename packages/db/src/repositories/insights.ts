@@ -124,10 +124,12 @@ function asRelationType(value: string): RelationType {
     "parent_of",
     "invests_in",
     "supplies",
+    "buys_from",
     "competes_with",
     "partners_with",
     "joint_venture_with",
     "licenses_to",
+    "licenses_from",
     "other",
   ];
   return allowed.includes(value as RelationType) ? (value as RelationType) : "other";
