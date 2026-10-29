@@ -90,6 +90,11 @@ export function openApiDocument() {
               schema: { type: "string", description: "Index codes, comma-separated" },
             },
             {
+              name: "sector",
+              in: "query",
+              schema: { type: "string", description: "Exact sector label (e.g. 半导体)" },
+            },
+            {
               name: "coverage",
               in: "query",
               schema: {
@@ -179,6 +184,80 @@ export function openApiDocument() {
             },
             "400": errorResponse,
             "404": errorResponse,
+          },
+        },
+      },
+      "/v1/graph": {
+        get: {
+          operationId: "getCompanyGraph",
+          parameters: [
+            {
+              name: "company",
+              in: "query",
+              required: true,
+              schema: { type: "string" },
+              description: "Company ref (ULID, slug or ticker)",
+            },
+            {
+              name: "depth",
+              in: "query",
+              schema: { type: "integer", minimum: 1, maximum: 2, default: 1 },
+            },
+            {
+              name: "status",
+              in: "query",
+              schema: {
+                type: "string",
+                enum: ["reported", "inferred", "verified", "rejected"],
+              },
+            },
+            {
+              name: "types",
+              in: "query",
+              schema: {
+                type: "string",
+                description: "Comma-separated relation types",
+              },
+            },
+            {
+              name: "limit",
+              in: "query",
+              schema: { type: "integer", minimum: 1, maximum: 500, default: 200 },
+            },
+          ],
+          responses: {
+            "200": {
+              description:
+                "Ego network: center, nodes, edges, depth, truncated",
+            },
+            "400": errorResponse,
+            "404": errorResponse,
+          },
+        },
+      },
+      "/v1/indices/{code}": {
+        get: {
+          operationId: "getIndex",
+          parameters: [
+            {
+              name: "code",
+              in: "path",
+              required: true,
+              schema: { type: "string" },
+              description: "Index code (currently NDX)",
+            },
+          ],
+          responses: {
+            "200": { description: "Index constituents with tickers and as_of" },
+            "404": errorResponse,
+          },
+        },
+      },
+      "/v1/sectors": {
+        get: {
+          operationId: "listSectors",
+          responses: {
+            "200": { description: "Distinct sectors visible in company search" },
           },
         },
       },

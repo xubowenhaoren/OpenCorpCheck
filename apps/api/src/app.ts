@@ -1,6 +1,7 @@
 import {
   AppError,
   CompanyCardQuerySchema,
+  CompanyGraphQuerySchema,
   ResearchRequestSchema,
   ResearchRunQuerySchema,
   ReviewBatchDecisionSchema,
@@ -120,6 +121,57 @@ export function createApp(deps: AppDeps): Hono {
     };
     c.header("x-request-id", requestId);
     return c.json(body);
+  });
+
+  app.get("/v1/graph", async (c) => {
+    const parsed = CompanyGraphQuerySchema.safeParse(
+      Object.fromEntries(new URL(c.req.url).searchParams),
+    );
+    if (!parsed.success) throw badRequest(parsed.error.issues);
+    const requestId = crypto.randomUUID();
+    const started = performance.now();
+    const graph = await deps.company.getGraph(parsed.data);
+    c.header("x-request-id", requestId);
+    return c.json({
+      data: graph,
+      meta: {
+        request_id: requestId,
+        as_of: new Date().toISOString(),
+        took_ms: Math.round(performance.now() - started),
+        company_ref: parsed.data.company,
+        depth: parsed.data.depth,
+      },
+    });
+  });
+
+  app.get("/v1/indices/:code", async (c) => {
+    const requestId = crypto.randomUUID();
+    const started = performance.now();
+    const index = await deps.company.getIndex(c.req.param("code"));
+    c.header("x-request-id", requestId);
+    return c.json({
+      data: index,
+      meta: {
+        request_id: requestId,
+        as_of: new Date().toISOString(),
+        took_ms: Math.round(performance.now() - started),
+      },
+    });
+  });
+
+  app.get("/v1/sectors", async (c) => {
+    const requestId = crypto.randomUUID();
+    const started = performance.now();
+    const sectors = await deps.company.getSectors();
+    c.header("x-request-id", requestId);
+    return c.json({
+      data: { sectors },
+      meta: {
+        request_id: requestId,
+        as_of: new Date().toISOString(),
+        took_ms: Math.round(performance.now() - started),
+      },
+    });
   });
 
   app.post("/v1/research", async (c) => {

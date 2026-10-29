@@ -212,6 +212,55 @@ export interface CompanyCard {
   events?: NewsEventView[];
 }
 
+const relationTypeList = z.preprocess(
+  (value) => {
+    if (typeof value !== "string") return value;
+    return value
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+  },
+  z.array(RelationTypeSchema).optional(),
+);
+
+/** Query for the ego-network graph endpoint. */
+export const CompanyGraphQuerySchema = z.object({
+  company: z.string().trim().min(1),
+  depth: z.coerce.number().int().min(1).max(2).default(1),
+  types: relationTypeList,
+  status: RelationStatusSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(200),
+});
+export type CompanyGraphQuery = z.infer<typeof CompanyGraphQuerySchema>;
+
+export interface CompanyGraphView {
+  center: CompanySummary;
+  nodes: CompanySummary[];
+  edges: RelationView[];
+  depth: number;
+  truncated: boolean;
+}
+
+export interface IndexMemberView {
+  id: string;
+  slug: string;
+  displayName: string;
+  legalName?: string;
+  country?: string;
+  sector?: string;
+  coverageTier: string;
+  tickers: CompanyTickerView[];
+  indices: string[];
+  markets: string[];
+  asOf?: string;
+}
+
+export interface IndexView {
+  code: string;
+  asOf?: string;
+  members: IndexMemberView[];
+}
+
 export interface ReviewItemView {
   id: string;
   kind: ReviewKind;
@@ -226,7 +275,6 @@ export interface ReviewItemView {
 
 const includeSection = z.enum(["financials", "facts", "relations", "events"]);
 export type IncludeSection = z.infer<typeof includeSection>;
-
 const includeList = z.preprocess(
   (value) => {
     if (typeof value !== "string") return value;

@@ -1,0 +1,1975 @@
+<title>星海动力公司页</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f4f6f1;
+    --bg-elev: #ffffff;
+    --bg-soft: #ecefe8;
+    --ink: #1b1f1a;
+    --ink-2: #424a3e;
+    --muted: #6c7467;
+    --line: #dde2d7;
+    --line-strong: #c6cec1;
+    --accent: #0f6b4f;
+    --accent-2: #e2efe8;
+    --on-accent: #ffffff;
+    --ok: #1f7a4d;
+    --ok-bg: #e4f2ea;
+    --warn: #9a5b10;
+    --warn-bg: #f7ecd9;
+    --info: #2b5f8f;
+    --info-bg: #e5eef7;
+    --danger: #b00020;
+    --cat-invest: #c2410c;
+    --cat-outbound: #7c3aed;
+    --cat-supplier: #15803d;
+    --cat-customer: #0e7490;
+    --cat-competitor: #6b7280;
+    --cat-partner: #2563eb;
+    --shadow: 0 1px 2px rgba(20, 30, 20, .05), 0 10px 30px rgba(20, 30, 20, .06);
+    --radius: 12px;
+    --font: "Inter", "Noto Sans SC", ui-sans-serif, -apple-system, "Segoe UI", "PingFang SC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #111411;
+      --bg-elev: #1b1f1b;
+      --bg-soft: #232823;
+      --ink: #eef1ea;
+      --ink-2: #c2c8be;
+      --muted: #9aa294;
+      --line: #303630;
+      --line-strong: #444c43;
+      --accent: #5fd0a8;
+      --accent-2: #193129;
+      --on-accent: #0b241a;
+      --ok: #6fdca8;
+      --ok-bg: #173326;
+      --warn: #e0a44a;
+      --warn-bg: #382a16;
+      --info: #7fb3e0;
+      --info-bg: #182a3a;
+      --danger: #ff7b8a;
+      --cat-invest: #fb923c;
+      --cat-outbound: #c4b5fd;
+      --cat-supplier: #4ade80;
+      --cat-customer: #22d3ee;
+      --cat-competitor: #9ca3af;
+      --cat-partner: #60a5fa;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 34px rgba(0, 0, 0, .25);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #111411;
+    --bg-elev: #1b1f1b;
+    --bg-soft: #232823;
+    --ink: #eef1ea;
+    --ink-2: #c2c8be;
+    --muted: #9aa294;
+    --line: #303630;
+    --line-strong: #444c43;
+    --accent: #5fd0a8;
+    --accent-2: #193129;
+    --on-accent: #0b241a;
+    --ok: #6fdca8;
+    --ok-bg: #173326;
+    --warn: #e0a44a;
+    --warn-bg: #382a16;
+    --info: #7fb3e0;
+    --info-bg: #182a3a;
+    --danger: #ff7b8a;
+    --cat-invest: #fb923c;
+    --cat-outbound: #c4b5fd;
+    --cat-supplier: #4ade80;
+    --cat-customer: #22d3ee;
+    --cat-competitor: #9ca3af;
+    --cat-partner: #60a5fa;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 34px rgba(0, 0, 0, .25);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  body.overlay-open { overflow: hidden; }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0 0 auto;
+    height: env(safe-area-inset-top, 0px);
+    z-index: 35;
+    background: var(--bg);
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  button { font-family: inherit; }
+  [hidden] { display: none !important; }
+  ::selection { background: var(--accent-2); color: var(--ink); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .wrap {
+    width: 100%;
+    max-width: 1240px;
+    margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  .proto-banner {
+    background: var(--warn-bg);
+    color: var(--warn);
+    border-bottom: 1px solid color-mix(in srgb, var(--warn) 22%, transparent);
+    font-size: 12.5px;
+  }
+  .proto-banner .wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 34px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+  .proto-banner strong { font-weight: 700; }
+  .banner-close {
+    border: 0; background: transparent; color: currentColor; cursor: pointer;
+    font-size: 16px; line-height: 1; padding: 4px 6px; border-radius: 6px;
+  }
+
+  .topnav {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 30;
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-inner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 60px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--ink); font-weight: 700; white-space: nowrap;
+  }
+  .brand:hover { text-decoration: none; }
+  .brand-mark {
+    background: var(--accent); color: var(--on-accent);
+    border-radius: 8px; padding: 3px 7px; font-size: 12px; letter-spacing: .04em;
+  }
+  .nav-search { position: relative; flex: 1; max-width: 560px; }
+  .nav-search input {
+    width: 100%; height: 38px;
+    border: 1px solid var(--line-strong); border-radius: 999px;
+    padding: 0 14px; background: var(--bg-elev); color: var(--ink);
+    font: inherit; font-size: 13.5px;
+  }
+  .nav-search input::placeholder { color: var(--muted); }
+  .search-pop {
+    position: absolute; top: 45px; left: 0; right: 0; z-index: 45;
+    background: var(--bg-elev); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: var(--shadow); overflow: hidden;
+  }
+  .search-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    width: 100%; border: 0; background: transparent; color: var(--ink);
+    text-align: left; padding: 11px 14px; cursor: pointer; font: inherit; font-size: 13.5px;
+  }
+  .search-item:hover { background: var(--bg-soft); }
+  .search-item strong { display: block; font-size: 14px; }
+  .search-sub { display: block; color: var(--muted); font-size: 12px; margin-top: 1px; }
+  .search-dot {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--accent);
+    margin-top: 6px; flex: 0 0 auto;
+  }
+  .search-dot.ask { background: var(--info); }
+
+  .nav-links { display: flex; gap: 2px; }
+  .nav-links a {
+    color: var(--muted); font-size: 13.5px; font-weight: 500;
+    padding: 7px 10px; border-radius: 8px;
+  }
+  .nav-links a:hover { background: var(--bg-soft); color: var(--ink); text-decoration: none; }
+  .nav-links a.active { background: var(--accent-2); color: var(--accent); font-weight: 600; }
+  .nav-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+
+  .btn {
+    border: 1px solid transparent; border-radius: 9px;
+    padding: 8px 14px; font-size: 13.5px; font-weight: 600;
+    background: var(--accent); color: var(--on-accent); cursor: pointer;
+  }
+  .btn:hover { filter: brightness(1.05); }
+  .btn.secondary {
+    background: var(--bg-elev); color: var(--ink); border-color: var(--line-strong);
+  }
+  .btn.ghost { background: transparent; color: var(--muted); border-color: transparent; }
+  .btn.small { padding: 5px 10px; font-size: 12px; border-radius: 7px; }
+  .btn.full { width: 100%; }
+  .ghost-icon {
+    height: 34px; padding: 0 11px; border-radius: 9px; border: 1px solid var(--line-strong);
+    background: var(--bg-elev); color: var(--ink); cursor: pointer; font-size: 13px;
+    white-space: nowrap;
+  }
+
+  main.wrap { padding-top: 18px; padding-bottom: 90px; }
+
+  .company-head {
+    background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 22px 24px;
+  }
+  .company-title-row {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 18px;
+  }
+  h1 {
+    margin: 0; font-size: 30px; line-height: 1.2; letter-spacing: -.02em;
+    font-weight: 700;
+  }
+  .demo-badge {
+    display: inline-block; vertical-align: middle; margin-left: 8px;
+    background: var(--warn-bg); color: var(--warn);
+    border: 1px solid color-mix(in srgb, var(--warn) 24%, transparent);
+    border-radius: 999px; padding: 2px 8px; font-size: 11.5px; font-weight: 600;
+    letter-spacing: 0;
+  }
+  .legal { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .meta-row {
+    display: flex; flex-wrap: wrap; gap: 7px 14px;
+    margin-top: 10px; color: var(--ink-2); font-size: 13px;
+  }
+  .meta-row.secondary { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); color: var(--muted); }
+  .ticker { font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .tag {
+    background: var(--accent-2); color: var(--accent);
+    border-radius: 999px; padding: 1px 9px; font-size: 11.5px; font-weight: 600;
+  }
+  .head-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+
+  .tabs {
+    display: flex; gap: 2px; margin: 18px 0 16px;
+    border-bottom: 1px solid var(--line); overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    position: relative; border: 0; background: transparent;
+    padding: 11px 14px; font-size: 13.5px; font-weight: 600; color: var(--muted);
+    white-space: nowrap; cursor: pointer; border-bottom: 2px solid transparent;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab .count {
+    display: inline-block; margin-left: 5px; padding: 0 6px;
+    background: var(--bg-soft); color: var(--muted);
+    border-radius: 999px; font-size: 11px; font-weight: 600;
+  }
+  .tab.active .count { background: var(--accent-2); color: var(--accent); }
+
+  .panel { animation: fade-in .16s ease; }
+  @keyframes fade-in { from { opacity: .4; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+
+  .card { background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); }
+  .block { padding: 18px 20px; }
+  .block h2 { margin: 0 0 10px; font-size: 16px; letter-spacing: -.01em; }
+  .block h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .stack { display: flex; flex-direction: column; gap: 14px; }
+  .layout-main-aside {
+    display: grid; grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 18px; align-items: start;
+  }
+  .lead { margin: 0; font-size: 15px; color: var(--ink-2); }
+  .body-text { margin: 0; color: var(--ink-2); font-size: 14px; }
+
+  .info-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .info-table th {
+    width: 108px; text-align: left; color: var(--muted);
+    font-weight: 500; padding: 7px 0; vertical-align: top;
+  }
+  .info-table td { padding: 7px 0; border-bottom: 1px solid var(--line); color: var(--ink-2); }
+  .info-table tr:last-child td { border-bottom: 0; }
+
+  .mini-timeline { display: flex; flex-direction: column; }
+  .mini-timeline .item {
+    display: grid; grid-template-columns: 86px 1fr auto; gap: 10px;
+    align-items: baseline; padding: 9px 0; border-bottom: 1px dashed var(--line);
+    font-size: 13px;
+  }
+  .mini-timeline .item:last-child { border-bottom: 0; }
+  .date { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+
+  .key-list { display: flex; flex-direction: column; }
+  .key-row {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+    padding: 9px 0; border-bottom: 1px dashed var(--line);
+  }
+  .key-row:last-child { border-bottom: 0; }
+  .key-row .label { color: var(--muted); font-size: 12.5px; }
+  .key-row .value { font-weight: 700; font-size: 16px; font-variant-numeric: tabular-nums; text-align: right; }
+  .key-row .sub { display: block; font-size: 10.5px; color: var(--muted); font-weight: 400; }
+  .src-btn {
+    border: 1px solid var(--line-strong); background: var(--bg-elev); color: var(--accent);
+    border-radius: 6px; padding: 1px 6px; font-size: 11px; cursor: pointer;
+  }
+  .src-btn:hover { background: var(--accent-2); }
+
+  .holder-list { display: flex; flex-direction: column; }
+  .holder {
+    display: flex; justify-content: space-between; gap: 8px;
+    padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 13px;
+  }
+  .holder:last-child { border-bottom: 0; }
+  .holder .pct { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .metric-strip {
+    display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 10px; margin-bottom: 14px;
+  }
+  .metric {
+    background: var(--bg-elev); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px 13px;
+  }
+  .metric .label { color: var(--muted); font-size: 11.5px; }
+  .metric .value { margin-top: 3px; font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .metric .sub {
+    display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    margin-top: 3px; color: var(--muted); font-size: 10.5px;
+  }
+  .block-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .block-head h2 { margin: 0; }
+  .segmented {
+    display: inline-flex; gap: 2px; padding: 2px;
+    background: var(--bg-soft); border-radius: 8px;
+  }
+  .segmented button {
+    border: 0; background: transparent; color: var(--muted);
+    padding: 5px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;
+  }
+  .segmented button.active {
+    background: var(--accent-2); color: var(--accent);
+  }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  .fin-table { width: 100%; min-width: 680px; border-collapse: collapse; font-size: 13px; }
+  .fin-table th {
+    background: var(--bg-soft); color: var(--muted); font-weight: 600;
+    text-align: right; padding: 9px 12px; white-space: nowrap;
+  }
+  .fin-table th:first-child, .fin-table td:first-child { text-align: left; }
+  .fin-table td {
+    padding: 9px 12px; text-align: right; border-top: 1px solid var(--line);
+    font-variant-numeric: tabular-nums; color: var(--ink-2);
+  }
+  .fin-table tr.strong td { font-weight: 600; color: var(--ink); }
+  .fin-table td:last-child, .fin-table th:last-child { text-align: center; }
+  .hint { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
+
+  .graph-card { padding: 16px; }
+  .graph-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px; margin-bottom: 12px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    border: 1px solid var(--line-strong); background: var(--bg-elev); color: var(--ink-2);
+    border-radius: 999px; padding: 5px 11px; font-size: 12px; cursor: pointer;
+  }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .graph-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+  .switch { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .zoom-group { display: inline-flex; gap: 2px; }
+  .icon-btn {
+    width: 30px; height: 30px; border: 1px solid var(--line-strong);
+    background: var(--bg-elev); color: var(--ink); border-radius: 7px;
+    cursor: pointer; font-size: 14px; line-height: 1;
+  }
+  .icon-btn:hover { background: var(--bg-soft); }
+
+  .graph-layout {
+    display: grid; grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 14px; align-items: start;
+  }
+  .graph-stage {
+    position: relative; height: 620px; overflow: hidden;
+    border: 1px solid var(--line); border-radius: 10px;
+    background: radial-gradient(circle at 50% 45%, var(--bg-elev), var(--bg-soft));
+  }
+  #graph { width: 100%; height: 100%; display: block; cursor: grab; touch-action: pan-y; }
+  .graph-stage.dragging #graph { cursor: grabbing; }
+  .node { cursor: pointer; }
+  .node circle { stroke: var(--bg-elev); stroke-width: 2; }
+  .node:hover circle { stroke: var(--ink); }
+  .node.selected circle { stroke: var(--ink); stroke-width: 3; }
+  .node.cat-invest circle { fill: var(--cat-invest); }
+  .node.cat-outbound circle { fill: var(--cat-outbound); }
+  .node.cat-supplier circle { fill: var(--cat-supplier); }
+  .node.cat-customer circle { fill: var(--cat-customer); }
+  .node.cat-competitor circle { fill: var(--cat-competitor); }
+  .node.cat-partner circle { fill: var(--cat-partner); }
+  .node.center circle { fill: var(--accent); }
+  .node-name { fill: var(--ink); font-size: 11px; font-weight: 600; }
+  .node-status { font-size: 9.5px; }
+  .node-status.ok { fill: var(--ok); }
+  .node-status.warn { fill: var(--warn); }
+  .node-status.info { fill: var(--info); }
+  .center-name { fill: var(--on-accent); font-size: 13px; font-weight: 700; }
+  .graph-hint {
+    display: none; position: absolute; top: 10px; right: 10px;
+    padding: 4px 8px; border-radius: 7px; border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg-elev) 86%, transparent);
+    color: var(--muted); font-size: 10.5px;
+  }
+  .edge { fill: none; stroke-width: 1.8; }
+  .edge.cat-invest { stroke: var(--cat-invest); }
+  .edge.cat-outbound { stroke: var(--cat-outbound); }
+  .edge.cat-supplier { stroke: var(--cat-supplier); }
+  .edge.cat-customer { stroke: var(--cat-customer); }
+  .edge.cat-competitor { stroke: var(--cat-competitor); }
+  .edge.cat-partner { stroke: var(--cat-partner); }
+  .edge.is-inferred { stroke-dasharray: 6 5; }
+  .edge.is-reported { stroke-dasharray: 2 4; }
+  .edge.is-verified { stroke-dasharray: none; }
+  .edge-hit { stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
+  .edge-label {
+    fill: var(--ink); font-size: 10px; font-weight: 600;
+    paint-order: stroke; stroke: var(--bg-elev); stroke-width: 4px;
+  }
+  #arrow-invest path { fill: var(--cat-invest); }
+  #arrow-outbound path { fill: var(--cat-outbound); }
+  #arrow-supplier path { fill: var(--cat-supplier); }
+  #arrow-customer path { fill: var(--cat-customer); }
+  #arrow-partner path { fill: var(--cat-partner); }
+  .graph-empty {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    background: var(--bg-soft); color: var(--muted); font-size: 14px; text-align: center; padding: 20px;
+  }
+  .graph-legend {
+    position: absolute; left: 10px; bottom: 10px;
+    display: flex; flex-wrap: wrap; gap: 9px; align-items: center;
+    padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px;
+    background: color-mix(in srgb, var(--bg-elev) 84%, transparent);
+    color: var(--muted); font-size: 10.5px;
+  }
+  .legend-item { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .legend-line { width: 16px; height: 0; border-top: 2px solid currentColor; }
+  .legend-line.dashed { border-top-style: dashed; }
+  .legend-line.dotted { border-top-style: dotted; }
+  .legend-line.cat-invest, .legend-line.cat-outbound, .legend-line.cat-supplier,
+  .legend-line.cat-customer, .legend-line.cat-competitor, .legend-line.cat-partner { border-top-color: currentColor; }
+  .cat-invest { color: var(--cat-invest); }
+  .cat-outbound { color: var(--cat-outbound); }
+  .cat-supplier { color: var(--cat-supplier); }
+  .cat-customer { color: var(--cat-customer); }
+  .cat-competitor { color: var(--cat-competitor); }
+  .cat-partner { color: var(--cat-partner); }
+
+  .graph-inspector { padding: 16px; min-height: 260px; font-size: 13px; }
+  .insp-cat { font-size: 11px; font-weight: 700; letter-spacing: .05em; }
+  .insp-head h3, .graph-inspector h3 { margin: 6px 0 2px; font-size: 17px; }
+  .insp-sub { color: var(--muted); font-size: 12px; }
+  .insp-status { margin: 10px 0 2px; }
+  .insp-direction {
+    margin-top: 10px; padding: 6px 8px; border-radius: 7px;
+    background: var(--bg-soft); color: var(--ink-2); font-size: 12px;
+  }
+  blockquote {
+    margin: 12px 0; padding: 10px 12px;
+    border-left: 3px solid var(--line-strong); background: var(--bg-soft);
+    border-radius: 0 8px 8px 0; color: var(--ink-2); font-size: 12.5px;
+  }
+  .insp-source { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; color: var(--muted); font-size: 11.5px; }
+  .insp-source .src-btn { align-self: flex-start; }
+  .insp-counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
+  .insp-count { background: var(--bg-soft); border-radius: 8px; padding: 8px; text-align: center; }
+  .insp-count strong { display: block; font-size: 18px; }
+  .insp-count span { color: var(--muted); font-size: 10.5px; }
+  .insp-hint { color: var(--muted); font-size: 12px; }
+
+  .pill {
+    display: inline-block; border-radius: 999px; padding: 2px 8px;
+    font-size: 10.5px; font-weight: 600; white-space: nowrap;
+  }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.info { background: var(--info-bg); color: var(--info); }
+  .pill.muted { background: var(--bg-soft); color: var(--muted); }
+
+  .relation-lists {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px; margin-top: 16px;
+  }
+  .rel-group { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg-elev); }
+  .rel-group h4 {
+    display: flex; justify-content: space-between; gap: 8px;
+    margin: 0; padding: 9px 12px; background: var(--bg-soft);
+    font-size: 12.5px; color: var(--ink-2);
+  }
+  .rel-row {
+    display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto;
+    gap: 8px; align-items: center; padding: 9px 12px;
+    border-top: 1px solid var(--line); cursor: pointer; font-size: 12.5px;
+  }
+  .rel-row:hover { background: var(--bg-soft); }
+  .rel-row.selected { background: var(--accent-2); }
+  .rel-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .rel-dot.cat-invest { background: var(--cat-invest); }
+  .rel-dot.cat-outbound { background: var(--cat-outbound); }
+  .rel-dot.cat-supplier { background: var(--cat-supplier); }
+  .rel-dot.cat-customer { background: var(--cat-customer); }
+  .rel-dot.cat-competitor { background: var(--cat-competitor); }
+  .rel-dot.cat-partner { background: var(--cat-partner); }
+  .rel-name { font-weight: 600; }
+  .rel-meta { color: var(--muted); font-size: 11px; }
+  .empty-note { color: var(--muted); font-size: 13px; padding: 18px; }
+
+  .news-list { display: flex; flex-direction: column; }
+  .news-item {
+    display: grid; grid-template-columns: 92px minmax(0, 1fr) auto;
+    gap: 12px; align-items: baseline; padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .news-item:last-child { border-bottom: 0; }
+  .news-title { font-size: 14px; font-weight: 500; }
+  .news-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .source-group { margin-bottom: 16px; }
+  .source-group h3 { margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+  .source-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 8px 0; border-bottom: 1px dashed var(--line); font-size: 13px;
+  }
+  .source-item:last-child { border-bottom: 0; }
+  .source-meta { color: var(--muted); font-size: 11.5px; }
+
+  .app-shell { transition: padding-right 280ms cubic-bezier(.2, .7, .2, 1); }
+  /* The sidebar reserves space by reducing the available width. The page keeps
+     its own column structure; it must never reflow into a single column. */
+  body.ask-open .app-shell { padding-right: 420px; }
+  .nav-links, .nav-actions, .nav-search { transition: opacity .18s ease, max-width .28s ease; }
+  body.ask-open .nav-links,
+  body.ask-open .nav-actions { opacity: 0; pointer-events: none; }
+  body.ask-open .nav-search { max-width: min(560px, calc(100vw - 620px)); }
+
+  .ask-fab {
+    position: fixed; z-index: 50;
+    right: max(20px, env(safe-area-inset-right, 0px));
+    bottom: max(20px, env(safe-area-inset-bottom, 0px));
+    border: 0; border-radius: 999px; padding: 12px 18px;
+    background: var(--accent); color: var(--on-accent);
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 8px 24px rgba(15, 107, 79, .3);
+    transition: opacity .2s ease, transform .2s ease;
+  }
+  .ask-fab:hover { filter: brightness(1.05); }
+  body.ask-open .ask-fab { opacity: 0; pointer-events: none; transform: translateY(8px); }
+
+  .scrim { position: fixed; inset: 0; z-index: 70; background: rgba(0, 0, 0, .35); }
+  .ask-sidebar {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 35;
+    width: 420px; display: flex; flex-direction: column;
+    background: var(--bg-elev); border-left: 1px solid var(--line);
+    box-shadow: -18px 0 44px rgba(0, 0, 0, .12);
+    transform: translateX(100%);
+    transition: transform 280ms cubic-bezier(.2, .7, .2, 1);
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  body.ask-open .ask-sidebar { transform: none; }
+  .ask-sidebar-inner {
+    width: 100%; height: 100%; min-width: 0;
+    display: flex; flex-direction: column;
+  }
+  .ask-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 16px; border-bottom: 1px solid var(--line);
+    background: var(--bg-elev);
+  }
+  .ask-head-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .ask-avatar {
+    width: 32px; height: 32px; border-radius: 9px; flex: 0 0 auto;
+    background: var(--accent); color: var(--on-accent);
+    display: grid; place-items: center; font-size: 11px; font-weight: 700;
+  }
+  .ask-head h2 { margin: 0; font-size: 15px; }
+  .ask-head p { margin: 1px 0 0; color: var(--muted); font-size: 11.5px; }
+  .ask-close {
+    width: 30px; height: 30px; border-radius: 8px; flex: 0 0 auto;
+    border: 1px solid var(--line-strong); background: var(--bg-elev);
+    color: var(--ink); cursor: pointer; font-size: 18px; line-height: 1;
+  }
+  .ask-close:hover { background: var(--bg-soft); }
+  .ask-body {
+    flex: 1; overflow: auto; padding: 16px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .msg { max-width: 92%; }
+  .msg.user { align-self: flex-end; }
+  .msg.assistant { align-self: flex-start; }
+  .msg .bubble {
+    padding: 10px 12px; border-radius: 12px;
+    background: var(--bg-soft); font-size: 13.5px; line-height: 1.65;
+  }
+  .msg.user .bubble { background: var(--accent-2); }
+  .msg-meta { margin-top: 6px; color: var(--muted); font-size: 11px; }
+  .cite-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+  .cite {
+    border: 1px solid var(--line-strong); background: var(--bg-elev); color: var(--accent);
+    border-radius: 999px; padding: 1px 8px; font-size: 11px; cursor: pointer;
+  }
+  .cite:hover { background: var(--accent-2); }
+  .ask-suggestions { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 10px; }
+  .suggestion {
+    border: 1px solid var(--line-strong); background: var(--bg-elev); color: var(--ink-2);
+    border-radius: 999px; padding: 5px 10px; font-size: 11.5px; cursor: pointer;
+  }
+  .suggestion:hover { background: var(--bg-soft); }
+  .ask-composer {
+    display: flex; gap: 8px; padding: 12px 16px max(12px, env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--line);
+  }
+  .ask-composer input {
+    flex: 1; min-width: 0; height: 38px; border: 1px solid var(--line-strong);
+    border-radius: 9px; background: var(--bg); color: var(--ink);
+    padding: 0 11px; font: inherit; font-size: 13.5px;
+  }
+
+  .source-sheet {
+    position: fixed; z-index: 90;
+    right: 0; bottom: 0; width: min(420px, 100vw); max-height: 72vh; overflow: auto;
+    background: var(--bg-elev); border-left: 1px solid var(--line); border-top: 1px solid var(--line);
+    border-radius: 12px 0 0 0; padding: 18px;
+    box-shadow: -16px 0 40px rgba(0, 0, 0, .16);
+  }
+  .source-sheet h3 { margin: 0 0 2px; font-size: 16px; }
+  .sheet-meta { color: var(--muted); font-size: 12px; }
+  .sheet-quote {
+    margin: 14px 0; padding: 12px 14px; background: var(--bg-soft);
+    border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+    font-size: 13px; color: var(--ink-2);
+  }
+  .sheet-link {
+    display: inline-block; margin-top: 4px; font-size: 13px; font-weight: 600;
+  }
+  .sheet-close {
+    position: absolute; top: 12px; right: 12px;
+    border: 0; background: transparent; color: var(--muted);
+    font-size: 18px; cursor: pointer; padding: 4px 7px; border-radius: 6px;
+  }
+  .toast {
+    position: fixed; z-index: 100; left: 50%; bottom: max(24px, env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    background: var(--ink); color: var(--bg);
+    padding: 8px 14px; border-radius: 999px; font-size: 12.5px;
+    box-shadow: var(--shadow); max-width: calc(100vw - 32px); text-align: center;
+  }
+
+  @media (max-width: 1080px) {
+    .layout-main-aside { grid-template-columns: minmax(0, 1fr); }
+    .graph-layout { grid-template-columns: minmax(0, 1fr); }
+    .graph-inspector { min-height: 0; }
+    .metric-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  @media (max-width: 820px) {
+    .nav-links { display: none; }
+    .company-title-row { flex-direction: column; }
+    .head-actions { width: 100%; }
+    .head-actions .btn { flex: 1; }
+    .relation-lists { grid-template-columns: minmax(0, 1fr); }
+    .graph-stage { height: 480px; }
+  }
+  @media (max-width: 600px) {
+    h1 { font-size: 24px; }
+    .company-head { padding: 18px 16px; }
+    .block { padding: 15px 14px; }
+    .metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .graph-card { padding: 12px; }
+    .graph-toolbar { align-items: flex-start; }
+    .graph-tools { width: 100%; }
+    .graph-stage { height: 420px; }
+    .graph-hint { display: block; }
+    .graph-legend { right: 10px; }
+    .mini-timeline .item, .news-item { grid-template-columns: 76px minmax(0, 1fr); }
+    .mini-timeline .item .src-btn, .news-item .src-btn { grid-column: 2; justify-self: start; }
+    .ask-sidebar { width: 100vw; }
+    .source-sheet { width: 100vw; border-radius: 12px 12px 0 0; }
+    .fin-table { min-width: 620px; }
+  }
+  @media (max-width: 1100px) {
+    body.ask-open .app-shell { padding-right: 0; }
+    body.ask-open .nav-search { opacity: 0; pointer-events: none; }
+    .ask-sidebar { width: min(420px, 100vw); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+</style>
+
+<div class="proto-banner">
+  <div class="wrap">
+    <span><strong>演示原型</strong> · 公司、数字、关系和来源均为虚构，仅用于确认布局与交互</span>
+    <button class="banner-close" id="banner-close" aria-label="关闭提示">×</button>
+  </div>
+</div>
+
+<header class="topnav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#" id="brand-home" aria-label="OpenCorpCheck 公司百科首页">
+      <span class="brand-mark">OCC</span>
+      <span>公司百科</span>
+    </a>
+    <div class="nav-search">
+      <input id="global-search" type="search" autocomplete="off" placeholder="搜索公司名、股票代码、中文名…" aria-label="搜索公司">
+      <div class="search-pop" id="search-pop" hidden></div>
+    </div>
+    <nav class="nav-links" aria-label="主导航">
+      <a href="#" id="nav-home">首页</a>
+      <a href="#" class="active" id="nav-company">查公司</a>
+      <a href="#" id="nav-graph">关系图谱</a>
+      <a href="#" id="nav-ask">AI 助手</a>
+    </nav>
+    <div class="nav-actions">
+      <button class="ghost-icon" id="theme-toggle" aria-label="切换主题">深色</button>
+    </div>
+  </div>
+</header>
+
+<div class="app-shell" id="app-shell">
+<main class="wrap">
+  <section class="company-head">
+    <div class="company-title-row">
+      <div>
+        <h1>星海动力<span class="demo-badge">演示公司</span></h1>
+        <p class="legal">星海动力科技股份有限公司</p>
+        <div class="meta-row">
+          <span class="ticker">688000.SH（演示）</span>
+          <span>上交所科创板</span>
+          <span>A 股</span>
+          <span>江苏苏州</span>
+          <span>动力电池 / 储能</span>
+        </div>
+      </div>
+      <div class="head-actions">
+        <button class="btn secondary" id="follow-btn">☆ 关注</button>
+        <button class="btn" data-open-ask>问一问</button>
+      </div>
+    </div>
+    <div class="meta-row secondary">
+      <span>成立 2014</span>
+      <span>员工 2.8 万</span>
+      <span>市值 3,860 亿元</span>
+      <span>数据更新于 2026-10-29</span>
+      <span class="tag">A500</span>
+      <span class="tag">科创板</span>
+    </div>
+  </section>
+
+  <nav class="tabs" role="tablist" aria-label="公司信息">
+    <button class="tab" role="tab" aria-selected="false" aria-controls="panel-overview" data-tab="overview">基本资料</button>
+    <button class="tab" role="tab" aria-selected="false" aria-controls="panel-financials" data-tab="financials">财务数据</button>
+    <button class="tab active" role="tab" aria-selected="true" aria-controls="panel-graph" data-tab="graph">关系图谱 <span class="count">18</span></button>
+    <button class="tab" role="tab" aria-selected="false" aria-controls="panel-news" data-tab="news">新闻动态 <span class="count">8</span></button>
+    <button class="tab" role="tab" aria-selected="false" aria-controls="panel-sources" data-tab="sources">资料来源 <span class="count">9</span></button>
+  </nav>
+
+  <section class="panel" id="panel-overview" role="tabpanel" hidden>
+    <div class="layout-main-aside">
+      <div class="stack">
+        <div class="card block">
+          <h2>一句话介绍</h2>
+          <p class="lead">做动力电池和储能系统的中国公司，客户包括整车厂和电网侧储能项目。</p>
+        </div>
+        <div class="card block">
+          <h2>主营业务</h2>
+          <p class="body-text">动力电池（乘用车、商用车）、储能电池与系统、电池材料与回收。公司同时向整车厂和电网侧储能项目供货。</p>
+        </div>
+        <div class="card block">
+          <h2>基本信息</h2>
+          <table class="info-table">
+            <tbody>
+              <tr><th>公司全称</th><td>星海动力科技股份有限公司</td></tr>
+              <tr><th>证券代码</th><td>688000.SH（演示）</td></tr>
+              <tr><th>上市地</th><td>上交所科创板</td></tr>
+              <tr><th>总部</th><td>江苏苏州</td></tr>
+              <tr><th>成立时间</th><td>2014 年</td></tr>
+              <tr><th>员工人数</th><td>2.8 万</td></tr>
+              <tr><th>财年结束</th><td>12 月 31 日</td></tr>
+              <tr><th>官网</th><td>xinghai-demo.com（演示）</td></tr>
+              <tr><th>所属行业</th><td>动力电池 / 储能系统</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card block">
+          <h2>最近动态</h2>
+          <div class="mini-timeline">
+            <div class="item"><span class="date">2026-10-28</span><span>星海动力发布 2026 年三季报，营收同比增长 21.4%</span><button class="src-btn" data-source="s3">来源</button></div>
+            <div class="item"><span class="date">2026-09-16</span><span>公司与北辰汽车签订 5 年电池供应协议</span><button class="src-btn" data-source="s4">来源</button></div>
+            <div class="item"><span class="date">2026-08-05</span><span>苏州储能基地二期投产</span><button class="src-btn" data-source="s2">来源</button></div>
+          </div>
+        </div>
+      </div>
+      <aside class="stack">
+        <div class="card block">
+          <h3>关键数字</h3>
+          <div class="key-list">
+            <div class="key-row"><span class="label">营业收入</span><span class="value">1,240.5 亿<span class="sub">FY2025 · <button class="src-btn" data-source="s1">来源</button></span></span></div>
+            <div class="key-row"><span class="label">净利润</span><span class="value">96.1 亿<span class="sub">FY2025 · <button class="src-btn" data-source="s1">来源</button></span></span></div>
+            <div class="key-row"><span class="label">毛利率</span><span class="value">22.8%<span class="sub">FY2025 · <button class="src-btn" data-source="s1">来源</button></span></span></div>
+            <div class="key-row"><span class="label">员工</span><span class="value">2.8 万<span class="sub">2025 · <button class="src-btn" data-source="s2">来源</button></span></span></div>
+          </div>
+        </div>
+        <div class="card block">
+          <h3>主要股东 / 投资方</h3>
+          <div class="holder-list">
+            <div class="holder"><span>星海控股集团</span><span class="pct">32.1%</span></div>
+            <div class="holder"><span>山海资本</span><span class="pct">8.4%</span></div>
+            <div class="holder"><span>苏州产业基金</span><span class="pct">4.2%</span></div>
+          </div>
+          <p class="hint"><button class="src-btn" data-source="s1">来源</button> 2025 年年度报告</p>
+        </div>
+        <div class="card block">
+          <h3>对外投资</h3>
+          <p class="body-text">4 家 · <a href="#" data-goto-graph>查看图谱 →</a></p>
+        </div>
+        <div class="card block">
+          <h3>相关公司</h3>
+          <p class="body-text">竞争对手 3 · 供应商 3 · 客户 3</p>
+          <a href="#" data-goto-graph>查看关系图谱 →</a>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-financials" role="tabpanel" hidden>
+    <div class="metric-strip">
+      <div class="metric"><div class="label">营业收入</div><div class="value">1,240.5 亿</div><div class="sub">FY2025 <button class="src-btn" data-source="s1">来源</button></div></div>
+      <div class="metric"><div class="label">净利润</div><div class="value">96.1 亿</div><div class="sub">FY2025 <button class="src-btn" data-source="s1">来源</button></div></div>
+      <div class="metric"><div class="label">毛利率</div><div class="value">22.8%</div><div class="sub">FY2025 <button class="src-btn" data-source="s1">来源</button></div></div>
+      <div class="metric"><div class="label">ROE</div><div class="value">18.4%</div><div class="sub">按财报计算 <button class="src-btn" data-source="s2">来源</button></div></div>
+      <div class="metric"><div class="label">经营现金流</div><div class="value">148.2 亿</div><div class="sub">FY2025 <button class="src-btn" data-source="s1">来源</button></div></div>
+      <div class="metric"><div class="label">资产负债率</div><div class="value">56.3%</div><div class="sub">按财报计算 <button class="src-btn" data-source="s2">来源</button></div></div>
+    </div>
+    <div class="card block">
+      <div class="block-head">
+        <h2>财务数据</h2>
+        <div class="segmented" id="period-toggle" role="group" aria-label="期间">
+          <button class="active" data-period="annual">年度</button>
+          <button data-period="quarter">季度</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="fin-table" id="fin-table"></table>
+      </div>
+      <p class="hint">演示数据，非真实财报。单位：百万元人民币。每个数字右侧的「来源」可点开查看原文引用。</p>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-graph" role="tabpanel">
+    <div class="card graph-card">
+      <div class="graph-toolbar">
+        <div class="chips" id="type-chips" role="group" aria-label="关系类型">
+          <button class="chip active" data-filter="all">全部</button>
+          <button class="chip" data-filter="invest">投资股权</button>
+          <button class="chip" data-filter="supply">供应链</button>
+          <button class="chip" data-filter="compete">竞争</button>
+          <button class="chip" data-filter="partner">合作</button>
+        </div>
+        <div class="graph-tools">
+          <label class="switch"><input type="checkbox" id="verified-only"> 只看已核实</label>
+          <div class="segmented" id="depth-toggle" role="group" aria-label="关系层级">
+            <button class="active" data-depth="1">1 层</button>
+            <button data-depth="2">2 层</button>
+          </div>
+          <div class="segmented" id="view-toggle" role="group" aria-label="视图">
+            <button class="active" data-view="graph">图谱</button>
+            <button data-view="list">列表</button>
+          </div>
+          <div class="zoom-group" aria-label="缩放">
+            <button class="icon-btn" id="zoom-in" aria-label="放大">＋</button>
+            <button class="icon-btn" id="zoom-out" aria-label="缩小">－</button>
+            <button class="icon-btn" id="zoom-reset" aria-label="重置缩放">⟲</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="graph-layout">
+        <div class="graph-stage" id="graph-stage">
+          <svg id="graph" viewBox="0 0 960 720" role="img" aria-label="星海动力关系图谱">
+            <defs>
+              <marker id="arrow-invest" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"></path></marker>
+              <marker id="arrow-outbound" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"></path></marker>
+              <marker id="arrow-supplier" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"></path></marker>
+              <marker id="arrow-customer" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"></path></marker>
+              <marker id="arrow-partner" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"></path></marker>
+            </defs>
+            <g id="graph-edges"></g>
+            <g id="graph-nodes"></g>
+          </svg>
+          <div class="graph-empty" id="graph-empty" hidden>没有符合条件的关系。试试「全部」或关闭「只看已核实」。</div>
+          <div class="graph-hint">拖动查看 · ＋/－ 缩放</div>
+          <div class="graph-legend" aria-hidden="true">
+            <span class="legend-item"><span class="legend-line cat-invest"></span>投资方</span>
+            <span class="legend-item"><span class="legend-line cat-outbound"></span>对外投资</span>
+            <span class="legend-item"><span class="legend-line cat-supplier"></span>供应链</span>
+            <span class="legend-item"><span class="legend-line cat-competitor"></span>竞争</span>
+            <span class="legend-item"><span class="legend-line cat-partner"></span>合作</span>
+            <span class="legend-item"><span class="legend-line"></span>已核实</span>
+            <span class="legend-item"><span class="legend-line dashed"></span>待核实</span>
+            <span class="legend-item"><span class="legend-line dotted"></span>媒体报道</span>
+          </div>
+        </div>
+        <aside class="card graph-inspector" id="graph-inspector" aria-live="polite"></aside>
+      </div>
+
+      <div class="relation-lists" id="relation-lists"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-news" role="tabpanel" hidden>
+    <div class="card block">
+      <div class="block-head"><h2>新闻动态</h2><span class="hint">演示数据</span></div>
+      <div class="news-list">
+        <div class="news-item"><span class="date">2026-10-28</span><div><div class="news-title">星海动力发布 2026 年三季报，营收同比增长 21.4%</div><div class="news-sub">证券时报（演示）</div></div><button class="src-btn" data-source="s3">来源</button></div>
+        <div class="news-item"><span class="date">2026-09-16</span><div><div class="news-title">公司与北辰汽车签订 5 年电池供应协议</div><div class="news-sub">公司公告（演示）</div></div><button class="src-btn" data-source="s4">来源</button></div>
+        <div class="news-item"><span class="date">2026-08-05</span><div><div class="news-title">苏州储能基地二期投产</div><div class="news-sub">公司官网（演示）</div></div><button class="src-btn" data-source="s2">来源</button></div>
+        <div class="news-item"><span class="date">2026-07-22</span><div><div class="news-title">星海动力发布新一代储能电芯</div><div class="news-sub">行业媒体（演示）</div></div><button class="src-btn" data-source="s8">来源</button></div>
+        <div class="news-item"><span class="date">2026-06-30</span><div><div class="news-title">公司完成 20 亿元绿色债券发行</div><div class="news-sub">公司公告（演示）</div></div><button class="src-btn" data-source="s4">来源</button></div>
+        <div class="news-item"><span class="date">2026-05-18</span><div><div class="news-title">星海动力入选 A500 指数</div><div class="news-sub">指数公告（演示）</div></div><button class="src-btn" data-source="s6">来源</button></div>
+        <div class="news-item"><span class="date">2026-04-18</span><div><div class="news-title">公司发布 2025 年年度报告</div><div class="news-sub">公司公告（演示）</div></div><button class="src-btn" data-source="s1">来源</button></div>
+        <div class="news-item"><span class="date">2026-03-09</span><div><div class="news-title">公司与蓝湾科技签署固态电池联合开发协议</div><div class="news-sub">公司公告（演示）</div></div><button class="src-btn" data-source="s4">来源</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-sources" role="tabpanel" hidden>
+    <div class="card block">
+      <h2>资料来源</h2>
+      <p class="hint">演示数据。每个数字和关系都可以回到这里的原始来源。</p>
+      <div class="source-group">
+        <h3>财报</h3>
+        <div class="source-item"><span>星海动力 2025 年年度报告</span><span class="source-meta">财报 · 2026-04-18 <button class="src-btn" data-source="s1">查看</button></span></div>
+        <div class="source-item"><span>星海动力 2026 年半年度报告</span><span class="source-meta">财报 · 2026-08-22 <button class="src-btn" data-source="s2">查看</button></span></div>
+        <div class="source-item"><span>星海动力 2026 年三季报</span><span class="source-meta">财报 · 2026-10-28 <button class="src-btn" data-source="s3">查看</button></span></div>
+      </div>
+      <div class="source-group">
+        <h3>公司公告</h3>
+        <div class="source-item"><span>与北辰汽车签署 5 年供应协议</span><span class="source-meta">公告 · 2026-09-16 <button class="src-btn" data-source="s4">查看</button></span></div>
+        <div class="source-item"><span>2021 年定向增发发行结果公告</span><span class="source-meta">公告 · 2021-11-08 <button class="src-btn" data-source="s5">查看</button></span></div>
+        <div class="source-item"><span>股东持股变动公告</span><span class="source-meta">公告 · 2026-05-18 <button class="src-btn" data-source="s6">查看</button></span></div>
+      </div>
+      <div class="source-group">
+        <h3>研究资料与新闻</h3>
+        <div class="source-item"><span>动力电池行业研究报告（演示）</span><span class="source-meta">研究 · 2026-07-01 <button class="src-btn" data-source="s7">查看</button></span></div>
+        <div class="source-item"><span>行业媒体报道合集（演示）</span><span class="source-meta">新闻 · 2026-10-20 <button class="src-btn" data-source="s8">查看</button></span></div>
+        <div class="source-item"><span>星海动力官网（演示）</span><span class="source-meta">官网 · 2026-10-29 <button class="src-btn" data-source="s9">查看</button></span></div>
+      </div>
+    </div>
+  </section>
+</main>
+</div>
+
+<button class="ask-fab" id="ask-fab" data-open-ask aria-label="打开 AI 助手">💬 问一问</button>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<aside class="ask-sidebar" id="ask-sidebar" aria-label="AI 助手" aria-hidden="true" inert>
+  <div class="ask-sidebar-inner">
+    <div class="ask-head">
+      <div class="ask-head-main">
+        <div class="ask-avatar">AI</div>
+        <div>
+          <h2>AI 助手</h2>
+          <p>关于 星海动力 · 演示数据</p>
+        </div>
+      </div>
+      <button class="ask-close" id="ask-close" aria-label="收起助手" title="收起助手">›</button>
+    </div>
+    <div class="ask-body" id="ask-body">
+      <div class="msg assistant">
+        <div class="bubble">
+          你可以问我这家公司的业务、财务、投资关系或最近新闻。回答会带上来源。
+          <div class="msg-meta">助手 · 演示模式</div>
+        </div>
+      </div>
+    </div>
+    <div class="ask-suggestions">
+      <button class="suggestion">星海动力靠什么赚钱？</button>
+      <button class="suggestion">星海动力和星海控股是什么关系？</button>
+      <button class="suggestion">最大的风险是什么？</button>
+    </div>
+    <form class="ask-composer" id="ask-form">
+      <input id="ask-input" type="text" autocomplete="off" placeholder="输入问题…" aria-label="输入问题">
+      <button class="btn" type="submit">发送</button>
+    </form>
+  </div>
+</aside>
+
+<div class="source-sheet" id="source-sheet" hidden aria-label="来源详情">
+  <button class="sheet-close" id="sheet-close" aria-label="关闭来源">×</button>
+  <h3 id="sheet-title">来源</h3>
+  <div class="sheet-meta" id="sheet-kind"></div>
+  <div class="sheet-quote" id="sheet-quote"></div>
+  <a class="sheet-link" id="sheet-link" href="#" target="_blank" rel="noopener">打开原始网页（演示链接）</a>
+  <p class="hint">演示原型：链接指向 example.com，不包含真实资料。</p>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+
+  // ---------------------------------------------------------------
+  // Demo data. Fictional company and relationships, clearly labelled.
+  // ---------------------------------------------------------------
+  const COMPANY = {
+    name: '星海动力',
+    legal: '星海动力科技股份有限公司',
+    ticker: '688000.SH',
+    exchange: '上交所科创板',
+    market: 'A 股',
+    location: '江苏苏州',
+    industry: '动力电池 / 储能',
+    founded: '2014',
+    employees: '2.8 万',
+    marketCap: '3,860 亿元',
+    updated: '2026-10-29',
+  };
+
+  const SOURCES = {
+    s1: {
+      title: '星海动力 2025 年年度报告', kind: '财报', date: '2026-04-18',
+      url: 'https://example.com/demo/annual-2025',
+      quote: '2025 年公司实现营业收入 1,240.50 亿元，同比增长 26.2%；归属于母公司股东的净利润 96.10 亿元。',
+    },
+    s2: {
+      title: '星海动力 2026 年半年度报告', kind: '财报', date: '2026-08-22',
+      url: 'https://example.com/demo/interim-2026',
+      quote: '上半年公司储能业务收入同比增长 38.6%，苏州储能基地二期按计划投产。',
+    },
+    s3: {
+      title: '星海动力 2026 年三季报', kind: '财报', date: '2026-10-28',
+      url: 'https://example.com/demo/q3-2026',
+      quote: '前三季度公司营业收入同比增长 21.4%，第三季度毛利率环比提升 0.5 个百分点。',
+    },
+    s4: {
+      title: '与北辰汽车签署 5 年供应协议', kind: '公告', date: '2026-09-16',
+      url: 'https://example.com/demo/notice-beichen',
+      quote: '公司与北辰汽车签署 2026—2030 年动力电池供应协议，预计供货规模不低于 120GWh。',
+    },
+    s5: {
+      title: '2021 年定向增发发行结果公告', kind: '公告', date: '2021-11-08',
+      url: 'https://example.com/demo/placement-2021',
+      quote: '山海资本参与公司 2021 年定向增发，持股 8.40%。',
+    },
+    s6: {
+      title: '股东持股变动公告', kind: '公告', date: '2026-05-18',
+      url: 'https://example.com/demo/holder-change',
+      quote: '苏州产业基金持有公司 4.2% 股份；星海控股集团同时持有星海地产 60% 股权。',
+    },
+    s7: {
+      title: '动力电池行业研究报告（演示）', kind: '研究', date: '2026-07-01',
+      url: 'https://example.com/demo/industry-report',
+      quote: '星海动力与远山电池、北辰新能源在动力电池领域直接竞争，市场份额位居国内前列。',
+    },
+    s8: {
+      title: '行业媒体报道合集（演示）', kind: '新闻', date: '2026-10-20',
+      url: 'https://example.com/demo/news-roundup',
+      quote: '岚风汽车新款车型采用星海动力电池；东澜科技进入公司主力客户供应链。',
+    },
+    s9: {
+      title: '星海动力官网（演示）', kind: '官网', date: '2026-10-29',
+      url: 'https://example.com/demo/website',
+      quote: '星海动力专注于动力电池、储能系统与电池材料回收。',
+    },
+  };
+
+  const RELS = [
+    { id: 'inv1', cat: 'invest', name: '星海控股集团', rel: '控股股东', extra: '32.1%', status: 'verified', source: 's1', quote: '星海控股集团持有公司 32.10% 股份，为控股股东。' },
+    { id: 'inv2', cat: 'invest', name: '山海资本', rel: '战略投资方', extra: '8.4%', status: 'verified', source: 's5', quote: '山海资本参与公司 2021 年定向增发，持股 8.40%。' },
+    { id: 'inv3', cat: 'invest', name: '苏州产业基金', rel: '投资方', extra: '4.2%', status: 'reported', source: 's6', quote: '苏州产业基金持有公司 4.2% 股份。' },
+
+    { id: 'out1', cat: 'outbound', name: '星海储能科技', rel: '全资子公司', extra: '100%', status: 'verified', source: 's1', quote: '公司持有星海储能科技 100% 股权，纳入合并报表。' },
+    { id: 'out2', cat: 'outbound', name: '华辰材料', rel: '控股子公司', extra: '51%', status: 'verified', source: 's1', quote: '公司持有华辰材料 51% 股权，纳入合并报表。' },
+    { id: 'out3', cat: 'outbound', name: '蓝湾循环', rel: '参股公司', extra: '35%', status: 'inferred', source: 's2', quote: '公司通过产业基金间接持有蓝湾循环 35% 权益。' },
+    { id: 'out4', cat: 'outbound', name: '北美星海', rel: '全资子公司', extra: '100%', status: 'verified', source: 's1', quote: '北美星海为公司在美全资子公司。' },
+
+    { id: 'comp1', cat: 'competitor', name: '远山电池', rel: '竞争对手', extra: '动力电池', status: 'inferred', source: 's7', quote: '远山电池与公司在动力电池领域直接竞争。' },
+    { id: 'comp2', cat: 'competitor', name: '北辰新能源', rel: '竞争对手', extra: '动力电池', status: 'verified', source: 's7', quote: '北辰新能源为国内主要动力电池厂商之一。' },
+    { id: 'comp3', cat: 'competitor', name: '东澜科技', rel: '竞争对手', extra: '储能系统', status: 'reported', source: 's8', quote: '媒体报道东澜科技进入公司主力客户供应链。' },
+
+    { id: 'sup1', cat: 'supplier', name: '南岭锂业', rel: '锂盐供应商', extra: '碳酸锂', status: 'verified', source: 's1', quote: '南岭锂业为公司碳酸锂主要供应商之一。' },
+    { id: 'sup2', cat: 'supplier', name: '东海铜箔', rel: '铜箔供应商', extra: '锂电池铜箔', status: 'verified', source: 's2', quote: '公司向东海铜箔采购锂电池铜箔。' },
+    { id: 'sup3', cat: 'supplier', name: '恒川设备', rel: '设备供应商', extra: '涂布设备', status: 'inferred', source: 's2', quote: '恒川设备出现在公司前五大设备供应商名单中。' },
+
+    { id: 'cust1', cat: 'customer', name: '北辰汽车', rel: '整车客户', extra: '5 年协议', status: 'verified', source: 's4', quote: '公司与北辰汽车签订 2026—2030 年动力电池供应协议。' },
+    { id: 'cust2', cat: 'customer', name: '岚风汽车', rel: '整车客户', extra: '新款车型', status: 'reported', source: 's8', quote: '岚风汽车新款车型采用公司电池。' },
+    { id: 'cust3', cat: 'customer', name: '国网储能', rel: '储能客户', extra: '电网侧项目', status: 'inferred', source: 's3', quote: '公司中标国网储能项目电池系统采购。' },
+
+    { id: 'part1', cat: 'partner', name: '蓝湾科技', rel: '技术合作伙伴', extra: '固态电池', status: 'verified', source: 's4', quote: '公司与蓝湾科技联合开发下一代固态电池。' },
+    { id: 'part2', cat: 'partner', name: '中科研究院', rel: '研发合作', extra: '联合实验室', status: 'inferred', source: 's2', quote: '公司与中科研究院共建电池材料联合实验室。' },
+  ];
+
+  const LAYER2 = [
+    { id: 'l2-inv1-a', parent: 'inv1', cat: 'invest', name: '星海地产', rel: '其他投资', extra: '60%', status: 'inferred', source: 's6', quote: '星海控股集团同时持有星海地产 60% 股权。' },
+    { id: 'l2-inv1-b', parent: 'inv1', cat: 'invest', name: '星海金融', rel: '其他投资', extra: '45%', status: 'inferred', source: 's6', quote: '星海控股集团持有星海金融 45% 股权。' },
+    { id: 'l2-cust1-a', parent: 'cust1', cat: 'customer', name: '北辰集团', rel: '母公司', extra: '整车集团', status: 'inferred', source: 's4', quote: '北辰汽车为北辰集团旗下整车企业。' },
+    { id: 'l2-sup1-a', parent: 'sup1', cat: 'supplier', name: '西岭矿业', rel: '参股矿山', extra: '锂矿', status: 'inferred', source: 's7', quote: '南岭锂业参股西岭矿业，布局上游锂资源。' },
+    { id: 'l2-comp1-a', parent: 'comp1', cat: 'competitor', name: '远山集团', rel: '母公司', extra: '新能源集团', status: 'inferred', source: 's7', quote: '远山电池为远山集团旗下新能源业务主体。' },
+  ];
+
+  const STATUS = {
+    verified: { label: '已核实', cls: 'ok' },
+    inferred: { label: '待核实', cls: 'warn' },
+    reported: { label: '媒体报道', cls: 'info' },
+  };
+
+  const CAT_META = {
+    invest: { label: '投资方', angle: 150, spread: 40, radius: 270 },
+    outbound: { label: '对外投资', angle: 330, spread: 44, radius: 270 },
+    competitor: { label: '竞争对手', angle: 210, spread: 36, radius: 270 },
+    supplier: { label: '供应商', angle: 265, spread: 36, radius: 270 },
+    customer: { label: '客户', angle: 30, spread: 30, radius: 270 },
+    partner: { label: '合作伙伴', angle: 90, spread: 30, radius: 270 },
+  };
+
+  const FILTER_GROUPS = {
+    all: ['invest', 'outbound', 'competitor', 'supplier', 'customer', 'partner'],
+    invest: ['invest', 'outbound'],
+    supply: ['supplier', 'customer'],
+    compete: ['competitor'],
+    partner: ['partner'],
+  };
+
+  const FIN = {
+    annual: {
+      cols: ['FY2025', 'FY2024', 'FY2023'],
+      rows: [
+        { item: '营业收入', values: ['124,050', '98,320', '76,410'], source: 's1', strong: true },
+        { item: '营业成本', values: ['95,760', '74,900', '59,100'], source: 's1' },
+        { item: '毛利率', values: ['22.8%', '23.8%', '22.7%'], source: 's1', strong: true },
+        { item: '营业利润', values: ['11,230', '8,940', '6,820'], source: 's1' },
+        { item: '净利润', values: ['9,610', '7,520', '5,940'], source: 's1', strong: true },
+        { item: '经营现金流', values: ['14,820', '11,260', '8,940'], source: 's1' },
+        { item: '资本开支', values: ['9,640', '7,880', '5,620'], source: 's2' },
+        { item: '自由现金流', values: ['5,180', '3,380', '3,320'], source: 's2' },
+      ],
+    },
+    quarter: {
+      cols: ['2026 Q3', '2026 Q2', '2026 Q1'],
+      rows: [
+        { item: '营业收入', values: ['38,420', '35,610', '32,980'], source: 's3', strong: true },
+        { item: '毛利率', values: ['22.4%', '22.9%', '23.1%'], source: 's3', strong: true },
+        { item: '营业利润', values: ['3,510', '3,220', '2,980'], source: 's3' },
+        { item: '净利润', values: ['2,980', '2,740', '2,510'], source: 's3', strong: true },
+        { item: '经营现金流', values: ['4,120', '3,860', '3,540'], source: 's3' },
+      ],
+    },
+  };
+
+  // ---------------------------------------------------------------
+  // Theme
+  // ---------------------------------------------------------------
+  const root = document.documentElement;
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  const themeBtn = $('#theme-toggle');
+
+  function effectiveTheme() {
+    return root.dataset.theme || (mq.matches ? 'dark' : 'light');
+  }
+  function updateThemeButton() {
+    themeBtn.textContent = effectiveTheme() === 'dark' ? '浅色' : '深色';
+  }
+  try {
+    const saved = localStorage.getItem('occ-theme');
+    if (saved === 'dark' || saved === 'light') root.dataset.theme = saved;
+  } catch (e) { /* ignore */ }
+  updateThemeButton();
+  themeBtn.addEventListener('click', () => {
+    const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+    root.dataset.theme = next;
+    try { localStorage.setItem('occ-theme', next); } catch (e) { /* ignore */ }
+    updateThemeButton();
+  });
+  if (mq.addEventListener) mq.addEventListener('change', updateThemeButton);
+
+  // ---------------------------------------------------------------
+  // Tabs
+  // ---------------------------------------------------------------
+  function showTab(name) {
+    $$('.tab').forEach((btn) => {
+      const on = btn.dataset.tab === name;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', String(on));
+    });
+    $$('.panel').forEach((panel) => {
+      panel.hidden = panel.id !== 'panel-' + name;
+    });
+    if (name === 'graph') renderGraph();
+  }
+  $$('.tab').forEach((btn) => btn.addEventListener('click', () => showTab(btn.dataset.tab)));
+
+  // ---------------------------------------------------------------
+  // Search
+  // ---------------------------------------------------------------
+  const searchInput = $('#global-search');
+  const searchPop = $('#search-pop');
+
+  function renderSearchPop() {
+    const q = searchInput.value.trim();
+    if (!q) { searchPop.hidden = true; return; }
+    searchPop.innerHTML = `
+      <button class="search-item" data-search-company type="button">
+        <span class="search-dot"></span>
+        <span><strong>星海动力</strong><span class="search-sub">动力电池 / 储能 · 688000.SH（演示）</span></span>
+      </button>
+      <button class="search-item" data-search-ask type="button">
+        <span class="search-dot ask"></span>
+        <span><strong>直接问助手</strong><span class="search-sub">${esc(q)}</span></span>
+      </button>`;
+    searchPop.hidden = false;
+  }
+  searchInput.addEventListener('input', renderSearchPop);
+  searchInput.addEventListener('focus', renderSearchPop);
+  searchPop.addEventListener('click', (event) => {
+    const company = event.target.closest('[data-search-company]');
+    const ask = event.target.closest('[data-search-ask]');
+    if (company) {
+      searchPop.hidden = true;
+      searchInput.blur();
+      showToast('演示原型：当前只有星海动力一家公司');
+    }
+    if (ask) {
+      const q = searchInput.value.trim();
+      searchPop.hidden = true;
+      openAsk(q, searchInput);
+    }
+  });
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.nav-search')) searchPop.hidden = true;
+  });
+
+  // ---------------------------------------------------------------
+  // Overlays, source sheet, toast
+  // ---------------------------------------------------------------
+  const scrim = $('#scrim');
+  const askSidebar = $('#ask-sidebar');
+  const sourceSheet = $('#source-sheet');
+  let lastAskTrigger = null;
+
+  function closeSource() {
+    sourceSheet.hidden = true;
+    scrim.hidden = true;
+    document.body.classList.remove('overlay-open');
+  }
+
+  function closeAsk() {
+    closeSource();
+    document.body.classList.remove('ask-open');
+    askSidebar.inert = true;
+    askSidebar.setAttribute('aria-hidden', 'true');
+    if (lastAskTrigger && typeof lastAskTrigger.focus === 'function') {
+      lastAskTrigger.focus();
+    }
+    lastAskTrigger = null;
+  }
+
+  function openAsk(prefill, trigger) {
+    closeSource();
+    lastAskTrigger = trigger || document.activeElement;
+    document.body.classList.add('ask-open');
+    askSidebar.inert = false;
+    askSidebar.setAttribute('aria-hidden', 'false');
+    if (prefill) sendQuestion(prefill);
+    else setTimeout(() => { $('#ask-input').focus(); }, 300);
+  }
+
+  function openSource(id, quote) {
+    const source = SOURCES[id];
+    if (!source) return;
+    $('#sheet-title').textContent = source.title;
+    $('#sheet-kind').textContent = source.kind + ' · ' + source.date;
+    $('#sheet-quote').textContent = quote || source.quote;
+    $('#sheet-link').href = source.url;
+    sourceSheet.hidden = false;
+    scrim.hidden = false;
+    document.body.classList.add('overlay-open');
+  }
+
+  scrim.addEventListener('click', closeSource);
+  $('#ask-close').addEventListener('click', closeAsk);
+  $('#sheet-close').addEventListener('click', closeSource);
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (!sourceSheet.hidden) closeSource();
+    else if (document.body.classList.contains('ask-open')) closeAsk();
+  });
+
+  let toastTimer = null;
+  function showToast(message) {
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.textContent = message;
+    document.body.appendChild(el);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.remove(), 2200);
+  }
+
+  document.addEventListener('click', (event) => {
+    const sourceBtn = event.target.closest('[data-source]');
+    if (sourceBtn) {
+      openSource(sourceBtn.dataset.source, sourceBtn.dataset.quote || '');
+      return;
+    }
+    const stub = event.target.closest('[data-stub]');
+    if (stub) showToast('演示原型：' + stub.dataset.stub + '在正式版中可用');
+  });
+
+  $$('[data-open-ask]').forEach((btn) => {
+    btn.addEventListener('click', (event) => openAsk(undefined, event.currentTarget));
+  });
+
+  // ---------------------------------------------------------------
+  // Ask drawer
+  // ---------------------------------------------------------------
+  function appendMessage(role, html) {
+    const body = $('#ask-body');
+    const wrap = document.createElement('div');
+    wrap.className = 'msg ' + role;
+    wrap.innerHTML = html;
+    body.appendChild(wrap);
+    body.scrollTop = body.scrollHeight;
+    return wrap;
+  }
+
+  function answerFor(question) {
+    if (/关系|控股|股东|投资方|投资/.test(question)) {
+      return {
+        text: '星海控股集团是星海动力的控股股东，持有 32.1% 股份；山海资本持股 8.4%，苏州产业基金持股 4.2%。这些关系都在「关系图谱」里，点开连线可以看到原文证据。',
+        sources: ['s1', 's5', 's6'],
+        footer: '查了公司资料 · 看了 3 个来源',
+      };
+    }
+    if (/赚钱|营收|业务|靠什么/.test(question)) {
+      return {
+        text: '星海动力主要靠三块业务赚钱：动力电池、储能系统和电池材料回收。2025 年营收 1,240.5 亿元，同比增长 26.2%；净利润 96.1 亿元。',
+        sources: ['s1'],
+        footer: '查了公司资料 · 看了 1 个来源',
+      };
+    }
+    if (/风险|问题|竞争/.test(question)) {
+      return {
+        text: '主要风险包括客户集中度较高、原材料价格波动和行业价格竞争。关系图谱里可以看到公司与北辰汽车、远山电池、北辰新能源的关系。以上判断来自公开资料，建议结合最新财报核对。',
+        sources: ['s7', 's8'],
+        footer: '查了公司资料 · 看了 2 个来源',
+      };
+    }
+    return {
+      text: '星海动力是一家做动力电池和储能系统的公司，2025 年营收 1,240.5 亿元，净利润 96.1 亿元。你可以继续问它的业务、财务或投资关系。',
+      sources: ['s1'],
+      footer: '查了公司资料 · 看了 1 个来源',
+    };
+  }
+
+  function sendQuestion(text) {
+    const question = String(text || '').trim();
+    if (!question) return;
+    appendMessage('user', '<div class="bubble">' + esc(question) + '</div>');
+    const typing = appendMessage('assistant', '<div class="bubble">正在查资料…</div>');
+    setTimeout(() => {
+      typing.remove();
+      const answer = answerFor(question);
+      const cites = answer.sources
+        .map((id, index) => '<button class="cite" data-source="' + id + '">来源 ' + (index + 1) + '</button>')
+        .join('');
+      appendMessage(
+        'assistant',
+        '<div class="bubble">' + esc(answer.text) +
+        '<div class="cite-row">' + cites + '</div>' +
+        '<div class="msg-meta">' + esc(answer.footer) + '</div></div>'
+      );
+    }, 650);
+  }
+
+  $('#ask-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const input = $('#ask-input');
+    const value = input.value;
+    input.value = '';
+    sendQuestion(value);
+  });
+  $$('.suggestion').forEach((btn) => btn.addEventListener('click', () => sendQuestion(btn.textContent)));
+
+  // ---------------------------------------------------------------
+  // Financial table
+  // ---------------------------------------------------------------
+  let currentPeriod = 'annual';
+  function renderFinancials(period) {
+    currentPeriod = period;
+    const data = FIN[period];
+    const table = $('#fin-table');
+    const head = '<thead><tr><th>项目</th>' +
+      data.cols.map((col) => '<th>' + esc(col) + '</th>').join('') +
+      '<th>来源</th></tr></thead>';
+    const body = '<tbody>' + data.rows.map((row) => {
+      const cells = row.values.map((value) => '<td>' + esc(value) + '</td>').join('');
+      return '<tr class="' + (row.strong ? 'strong' : '') + '"><td>' + esc(row.item) + '</td>' +
+        cells + '<td><button class="src-btn" data-source="' + row.source + '">来源</button></td></tr>';
+    }).join('') + '</tbody>';
+    table.innerHTML = head + body;
+    $$('#period-toggle button').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.period === period);
+    });
+  }
+  $$('#period-toggle button').forEach((btn) => {
+    btn.addEventListener('click', () => renderFinancials(btn.dataset.period));
+  });
+  renderFinancials('annual');
+
+  // ---------------------------------------------------------------
+  // Relationship graph
+  // ---------------------------------------------------------------
+  const NS = 'http://www.w3.org/2000/svg';
+  const CX = 480;
+  const CY = 350;
+
+  const state = {
+    filter: 'all',
+    verifiedOnly: false,
+    depth: 1,
+    selected: { type: 'center', id: 'center' },
+    view: window.matchMedia('(max-width: 720px)').matches
+      ? { x: 240, y: 170, w: 480, h: 360 }
+      : { x: 0, y: 0, w: 960, h: 720 },
+    viewMode: window.matchMedia('(max-width: 720px)').matches ? 'list' : 'graph',
+  };
+
+  function svgEl(name, attrs) {
+    const node = document.createElementNS(NS, name);
+    if (attrs) {
+      Object.entries(attrs).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') node.setAttribute(key, value);
+      });
+    }
+    return node;
+  }
+
+  function matchesFilter(node) {
+    if (!FILTER_GROUPS[state.filter].includes(node.cat)) return false;
+    if (state.verifiedOnly && node.status !== 'verified') return false;
+    return true;
+  }
+
+  function getVisibleNodes() {
+    const layer1 = RELS.filter(matchesFilter);
+    if (state.depth !== 2) return layer1;
+    const ids = new Set(layer1.map((node) => node.id));
+    const layer2 = LAYER2.filter((node) => ids.has(node.parent) && matchesFilter(node));
+    return layer1.concat(layer2);
+  }
+
+  function layoutGraph(visible) {
+    const positions = {};
+    const byCat = {};
+    visible.filter((node) => node.layer !== 2).forEach((node) => {
+      if (!byCat[node.cat]) byCat[node.cat] = [];
+      byCat[node.cat].push(node);
+    });
+    Object.entries(byCat).forEach(([cat, nodes]) => {
+      const meta = CAT_META[cat];
+      const count = nodes.length;
+      nodes.forEach((node, index) => {
+        const offset = count === 1
+          ? 0
+          : (index - (count - 1) / 2) * (meta.spread / Math.max(count - 1, 1));
+        const angle = meta.angle + offset;
+        const radians = angle * Math.PI / 180;
+        positions[node.id] = {
+          x: CX + meta.radius * Math.cos(radians),
+          y: CY - meta.radius * Math.sin(radians),
+          angle,
+        };
+      });
+    });
+    const byParent = {};
+    visible.filter((node) => node.layer === 2).forEach((node) => {
+      if (!byParent[node.parent]) byParent[node.parent] = [];
+      byParent[node.parent].push(node);
+    });
+    Object.entries(byParent).forEach(([parentId, nodes]) => {
+      const parent = positions[parentId];
+      if (!parent) return;
+      nodes.forEach((node, index) => {
+        const offset = (index - (nodes.length - 1) / 2) * 18;
+        const angle = parent.angle + offset;
+        const radians = angle * Math.PI / 180;
+        positions[node.id] = {
+          x: CX + 340 * Math.cos(radians),
+          y: CY - 340 * Math.sin(radians),
+          angle,
+        };
+      });
+    });
+    return positions;
+  }
+
+  function findNode(id) {
+    return RELS.find((node) => node.id === id) || LAYER2.find((node) => node.id === id) || null;
+  }
+
+  function edgeLabel(node) {
+    return {
+      invest: '投资',
+      outbound: '对外投资',
+      competitor: '竞争',
+      supplier: '供应',
+      customer: '客户',
+      partner: '合作',
+    }[node.cat] || '关系';
+  }
+
+  function edgeGeometry(node, position, positions) {
+    const center = { x: CX, y: CY };
+    let from;
+    let to;
+    let arrow = true;
+    if (node.layer === 2) {
+      const parent = positions[node.parent];
+      if (!parent) return null;
+      from = parent;
+      to = position;
+    } else if (node.cat === 'invest' || node.cat === 'supplier') {
+      from = position;
+      to = center;
+    } else if (node.cat === 'outbound' || node.cat === 'customer') {
+      from = center;
+      to = position;
+    } else {
+      from = center;
+      to = position;
+      arrow = false;
+    }
+    const fromRadius = from === center ? 38 : (node.layer === 2 ? 15 : 21);
+    const toRadius = to === center ? 38 : (node.layer === 2 ? 15 : 21);
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const ux = dx / length;
+    const uy = dy / length;
+    return {
+      x1: from.x + ux * fromRadius,
+      y1: from.y + uy * fromRadius,
+      x2: to.x - ux * (toRadius + (arrow ? 4 : 0)),
+      y2: to.y - uy * (toRadius + (arrow ? 4 : 0)),
+      arrow,
+    };
+  }
+
+  function makeEdge(node, position, positions) {
+    const geometry = edgeGeometry(node, position, positions);
+    if (!geometry) return null;
+    const isSelected = state.selected.type === 'edge' && state.selected.id === node.id;
+    const group = svgEl('g');
+    const attrs = {
+      x1: geometry.x1, y1: geometry.y1, x2: geometry.x2, y2: geometry.y2,
+      class: 'edge cat-' + node.cat + ' is-' + node.status,
+    };
+    if (geometry.arrow) attrs['marker-end'] = 'url(#arrow-' + node.cat + ')';
+    group.appendChild(svgEl('line', attrs));
+
+    const hit = svgEl('line', {
+      x1: geometry.x1, y1: geometry.y1, x2: geometry.x2, y2: geometry.y2,
+      class: 'edge-hit', 'data-edge': node.id,
+    });
+    hit.addEventListener('click', (event) => {
+      event.stopPropagation();
+      selectEdge(node.id);
+    });
+    group.appendChild(hit);
+
+    if (isSelected) {
+      const label = svgEl('text', {
+        x: (geometry.x1 + geometry.x2) / 2,
+        y: (geometry.y1 + geometry.y2) / 2 - 7,
+        class: 'edge-label',
+        'text-anchor': 'middle',
+      });
+      label.textContent = edgeLabel(node);
+      group.appendChild(label);
+    }
+    return group;
+  }
+
+  function makeNode(node, position, isCenter) {
+    const isSelected = state.selected.id === node.id &&
+      (state.selected.type === 'node' || state.selected.type === 'edge');
+    const classes = ['node', 'cat-' + node.cat];
+    if (isCenter) classes.push('center');
+    if (isSelected) classes.push('selected');
+    const group = svgEl('g', {
+      class: classes.join(' '),
+      transform: 'translate(' + position.x + ',' + position.y + ')',
+      tabindex: '0',
+      role: 'button',
+      'aria-label': node.name + '，' + (CAT_META[node.cat] ? CAT_META[node.cat].label : '公司') +
+        (node.status ? '，' + STATUS[node.status].label : ''),
+    });
+    const radius = isCenter ? 36 : (node.layer === 2 ? 13 : 19);
+    group.appendChild(svgEl('circle', { r: radius }));
+
+    const title = svgEl('title');
+    title.textContent = node.name;
+    group.appendChild(title);
+
+    if (isCenter) {
+      const name = svgEl('text', { class: 'center-name', y: '5', 'text-anchor': 'middle' });
+      name.textContent = '星海动力';
+      group.appendChild(name);
+    } else {
+      const shortName = node.name.length > 8 ? node.name.slice(0, 7) + '…' : node.name;
+      const name = svgEl('text', { class: 'node-name', y: radius + 15, 'text-anchor': 'middle' });
+      name.textContent = shortName;
+      group.appendChild(name);
+      if (node.layer !== 2) {
+        const status = svgEl('text', {
+          class: 'node-status ' + (STATUS[node.status] ? STATUS[node.status].cls : ''),
+          y: radius + 28,
+          'text-anchor': 'middle',
+        });
+        status.textContent = STATUS[node.status] ? STATUS[node.status].label : '';
+        group.appendChild(status);
+      }
+    }
+
+    group.addEventListener('click', (event) => {
+      event.stopPropagation();
+      selectNode(node.id);
+    });
+    group.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        selectNode(node.id);
+      }
+    });
+    return group;
+  }
+
+  function renderGraph() {
+    const positions = layoutGraph(getVisibleNodes());
+    const edgesGroup = $('#graph-edges');
+    const nodesGroup = $('#graph-nodes');
+    edgesGroup.replaceChildren();
+    nodesGroup.replaceChildren();
+
+    const visible = getVisibleNodes();
+    visible.forEach((node) => {
+      const position = positions[node.id];
+      if (!position) return;
+      const edge = makeEdge(node, position, positions);
+      if (edge) edgesGroup.appendChild(edge);
+    });
+
+    nodesGroup.appendChild(makeNode(
+      { id: 'center', name: '星海动力', cat: 'center', status: 'verified', layer: 1 },
+      { x: CX, y: CY },
+      true
+    ));
+    visible.forEach((node) => {
+      const position = positions[node.id];
+      if (!position) return;
+      nodesGroup.appendChild(makeNode(node, position, false));
+    });
+
+    $('#graph-empty').hidden = visible.length > 0;
+
+    if (state.selected.type !== 'center' && !visible.some((node) => node.id === state.selected.id)) {
+      state.selected = { type: 'center', id: 'center' };
+      renderInspector();
+    }
+    applyView();
+  }
+
+  function selectNode(id) {
+    state.selected = { type: 'node', id };
+    renderGraph();
+    renderInspector();
+    renderRelationLists();
+    if (window.matchMedia('(max-width: 720px)').matches && state.viewMode === 'list') {
+      const stage = $('#graph-stage');
+      if (stage) stage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  function selectEdge(id) {
+    state.selected = { type: 'edge', id };
+    renderGraph();
+    renderInspector();
+    renderRelationLists();
+  }
+
+  function directionText(node) {
+    if (node.layer === 2) {
+      const parent = findNode(node.parent);
+      return (parent ? parent.name : '上一层公司') + ' → ' + node.name;
+    }
+    if (node.cat === 'invest' || node.cat === 'supplier') return node.name + ' → 星海动力';
+    if (node.cat === 'outbound' || node.cat === 'customer') return '星海动力 → ' + node.name;
+    return '星海动力 — ' + node.name;
+  }
+
+  function renderInspector() {
+    const el = $('#graph-inspector');
+    const selected = state.selected;
+    if (selected.type === 'center') {
+      const counts = {};
+      RELS.forEach((node) => { counts[node.cat] = (counts[node.cat] || 0) + 1; });
+      el.innerHTML =
+        '<div class="insp-cat">公司</div>' +
+        '<h3>星海动力</h3>' +
+        '<div class="insp-sub">动力电池 / 储能 · 江苏苏州 · 688000.SH（演示）</div>' +
+        '<div class="insp-counts">' +
+        '<div class="insp-count"><strong>' + (counts.invest || 0) + '</strong><span>投资方</span></div>' +
+        '<div class="insp-count"><strong>' + (counts.outbound || 0) + '</strong><span>对外投资</span></div>' +
+        '<div class="insp-count"><strong>' + (counts.competitor || 0) + '</strong><span>竞争对手</span></div>' +
+        '<div class="insp-count"><strong>' + (counts.supplier || 0) + '</strong><span>供应商</span></div>' +
+        '<div class="insp-count"><strong>' + (counts.customer || 0) + '</strong><span>客户</span></div>' +
+        '<div class="insp-count"><strong>' + (counts.partner || 0) + '</strong><span>合作伙伴</span></div>' +
+        '</div>' +
+        '<p class="insp-hint">点击图中的公司或连线，查看关系详情和原文证据。切到「2 层」可以看到投资方和客户背后的公司。</p>' +
+        '<button class="btn secondary full" data-stub="查看公司资料">查看公司资料</button>';
+      return;
+    }
+    const node = findNode(selected.id);
+    if (!node) {
+      state.selected = { type: 'center', id: 'center' };
+      renderInspector();
+      return;
+    }
+    const source = SOURCES[node.source];
+    const status = STATUS[node.status];
+    el.innerHTML =
+      '<div class="insp-cat cat-' + node.cat + '">' + CAT_META[node.cat].label + '</div>' +
+      '<h3>' + esc(node.name) + '</h3>' +
+      '<div class="insp-sub">' + esc(node.rel) + (node.extra ? ' · ' + esc(node.extra) : '') + '</div>' +
+      '<div class="insp-status"><span class="pill ' + status.cls + '">' + status.label + '</span></div>' +
+      (selected.type === 'edge' ? '<div class="insp-direction">' + esc(directionText(node)) + '</div>' : '') +
+      '<blockquote>“' + esc(node.quote) + '”</blockquote>' +
+      '<div class="insp-source">' +
+      '<button class="src-btn" data-source="' + node.source + '" data-quote="' + esc(node.quote) + '">来源：' + esc(source.title) + '</button>' +
+      '<span>' + esc(source.kind) + ' · ' + esc(source.date) + '</span>' +
+      '</div>' +
+      '<button class="btn secondary full" data-stub="进入公司页">进入公司页</button>';
+  }
+
+  function renderRelationLists() {
+    const wrap = $('#relation-lists');
+    const visible = RELS.filter(matchesFilter);
+    const groups = [
+      ['invest', '投资方'],
+      ['outbound', '对外投资'],
+      ['competitor', '竞争对手'],
+      ['supplier', '供应商'],
+      ['customer', '客户'],
+      ['partner', '合作伙伴'],
+    ];
+    const html = groups.map(([cat, label]) => {
+      const rows = visible.filter((node) => node.cat === cat);
+      if (!rows.length) return '';
+      const body = rows.map((node) => {
+        const selected = state.selected.id === node.id &&
+          (state.selected.type === 'node' || state.selected.type === 'edge');
+        const status = STATUS[node.status];
+        return '<div class="rel-row' + (selected ? ' selected' : '') + '" data-node="' + node.id + '" role="button" tabindex="0">' +
+          '<span class="rel-dot cat-' + node.cat + '"></span>' +
+          '<span><span class="rel-name">' + esc(node.name) + '</span><span class="rel-meta"> · ' +
+          esc(node.rel) + (node.extra ? ' · ' + esc(node.extra) : '') + '</span></span>' +
+          '<span class="pill ' + status.cls + '">' + status.label + '</span>' +
+          '<button class="src-btn" data-source="' + node.source + '" data-quote="' + esc(node.quote) + '">来源</button>' +
+          '</div>';
+      }).join('');
+      return '<div class="rel-group"><h4><span>' + label + '</span><span>' + rows.length + '</span></h4>' + body + '</div>';
+    }).join('');
+    wrap.innerHTML = html || '<div class="empty-note">没有符合条件的关系。试试「全部」或关闭「只看已核实」。</div>';
+  }
+
+  $('#relation-lists').addEventListener('click', (event) => {
+    if (event.target.closest('[data-source]')) return;
+    const row = event.target.closest('[data-node]');
+    if (!row) return;
+    selectNode(row.dataset.node);
+  });
+  $('#relation-lists').addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const row = event.target.closest('[data-node]');
+    if (!row) return;
+    event.preventDefault();
+    selectNode(row.dataset.node);
+  });
+
+  function applyView() {
+    const view = state.view;
+    $('#graph').setAttribute('viewBox', view.x + ' ' + view.y + ' ' + view.w + ' ' + view.h);
+  }
+
+  function zoom(factor) {
+    const view = state.view;
+    const centerX = view.x + view.w / 2;
+    const centerY = view.y + view.h / 2;
+    const nextWidth = Math.max(480, Math.min(1400, view.w * factor));
+    const nextHeight = nextWidth * 0.75;
+    state.view = {
+      x: centerX - nextWidth / 2,
+      y: centerY - nextHeight / 2,
+      w: nextWidth,
+      h: nextHeight,
+    };
+    applyView();
+  }
+
+  $('#zoom-in').addEventListener('click', () => zoom(0.8));
+  $('#zoom-out').addEventListener('click', () => zoom(1.25));
+  $('#zoom-reset').addEventListener('click', () => {
+    state.view = window.matchMedia('(max-width: 720px)').matches
+      ? { x: 240, y: 170, w: 480, h: 360 }
+      : { x: 0, y: 0, w: 960, h: 720 };
+    applyView();
+  });
+
+  let drag = null;
+  let dragMoved = false;
+  const graphSvg = $('#graph');
+  graphSvg.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'mouse') return;
+    if (event.target.closest('.node') || event.target.closest('.edge-hit')) return;
+    drag = { x: event.clientX, y: event.clientY, vx: state.view.x, vy: state.view.y };
+    dragMoved = false;
+    graphSvg.setPointerCapture(event.pointerId);
+    $('#graph-stage').classList.add('dragging');
+  });
+  graphSvg.addEventListener('pointermove', (event) => {
+    if (!drag) return;
+    const rect = graphSvg.getBoundingClientRect();
+    const dx = (event.clientX - drag.x) * (state.view.w / rect.width);
+    const dy = (event.clientY - drag.y) * (state.view.h / rect.height);
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) dragMoved = true;
+    state.view.x = drag.vx - dx;
+    state.view.y = drag.vy - dy;
+    applyView();
+  });
+  graphSvg.addEventListener('pointerup', (event) => {
+    if (!drag) return;
+    drag = null;
+    $('#graph-stage').classList.remove('dragging');
+    try { graphSvg.releasePointerCapture(event.pointerId); } catch (e) { /* ignore */ }
+    if (!dragMoved) {
+      state.selected = { type: 'center', id: 'center' };
+      renderGraph();
+      renderInspector();
+      renderRelationLists();
+    }
+  });
+  graphSvg.addEventListener('pointercancel', () => {
+    drag = null;
+    $('#graph-stage').classList.remove('dragging');
+  });
+
+  $$('#type-chips .chip').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.filter = btn.dataset.filter;
+      $$('#type-chips .chip').forEach((chip) => chip.classList.toggle('active', chip === btn));
+      renderGraph();
+      renderInspector();
+      renderRelationLists();
+    });
+  });
+  $('#verified-only').addEventListener('change', (event) => {
+    state.verifiedOnly = event.target.checked;
+    renderGraph();
+    renderInspector();
+    renderRelationLists();
+  });
+  $$('#depth-toggle button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.depth = Number(btn.dataset.depth);
+      $$('#depth-toggle button').forEach((chip) => chip.classList.toggle('active', chip === btn));
+      renderGraph();
+      renderInspector();
+      renderRelationLists();
+    });
+  });
+
+  function applyViewMode() {
+    const layout = $('.graph-layout');
+    if (layout) layout.hidden = state.viewMode === 'list';
+    $$('#view-toggle button').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.view === state.viewMode);
+    });
+  }
+  $$('#view-toggle button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.viewMode = btn.dataset.view;
+      applyViewMode();
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // Navigation stubs
+  // ---------------------------------------------------------------
+  $('#nav-graph').addEventListener('click', (event) => {
+    event.preventDefault();
+    showTab('graph');
+    $('.tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  $('#nav-ask').addEventListener('click', (event) => {
+    event.preventDefault();
+    openAsk(undefined, event.currentTarget);
+  });
+  $$('[data-goto-graph]').forEach((link) => {
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      showTab('graph');
+      $('.tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+  $('#nav-home').addEventListener('click', (event) => {
+    event.preventDefault();
+    showToast('演示原型：首页在正式版中提供');
+  });
+  $('#nav-company').addEventListener('click', (event) => {
+    event.preventDefault();
+    searchInput.focus();
+  });
+  $('#brand-home').addEventListener('click', (event) => {
+    event.preventDefault();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+  $('#banner-close').addEventListener('click', () => {
+    $('.proto-banner').hidden = true;
+  });
+  $('#follow-btn').addEventListener('click', () => {
+    const btn = $('#follow-btn');
+    const on = btn.textContent.indexOf('已关注') !== -1;
+    btn.textContent = on ? '☆ 关注' : '★ 已关注';
+  });
+
+  // ---------------------------------------------------------------
+  // Boot
+  // ---------------------------------------------------------------
+  applyViewMode();
+  renderGraph();
+  renderInspector();
+  renderRelationLists();
+  showTab('graph');
+  updateThemeButton();
+})();
+</script>

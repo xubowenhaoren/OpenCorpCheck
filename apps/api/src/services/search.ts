@@ -141,6 +141,7 @@ export class SearchService {
             entry.bundle!,
             markets,
             indices,
+            query.sector,
             query.coverage,
             query.include_fixtures,
           ),
@@ -393,6 +394,9 @@ function buildCompanyFilter(
   if (indices.length > 0) {
     must.push({ key: "indices", match: { any: indices } });
   }
+  if (query.sector) {
+    must.push({ key: "sector", match: { value: query.sector } });
+  }
   if (query.coverage) {
     must.push({ key: "coverage_tier", match: { value: query.coverage } });
   }
@@ -434,10 +438,12 @@ function matchesCompanyFilters(
   bundle: CompanyBundle,
   markets: Market[],
   indices: string[],
+  sector: string | undefined,
   coverage: string | undefined,
   includeFixtures: boolean,
 ): boolean {
   if (!includeFixtures && bundle.company.isFixture) return false;
+  if (sector && bundle.company.sector !== sector) return false;
   if (coverage && bundle.company.coverageTier !== coverage) return false;
   if (indices.length > 0) {
     const own = bundle.indices.map((entry) => entry.indexCode);

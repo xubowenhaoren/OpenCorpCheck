@@ -37,6 +37,7 @@ export const SearchCompaniesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(10),
   market: z.string().trim().optional(),
   index: z.string().trim().optional(),
+  sector: z.string().trim().optional(),
   coverage: CoverageTierSchema.optional(),
   /** Include the synthetic development corpus (default: hidden). */
   include_fixtures: queryBoolean.default(false),

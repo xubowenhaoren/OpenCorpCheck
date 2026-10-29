@@ -126,9 +126,15 @@ Raw ACP types never reach the browser. If dsh changes its update payloads, only
 - Sessions are in-memory. Restarting the API invalidates session ids; the UI
   creates a new one on the next send.
 - One ACP process hosts all sessions; there is no per-session resource quota.
-- The UI is a local console, not the React/Electron sidebar described in
-  [ARCHITECTURE.md](ARCHITECTURE.md) §8.4. The runtime and HTTP seam are the
-  durable part.
+- The API also serves a local console (`/v1/agent/ui`). `apps/web` now implements the
+  React sidebar over the same ACP SSE endpoint, with company context, suggestions and
+  cancel; it deliberately does **not** render tool calls or a trajectory yet. The
+  runtime and HTTP seam are the durable part.
+- **Trajectory and sub-agent UI are designed but not built.** `tool.called` /
+  `tool.updated` already stream, but there is no persistence, no sub-agent
+  event, and no trace view. The reserved design is in
+  [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §6 P3.4 and
+  [`UI.md`](UI.md) §8.4. Keep `thought.delta` out of the consumer UI.
 - `additionalDirectories`, client filesystem, terminals and elicitation are not
   advertised; dsh rejects additional directories by design.
 - **Separate DSH_HOME is mandatory.** The ACP profile stores zstd-compressed

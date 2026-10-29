@@ -2,9 +2,11 @@
 
 **Open, agentic company intelligence for A500 · Hang Seng Index · S&P 500 · NASDAQ-100.**
 
-> Status: P3 complete — agent research (`deep_research` → pg-boss), a DeepSeek
-> Harness ACP sidebar with the `occ` MCP tools attached, and Google News RSS
-> documents across the 102-company corpus · 2026-10-29
+> Status: P3 complete + P3.5 web UI — agent research (`deep_research` → pg-boss),
+> a DeepSeek Harness ACP sidebar with the `occ` MCP tools attached, Google News RSS
+> documents across the 102-company corpus, and a React/Vite UI with search, company
+> pages (financials / relationship graph / news / sources), NDX-100 browse and the
+> live assistant sidebar · 2026-10-29
 
 OpenCorpCheck is an open-source, AI-native alternative to commercial company-intelligence
 products (the "企查查" category). It builds a cited, queryable profile for every company in
@@ -14,6 +16,10 @@ web/desktop UI, a CLI, an MCP server, and a DeepSeek Harness agent sidebar.
 Phase 0 is a narrow spike: a minimal DeepSeek Harness headless run + a distilled BFS/DFS
 skill that produces cited company profiles. No UI, no database. See
 [phase0/README.md](phase0/README.md).
+
+The web UI is implemented in [`apps/web`](apps/web/README.md): search, company pages with
+financials / relationship graph / news / sources, NASDAQ-100 browse, and the live ACP
+assistant sidebar. Agent trajectory / sub-agent visualization is designed but not built.
 
 ## Why
 
@@ -54,6 +60,8 @@ skill that produces cited company profiles. No UI, no database. See
 - [Agent sidebar over dsh ACP](docs/AGENT.md)
 - [News ingestion (Google News RSS)](docs/NEWS.md)
 - [Search evaluation](docs/EVAL.md)
+- [UI design — 企查查-style company page, financials, relationship graph](docs/UI.md)
+- [Web app — React/Vite UI, pages and commands](apps/web/README.md)
 - [NASDAQ-100 constituent snapshot](config/indices/ndx.yaml)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Prior art & competitive scan](docs/PRIOR_ART.md)

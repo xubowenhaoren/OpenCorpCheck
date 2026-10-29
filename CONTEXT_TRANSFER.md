@@ -1,7 +1,8 @@
 # OpenCorpCheck — Context Transfer
 
-> 交接日期：2026-10-27（P3.3 收尾：2026-10-29）
-> 当前阶段：Phase 0 + P1 + P2 + P2.5 + P3.1/P3.2 + P3.3 已完成。真实语料
+> 交接日期：2026-10-27（P3.5 Web UI 收尾：2026-10-29）
+> 当前阶段：Phase 0 + P1 + P2 + P2.5 + P3.1/P3.2 + P3.3 + P3.5 已完成；
+> P3.4 agent trajectory 仍为预留设计（未实现）。真实语料
 > 已与 synthetic fixture 隔离（默认只搜索 102 家真实 profile），golden query 扩到 7
 > 个 family、含 MRR@10/nDCG@10；公司卡片 API + CLI + MCP 已能读 cited 财务/事实/关系，
 > 关系抽取走 deepseek-flash + 审核队列。中文 curated alias 已接入（zh-name top1
@@ -11,6 +12,14 @@
 > **P3.3（2026-10-29）**：`deep_research` MCP 入队（API → pg-boss → worker）、
 > dsh ACP sidebar（`OCC_AGENT_DSH_HOME` + `occ` MCP 已实测调用）、Google News RSS
 > 新闻文档入库（`doc_type='news'`，可搜索、进公司卡片 events）。Docker 封装仍全部 TODO。
+>
+> **P3.4（预留，2026-10-29）**：agent trajectory（tool use / web search /
+> sub-agent）的 UI、事件模型、持久化和验收已写入 §6，**未实现**。
+>
+> **P3.5（2026-10-29）**：`apps/web` 已实现 docs/UI.md 的公开 UI（首页 / 搜索 /
+> 公司页 5 tabs / 全局图谱 / NDX 100 家成分页 / 真实 ACP AI 助手侧栏），并补齐
+> `/v1/graph`、`/v1/indices/:code`、`/v1/sectors`、搜索 `sector` 过滤。agent
+> trajectory 仍按 P3.4 预留，未实现。
 >
 > 下一阶段：P4（A500/HSI/SPX 快照 + A/HK 全量 backfill）或 P6（评测/质量），由用户决定。
 >
@@ -30,6 +39,7 @@
 - [`README.md`](README.md)
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - [`docs/SEARCH.md`](docs/SEARCH.md)
+- [`docs/UI.md`](docs/UI.md)
 - [`docs/EVAL.md`](docs/EVAL.md)
 - [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)
 - [`docs/PRIOR_ART.md`](docs/PRIOR_ART.md)
@@ -172,7 +182,9 @@ OpenCorpCheck/
     NEWS.md                        # P3.3：Google News RSS 新闻入库
     DATA_SOURCES.md                # 数据源矩阵 + F10 复用方案
     PRIOR_ART.md                   # 竞品/开源生态扫描
+    UI.md                          # P3.5：企查查式公司页 / 图谱 / 助手设计
   apps/
+    web/                           # P3.5：React 19 + Vite 8 UI（docs/UI.md）
     cli/                           # MCP stdio server（F10 / 公司 / deep_research / get_run）
     worker/                        # pg-boss 并行 backfill（research / ingest / news / f10）
   packages/
@@ -188,6 +200,8 @@ OpenCorpCheck/
     sources/news/                  # Google News RSS adapter（link-only）
   services/
     finance-analyst/               # Python sidecar：A/HK/US F10（uv + Playwright）
+  prototypes/
+    ui/index.html                  # 已确认的静态原型（mock 数据；npm run preview:ui）
   scripts/
     dev-db.sh                      # 本地 Postgres 17 init/start/stop
     dev-qdrant.sh                  # Qdrant 1.18 原生二进制
@@ -639,6 +653,273 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
   插件 `sidebar.right.pane.tab`。
 - Phase 0 的 headless runner 继续用于批量文档生成；ACP 用于交互式 sidebar。
 
+### P3.4（预留，未实现）— Agent trajectory：tool use / web search / sub-agent
+
+> 2026-10-29 用户提出：UI 设计要为 dsh agent 的 trajectory 预留空间，重点是
+> **tool use（主要是 web search）** 和 **sub-agent（主要是 agentic web search 查公司
+> 信息）**。本轮只写设计预留，不实现。目标用户仍是股民/普通金融从业者，所以默认
+> 界面保持「答案 + 来源」，执行过程是**可展开的渐进披露**，不是默认展开的调试面板。
+
+**现状（已经有的，不要重复造）**
+
+- `packages/agent/src/events.ts` 已把 ACP `session/update` 归一化为 `AgentEvent`：
+  `tool.called` / `tool.updated` 带 `callId`、`title`、`tool`、`kind`、`status`、
+  `input`、`output`；另有 `plan`、`thought.delta`、`usage`、`notice`、
+  `permission.requested`、`session.update`、`run.completed` / `run.failed`。
+- ACP v1 的 `ToolKind` 已包含 `search` / `fetch` / `execute` / `other`，
+  `ToolCallStatus` 是 `pending|in_progress|completed|failed`，`rawInput`/`rawOutput`
+  是 unknown。web_search 预计是 `kind='search'`，web_fetch 是 `kind='fetch'`；
+  MCP 工具通常是 `kind='other'`，`title`/`name` 里带 `mcp__occ__*`。
+- `apps/api` 通过 SSE 把 `AgentEvent` 逐条推给 `/v1/agent/ui`，但**没有持久化**；
+  `AgentService` 的 session 只在内存里，API 重启即丢。
+- `deep_research` MCP 工具已经能把研究任务入队到 pg-boss（`research.company`），
+  由 worker 跑 headless dsh + `company-profile`/`mag7-profile` skill；`get_run`
+  轮询进度。它不是 dsh 的同步 sub-agent，但**是公司研究子任务的现成载体**。
+- 当前 UI 设计（`docs/UI.md` §8）刻意不显示工具名/JSON/token，只显示
+  “查了公司资料 · 看了 3 个来源”。这是默认形态，不要改。
+
+**已知 bug（2026-10-29 用户实测，下一任优先修复）**
+
+- **现象**：在 `apps/web` 的 AI 助手侧栏问「goog 今天股价大跌，是什么原因？」后，
+  侧栏长时间没有回答，只显示「查了 14 次资料 · 0 个来源」，看起来卡在 thinking。
+- **怀疑**：dsh ACP profile 的 thinking budget / reasoning effort 默认过高。
+  用户建议**默认设为 medium**。同时要加每轮 turn / step / 超时上限，避免无限
+  工具循环。这个问题和 trajectory 是两个独立问题：即使不显示 trajectory，
+  也必须先让侧栏在合理时间内返回。
+- **需要检查的位置**：`packages/agent/src/runtime.ts` 的 spawn args/env、
+  `phase0/dsh.patch.yml`、dsh 0.2.1-rc.3 的 config schema（`dsh --dump-config` /
+  `--help` / 官方 docs）。注意 ACP 和 headless 可能不是同一套 patch；不要只改
+  `phase0/dsh.patch.yml` 就以为 ACP 生效。
+- **UI 侧**：`apps/web/src/components/AgentSidebar.tsx` 目前只显示工具调用次数；
+  在 0 来源、无 `assistant.delta` 时缺少「仍在思考 / 已超时」状态。修 budget 后
+  仍需给用户可停止、超时提示和错误文案，不能静默卡住。
+- **验收**：简单问题 30s 内返回；市场事件问题在合理时间内返回或明确超时；
+  不再出现「14 次工具调用、0 来源、无回答」的静默卡死。
+- **下一任还需要实现本节的 trajectory 显示**（tool cards / web_search /
+  sub-agent / 来源账本）；这是用户 2026-10-29 明确要求。
+
+**目标形态（用户看到什么）**
+
+默认（collapsed）：
+
+- 答案 + 引用 chips。
+- 一行摘要：「执行过程 6 步 · 3 个来源 · 42s」+ 展开箭头。
+- 失败/权限/子代理运行中：摘要行显示状态，不打断答案。
+
+展开（trajectory）：
+
+1. **计划/步骤**（`plan.entries`）：短句，如
+   “查公司资料 → 搜最近新闻 → 核对来源”。
+2. **工具卡片**：
+   - `web_search`：查询词、结果数、域名 top 3、耗时、“已引用 2 条”。
+   - `web_fetch`：页面标题、域名、是否成功、“已引用”。
+   - MCP：`search_companies` / `get_company` / `search_documents` /
+     `deep_research` / `get_run` / F10，显示人话标题（“查公司资料”“查财报”
+     “发起深研”），不显示 JSON；展开可看输入/输出的**摘要**和来源。
+   - `propose_fact` / `propose_relation`：显示“已提交审核”，不显示写入成功。
+3. **子代理卡片（sub-agent）**：
+   - 名称：如“公司研究子代理（agentic web search）”。
+   - 任务：一句话，如“为 Apple 搜集最新业务、财务和关系”。
+   - 状态：排队 / 运行中 / 完成 / 失败 / 取消。
+   - 进度：步数或 job progress（deep_research 用 done/total）；当前步骤。
+   - 展开：嵌套的子轨迹（它自己的 web_search / web_fetch / MCP 调用），
+     最多显示一级嵌套，更深层折叠为“查看全部”。
+   - 完成：摘要 + 引用数 + “查看研究结果 / 公司页”链接。
+   - 失败：人话错误 + 重试/取消。
+4. **来源账本（source ledger）**：去重后的 URL 列表，分“已引用 / 仅查阅”，
+   带标题、域名、抓取时间；点击打开现有来源浮层。
+5. **预算/用量**：步数、tokens、耗时；默认折叠在“详情”里，不干扰普通用户。
+
+规则：
+
+- **默认不显示 `thought.delta`（原始思考链）**。只显示 plan 摘要和动作；
+  调试模式（local only）才显示原始事件流。
+- 移动端：trajectory 放在答案下方，默认折叠；子代理嵌套最多一级。
+- 工具卡片和子代理卡片都用 `details/summary` 或等价组件，键盘可达；状态不只靠颜色。
+
+**事件模型（预留扩展，保持向后兼容）**
+
+在 `AgentEvent` 上增加：
+
+```ts
+| { type: "tool.progress"; callId: string; progress?: number; message?: string }
+| { type: "subagent.started"; subagentId: string; parentCallId?: string;
+    name: string; task: string;
+    kind: "web_research" | "deep_research" | "other" }
+| { type: "subagent.event"; subagentId: string; event: AgentEvent }
+| { type: "subagent.completed"; subagentId: string;
+    status: "completed" | "failed" | "cancelled";
+    summary?: string; citations?: Citation[]; usage?: Usage }
+| { type: "citation"; url: string; title?: string; quote?: string;
+    retrievedAt?: string; stepId?: string }
+```
+
+- `tool.called` / `tool.updated` 继续用 ACP 字段；在 runtime 里按 `kind` 映射成
+  人话：`search` → 搜网页，`fetch` → 打开网页，`other` + `mcp__occ__*` → 内部工具。
+- 子代理来源优先级：
+  1. 若 dsh 暴露 `task` / `subagent` / `agent` 工具或嵌套 session，按
+     `parentCallId` 归一化成 `subagent.*`；
+  2. 否则把 `deep_research` 的 pg-boss job 当作第一种子代理：入队时发
+     `subagent.started`，进度来自 `get_run` / job 状态，完成时带 run id 和
+     profile 链接。
+- 不要把 `session.update` 的原始 payload 直接给 UI；只在 debug 模式保留。
+- 原始工具输出先摘要化：白名单字段 + 长度上限，绝不把整页 HTML/JSON 塞进 DOM。
+
+**持久化（预留）**
+
+- 新增表（或复用 ARCHITECTURE §5.1 的 `research_runs` / `research_steps` 设计）：
+  - `agent_sessions`：id、question、model、status、started_at、completed_at、
+    stop_reason、usage、cost。
+  - `agent_steps`：session_id、seq、parent_step_id、kind（plan/tool/subagent/
+    citation/notice）、tool_name、tool_kind、status、input_summary、
+    output_summary、latency_ms、error、started_at、completed_at。
+  - `agent_citations`：session_id、step_id、url、title、quote、retrieved_at。
+- API：
+  - `GET /v1/agent/sessions/{id}`：会话摘要 + steps 树。
+  - `GET /v1/agent/sessions/{id}/events`：重放（SSE 或 JSON）。
+  - `GET /v1/runs/{id}` 增加 steps/events（deep_research 子代理）。
+- 保存的是**摘要**，不是完整网页/原始 prompt；原始网页仍走 snapshots/S3。
+- 会话重放需要 `seq` 和 `parent_step_id`，保证子代理嵌套顺序稳定。
+- 关闭侧栏是否结束会话：目前是「关闭即结束，下次新会话」；持久化后可以改为
+  “保留最近一次会话，重新打开可回放”。
+
+**UI 预留（在现有侧栏里留位置）**
+
+- 侧栏 420px；答案消息下方预留一个 `.agent-trace` 折叠块（默认 collapsed）。
+- 折叠行高度固定（约 32px），不改变消息气泡宽度；展开时在消息内滚动，不撑破侧栏。
+- 子代理卡片用缩进 + 左边线表示层级；最多一级嵌套，更多用“查看全部”。
+- 来源 chip 复用现有 `SourceSheet`；trajectory 里的 URL 也打开同一个浮层。
+- 状态颜色：running 蓝、completed 绿、failed 红、cancelled 灰；同时给文字状态。
+- 不把 trajectory 放进公司页主内容；它属于助手侧栏。
+
+**后端/协议缺口**
+
+1. 用一次 live session 记录 dsh 0.2.1-rc.3 对 web_search/web_fetch 实际发出的
+   `tool_call` 字段（`kind`、`name`、`rawInput`、`rawOutput` 形状）；如果字段不稳定，
+   在 runtime 里做 defensive mapping，不要让 UI 绑到 dsh 原始 payload。
+2. 确认 dsh 是否有 sub-agent/task 工具；没有就把 `deep_research` 当第一种 sub-agent。
+3. 事件持久化 + 重放端点。
+4. 工具输出摘要化（白名单 + 截断 + 错误脱敏）。
+5. 取消传播：取消主 session 时，子代理/队列 job 也要能取消或标记 abandoned。
+6. 安全：web 内容是 untrusted；工具输出按文本渲染，不解析 HTML；`propose_*`
+   只进审核队列；不展示原始 CoT。
+
+**未来验收（P4/P6 再做，不在本轮）**
+
+- 问「Apple 最近和谁合作？」：默认看到答案 + 4 个来源 + 「执行过程 7 步」折叠行；
+  展开看到 2 次 web_search、3 次 web_fetch、1 次 get_company、1 个子代理；
+  子代理展开有自己的 3 次搜索和摘要；每个来源可点开原文；不出现原始 JSON、
+  token、tool name 或思考链。
+- 问「帮我研究一下宁德时代」：触发 deep_research 子代理；卡片显示
+  queued → running → completed；完成后可跳到 run 详情/公司页；失败可重试。
+- 取消：主 session 取消后，子代理显示 cancelled，不再追加事件。
+- 关闭再打开侧栏（持久化后）：trajectory 可回放，顺序和来源不丢。
+
+**实现顺序（未来）**
+
+1. 先加事件模型和 runtime mapping（web_search/web_fetch/tool kind）。
+2. 再做折叠式 tool timeline（纯前端，不依赖持久化）。
+3. 加 `deep_research` 子代理卡片（job 状态 + get_run 轮询）。
+4. 加事件持久化 + 重放端点。
+5. 最后接 dsh 原生 sub-agent/task（如果存在）。
+6. 始终保留默认「答案 + 来源」形态；trajectory 是可选展开。
+
+### P3.5（2026-10-29）— Web UI 已实现（agent trajectory 除外）
+
+**状态**：`apps/web` 已按 [`docs/UI.md`](docs/UI.md) 落地。首页、搜索结果、公司页
+5 个 tab（基本资料 / 财务数据 / 关系图谱 / 新闻动态 / 资料来源）、全局图谱、
+NASDAQ-100 成分页、AI 助手侧栏都可用。**P3.4 的 tool / web-search / sub-agent
+trajectory 仍未实现**，侧栏只显示消息、工具调用次数和来源链接。
+
+**技术栈**：React 19 + Vite 8 + TypeScript + React Router 7 +
+TanStack Query 5；样式沿用原型 CSS tokens（暖灰 + 绿色），**未引入**
+Tailwind / shadcn/ui。Vite dev server 绑定 `127.0.0.1:5173`，`/v1` 代理到
+`127.0.0.1:8787`；生产静态托管仍 TODO。
+
+**命令**：
+
+```bash
+# API 必须先在 8787 运行
+node apps/api/dist/server.js
+corepack pnpm dev:web          # http://127.0.0.1:5173
+corepack pnpm build:web        # apps/web/dist
+```
+
+**页面与行为**：
+
+- `/` 首页：hero 搜索、热门公司、A/HK/US 市场入口、NASDAQ-100（100 家）入口、
+  最近查看（localStorage）。顶部导航在首页隐藏搜索框，避免和 hero 重复。
+- `/search?q=`：公司混合搜索，支持 market / index / sector 过滤；
+  每行显示名称、ticker、国家、行业、指数、两行描述；不显示 score/matchType。
+- `/c/:ref`：页头 + 5 tab。`ref` 接受 ticker、slug、中文 alias、ULID。
+  - 基本资料：一句话介绍、收入分部条、关键数字、基本信息、最近动态、右栏
+    主要股东/对外投资/相关公司；无关系时显示“暂无公开关系数据”+ 让助手去查。
+  - 财务数据：6 个指标卡 + 按 statement 分组的年度/季度表，行级来源按钮，
+    单元格可点击打开来源浮层；数字按原币种格式化（中/英文单位不同）。
+  - 关系图谱：1/2 层、类型筛选、只看已核实、图谱/列表切换、缩放/拖拽、
+    节点/边 inspector、证据 quote + 来源、无数据空状态。
+  - 新闻动态：时间线，来源按钮打开浮层。
+  - 资料来源：按 trust tier 分组、去重、引用计数、复制全部引用、打开原文。
+- `/graph?company=`：全局图谱；无 company 时显示公司选择器；已选公司时显示
+  切换搜索和“问一问”。
+- `/indices/NDX`：100 家 QQQ 成分股（公司、ticker、行业、国家、指数、操作），
+  支持文本和行业筛选；A500/HSI/SPX 未加载时显示空状态。
+- AI 助手侧栏：真实 `POST /v1/agent/sessions` + SSE prompt/cancel；
+  桌面 420px、右侧滑出、主内容让位、无遮罩；手机全屏；支持公司上下文、
+  建议问题、停止、来源 URL 转 chip。**不显示 tool JSON / token / 思考链 /
+  trajectory。**
+- 主题：浅色/深色，`data-theme` + localStorage；语言：中/英切换（UI chrome
+  和数字格式切换，公司数据保持原文）。
+
+**后端新增（与 UI 一起提交）**：
+
+- `GET /v1/graph?company=&depth=1|2&status=&types=&limit=`：
+  ego network；返回 `center`、`nodes`、`edges`、`depth`、`truncated`。
+  depth 2 最多展开 40 个邻居，边按 status/confidence 排序并截断。
+- `GET /v1/indices/:code`：指数成分；NDX 返回 100 家公司，带 ticker /
+  sector / markets / as_of；`index_code` 大小写不敏感。
+- `GET /v1/sectors`：搜索行业过滤值（fixture 隐藏）。
+- `GET /v1/search/companies` 新增 `sector` 过滤；Qdrant `must` + 内存
+  `matchesCompanyFilters` 双侧生效。
+- `@occ/db` 新增 `listIndexCompanyIds`（按 company 去重、取最新 as_of）和
+  `listSectors`。
+- `@occ/core` 新增 `CompanyGraphQuerySchema` / `CompanyGraphView` /
+  `IndexMemberView` / `IndexView`；`SearchCompaniesQuery` 增加 `sector`。
+
+**验收（2026-10-29，live）**：
+
+- `corepack pnpm --filter @occ/web typecheck` 通过；`build` 通过
+  （JS ~376 KB，gzip ~115 KB）。
+- Playwright 1440×1100 / 390×900：
+  - 首页、搜索、公司页 5 tabs、NDX 100 行、全局图谱、图谱空状态均正常；
+  - 无 console error，无横向滚动；
+  - AI 助手真实 SSE：公司页打开侧栏，输入「只回复 OK」→ 回复 OK；
+  - 浅色/深色、中/英切换正常。
+- 搜索相关性 guard：短中文查询无 exact/alias 且 top dense < 0.35 时，
+  UI 显示“没找到 + 问助手”，避免向量近邻把无关公司当结果。实测：
+  `宁德` / `宁德时代`（当前可见语料没有 CATL）→ 空状态；`白酒` → 贵州茅台
+  top1；`Apple` → Apple top1。
+- 图谱实测：AAPL 3 边、ARM 8 边、NVDA 14 边；环形布局按节点数自适应
+  （≤6 节点放大视图，>6 节点 960×720），标签不再重叠；2 层 NVDA 26 个节点。
+- 财务：AAPL 年度 3 期、季度 1 期；每个数字有来源浮层；无来源行显示 `—`。
+- 指数：NDX 100 家，`as_of 2026-10-28`（日期按 date-only 格式化，不受时区影响）。
+
+**已知限制 / 下一步**：
+
+- **投资/股权关系仍然稀疏**：当前 relations 只有
+  `partners_with` / `supplies` / `other` / `buys_from` / `licenses_to` /
+  `joint_venture_with`，没有 `invests_in` / `owns` / `parent_of`。所以
+  “投资股权”计数大多是 0，图谱有空状态但没有投资边。需要 P4 的
+  GLEIF / SEC 13F / 股东数据补强；UI 不要伪造。
+- 行业字段覆盖不全：NDX 中不少公司 `sector` 为 null，指数页显示 `—`。
+- 英文模式只翻译 UI chrome 和数字格式；公司描述、分部名等数据保持原文。
+- 未引入 Tailwind / shadcn/ui；如要迁移，先保持 CSS tokens 不变。
+- 生产静态托管未做：开发用 Vite proxy；生产需 API/nginx 同源托管。
+- AI 助手侧栏是 P3.3 的真实 SSE，但 **P3.4 的 trajectory / sub-agent 卡片
+  仍未实现**；不要把它当成已完成。
+- 首页热门公司是前端静态列表；没有运营后台。
+- `apps/web` 没有单测；目前用 Playwright 手动验收。后续 P6 加 UI smoke。
+
 ### P4 — A/HK 覆盖 + AI watchlist
 
 - 索引快照：CSI A500（000510）、HSI、S&P 500、NASDAQ-100；存 `as_of` 和权重。
@@ -652,6 +933,11 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 
 > **2026-10-28 用户确认**：当前开发机是 macOS 虚拟机，不能跑 Docker。P5 的所有
 > Docker/容器/打包工作暂停，标记为 TODO；在换到支持 Docker 的机器之前不要开工。
+>
+> **UI 不受 Docker 阻塞（2026-10-29）**：`apps/web` 是 web-first 的 React 应用，
+> 可直接用 Vite + 本机 API 开发；设计见 [`docs/UI.md`](docs/UI.md)。Electron 壳
+> 和 Docker 打包仍留在 P5，等换机器。当前只有 `/v1/agent/ui`、`/v1/review/ui`
+> 两个零依赖 HTML console。
 > 剩余开发继续用「散装」方式：本地 Postgres + Qdrant 原生二进制 + uv sidecars +
 > Node 进程。下面内容只作为将来换机器时的清单保留。
 >
@@ -719,6 +1005,20 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 17. **新闻是 link-only 覆盖层**：Google News RSS 只存标题/摘要/链接，不抓正文、
     不批量重分发；需要正文时新增 adapter 写同样的 `documents` 形状，不要把 RSS
     摘要当审计事实。
+18. **Agent trajectory 是渐进披露，不是调试面板**：默认只显示答案 + 来源 + 一行
+    「执行过程 N 步」；展开才显示 tool calls / web search / sub-agent。不显示原始
+    JSON、token 或思考链（`thought.delta`）；原始事件只留给 local debug。子代理
+    优先复用 `deep_research` 的 pg-boss job，不新造一套同步 sub-agent 协议。
+19. **Web UI 先落地，不引入 Tailwind/shadcn**：`apps/web` 用 React 19 + Vite 8 +
+    React Router 7 + TanStack Query 5，样式沿用原型的 CSS tokens，保证和已确认的
+    视觉一致。后续要迁 Tailwind/shadcn 时先保持 tokens 不变；Electron/Docker 仍在 P5。
+20. **搜索相关性 guard 放在 UI 层**：短中文查询（≤8 字）没有 exact/alias/fuzzy
+    命中，且 top dense score < 0.35 时，UI 显示“没找到 + 问助手”，不展示向量
+    近邻的无关公司。API/CLI 的原始结果不变，方便 eval 继续观测；示例：
+    `宁德` / `宁德时代` 在当前可见语料（没有 CATL）下为空，`白酒` 仍返回茅台 top1。
+21. **图谱布局按节点数自适应**：≤6 个节点放大视图（800×640），>6 个节点用
+    960×720；直接邻居按等角环形排布，不再按固定类别扇区排（固定扇区在某一类
+    有 7–10 个节点时会重叠）。颜色仍按关系类别分组。
 
 ---
 
@@ -727,6 +1027,7 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
 | 坑 | 处理 |
 |---|---|
 | dsh 是 developer preview，接口会变 | 固定 `0.2.1-rc.3`；spawn/解析集中在 `lib/dsh.mjs`；异常试 rc.4 |
+| **dsh 侧栏长时间 thinking / 0 来源无回答** | 检查 ACP 的 thinking budget，默认设 **medium**；加 turn/step/timeout；补 UI 超时/停止提示；见 §6 P3.4「已知 bug」 |
 | npm `~/.npm/_cacache` 不可写 | `lib/dsh.mjs` 用 `OCC_NPM_CACHE` / `$TMPDIR/occ-npm-cache`；不要继承 `npm_config_cache` |
 | Python 3.9 vs F10 的 3.10+ | 已用 `uv` 装 Python 3.12（`services/finance-analyst/.python-version`）；Docker 镜像 TODO，换机器后再做 |
 | **本机是 macOS 虚拟机，不能跑 Docker** | Docker/Compose/镜像全部 TODO；开发用 `scripts/dev-db.sh`、`scripts/dev-qdrant.sh`、`scripts/dev-embeddings.sh` 的「散装」方式 |
@@ -809,6 +1110,14 @@ license 与引用纪律见 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)。
       `docs/EXTRACT.md` 记录命令、关系类型、校验规则和已知限制。
 - [x] P3 剩余（2026-10-29 完成）：`deep_research` MCP 入队、dsh ACP sidebar、
       新闻文档入库；见 [`docs/AGENT.md`](docs/AGENT.md)、[`docs/NEWS.md`](docs/NEWS.md)。
+- [x] P3.5 Web UI（2026-10-29）：`apps/web` 实现 docs/UI.md 的公开 UI
+      （首页 / 搜索 / 公司页 5 tabs / 全局图谱 / NDX 100 家 / AI 助手侧栏）；
+      `pnpm --filter @occ/web typecheck` + `build` 通过；Playwright 桌面/手机
+      和真实 ACP 聊天验收通过；后端新增 `/v1/graph`、`/v1/indices/:code`、
+      `/v1/sectors`、搜索 `sector` 过滤。
+- [ ] P3.4 bug：dsh ACP 侧栏 thinking budget 默认 **medium** + turn/step/timeout；
+      修复“查了 14 次资料、0 来源、无回答”的静默卡死。见 §6 P3.4「已知 bug」。
+- [ ] P3.4 trajectory / sub-agent UI 实现（tool cards / web_search / 来源账本）。
 - [ ] 不要把 `deepseek-v4-pro` 写回配置。
 - [ ] 不要提交任何 key、token、cookie、`.env`。
 

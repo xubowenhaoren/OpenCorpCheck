@@ -16,12 +16,15 @@
     "seed": "node apps/cli/dist/occ.js seed",
     "sync:fixtures": "node apps/cli/dist/occ.js sync-fixtures",
     "dev:api": "node apps/api/dist/server.js",
+    "dev:web": "pnpm --filter @occ/web dev",
+    "build:web": "pnpm --filter @occ/web build",
     "dev:qdrant": "scripts/dev-qdrant.sh start",
     "dev:embeddings": "scripts/dev-embeddings.sh start",
     "dev:minio": "scripts/dev-minio.sh start",
     "aliases:sync": "node apps/cli/dist/occ.js aliases sync",
     "snapshots:upload": "node apps/cli/dist/occ.js snapshots upload",
     "e2e:search": "scripts/e2e-search.sh",
-    "eval:search": "node scripts/eval-search.mjs"
+    "eval:search": "node scripts/eval-search.mjs",
+    "preview:ui": "node scripts/preview-ui.mjs"
   }
 }

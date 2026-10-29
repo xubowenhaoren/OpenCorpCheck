@@ -84,6 +84,53 @@ export async function getCompanyBundles(
   return bundles;
 }
 
+export interface IndexCompanyRow {
+  companyId: string;
+  asOf: string;
+}
+
+/**
+ * Distinct companies in an index. The same company can have several snapshots
+ * (`as_of` rows); keep the newest one per company.
+ */
+export async function listIndexCompanyIds(
+  db: Db,
+  code: string,
+): Promise<IndexCompanyRow[]> {
+  const rows = await db
+    .select({
+      companyId: indexMemberships.companyId,
+      asOf: indexMemberships.asOf,
+    })
+    .from(indexMemberships)
+    .where(eq(indexMemberships.indexCode, code.toUpperCase()));
+  const byCompany = new Map<string, string>();
+  for (const row of rows) {
+    const asOf = String(row.asOf).slice(0, 10);
+    const previous = byCompany.get(row.companyId);
+    if (!previous || asOf > previous) byCompany.set(row.companyId, asOf);
+  }
+  return [...byCompany.entries()].map(([companyId, asOf]) => ({
+    companyId,
+    asOf,
+  }));
+}
+
+/** Distinct sectors for the search filter. Fixture rows stay hidden. */
+export async function listSectors(db: Db): Promise<string[]> {
+  const rows = await db
+    .select({ sector: companies.sector })
+    .from(companies)
+    .where(eq(companies.isFixture, false));
+  return [
+    ...new Set(
+      rows
+        .map((row) => row.sector)
+        .filter((sector): sector is string => Boolean(sector)),
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+}
+
 /**
  * Identifier → exact alias → trigram name/alias lookup, in that order.
  * This is the "planner" path that short-circuits hybrid search for queries
