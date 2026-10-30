@@ -107,7 +107,14 @@ export function outputText(output: unknown): string {
         if (typeof item === "string") return item;
         if (isRecord(item)) {
           const value = item.text ?? item.content ?? item.message;
-          return typeof value === "string" ? value : "";
+          if (typeof value === "string") return value;
+          // ACP tool results wrap blocks as {type:"content", content:{...}}.
+          // Only text blocks are readable; skip images/diffs instead of
+          // stringifying a base64 payload.
+          if (Array.isArray(value)) return outputText(value);
+          if (isRecord(value) && typeof value.text === "string") {
+            return value.text;
+          }
         }
         return "";
       })
@@ -116,6 +123,9 @@ export function outputText(output: unknown): string {
   }
   if (isRecord(output)) {
     if (Array.isArray(output.content)) return outputText(output.content);
+    if (isRecord(output.content) && typeof output.content.text === "string") {
+      return output.content.text;
+    }
     if (typeof output.text === "string") return outputText(output.text);
     if (output.structuredContent !== undefined) {
       return safeStringify(output.structuredContent);
@@ -276,6 +286,49 @@ export function hostOf(url: string): string {
   } catch {
     return url;
   }
+}
+
+/**
+ * Links a single call actually touched, for the expandable trajectory row.
+ *
+ * A fetch's output is page content, not a result list: showing every link in
+ * it would be noise, so a fetch uses the URL it opened. A search uses its
+ * titled result links. Other tools fall back to anything HTTP-like.
+ */
+export function toolCallLinks(call: AgentToolCall): ExtractedLink[] {
+  const group = toolGroupKey(call);
+  const links = new Map<string, ExtractedLink>();
+  if (group !== "fetch") {
+    for (const link of extractLinks(call.output)) links.set(link.url, link);
+  }
+  for (const url of extractUrls(call.input)) {
+    if (!links.has(url)) links.set(url, { url });
+  }
+  if (group === "fetch" && links.size === 0) {
+    for (const link of extractLinks(call.output).slice(0, 3)) {
+      links.set(link.url, link);
+    }
+  }
+  return [...links.values()];
+}
+
+/** URLs the answer cites; used to mark a tool row as 已引用. */
+export function citedUrlSet(answer: string): Set<string> {
+  return new Set(extractUrls(answer));
+}
+
+export function isCallCited(
+  call: AgentToolCall,
+  cited: Set<string>,
+): boolean {
+  if (cited.size === 0) return false;
+  return toolCallLinks(call).some((link) => cited.has(link.url));
+}
+
+export function callDurationMs(call: AgentToolCall): number | undefined {
+  if (call.endedAt === undefined) return undefined;
+  const delta = call.endedAt - call.startedAt;
+  return Number.isFinite(delta) && delta >= 0 ? delta : undefined;
 }
 
 export function normalizeToolName(call: AgentToolCall): string {

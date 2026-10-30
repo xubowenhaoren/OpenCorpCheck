@@ -4,8 +4,9 @@
 > preserved verbatim in [`context_transfer_history.md`](context_transfer_history.md)).
 >
 > Current phase: Phase 0 + P1 + P2 + P2.5 + P3.1–P3.5 complete.
-> P3.4 agent trajectory / Markdown / tool-budget fix / UX v2 complete; UX v3
-> recorded but not implemented. Next: P3.4 UX v3 or P4 backfill.
+> P3.4 agent trajectory / Markdown / tool-budget fix / UX v2 + **UX v3 complete**
+> (static work trace, expandable search/fetch rows, ACP content pass-through).
+> Next: P4 backfill or the remaining P3.4 sub-agent/persistence work.
 >
 > **Scope change (2026-10-29)**: A-share backfill = **STAR 50 (科创50, 000688) +
 > ChiNext 50 (创业板50, 399673)**. Hang Seng backfill unchanged. **S&P 500 (SPX)
@@ -68,7 +69,9 @@ on-demand private companies):
   [`docs/AGENT.md`](docs/AGENT.md), [`docs/NEWS.md`](docs/NEWS.md).
 - **P3.4**: tool-use trajectory + GFM Markdown in the sidebar; turn budget
   fixed (80 calls + repetition detection + forced-answer follow-up); Grok-like
-  live activity panel. See §6 below.
+  live activity panel; **UX v3** static work trace with expandable
+  search/fetch rows (query, result count, domains, URLs, duration, cited).
+  See §6 below.
 - **P3.5**: React 19 + Vite 8 web UI (home / search / company 5 tabs / graph /
   NDX index / AI sidebar). See §5.
 
@@ -81,13 +84,13 @@ Verified numbers worth keeping:
   fix. The old failure was 32 distinct calls in 95 s with no repeats.
 - Graph: AAPL 3 edges, ARM 8, NVDA 14; 2-hop NVDA 26 nodes.
 - Search p95 (no rerank): companies 218–300 ms, documents 366–473 ms.
-- Build: web main JS 400 KB (gzip 123 KB), lazy Markdown chunk 163 KB
-  (gzip 49 KB), CSS 45.5 KB (gzip 9.3 KB).
+- Build: web main JS 399 KB (gzip 123 KB), lazy Markdown chunk 163 KB
+  (gzip 49 KB), CSS 42.8 KB (gzip 8.8 KB).
 
 Tests (serial, because parallel vitest workers collide on
 `node_modules/.vitest-cache`): `corepack pnpm -r --workspace-concurrency=1 test`.
-Current counts: API 26, agent 8, web 12, ingest 39, extract 22, worker 26,
-CLI 7, retrieval 10, db 3, sources pass.
+Current counts: API 26, agent 10, web 17, ingest 39, extract 22, worker 26,
+CLI 7, retrieval 10, db 9, storage 5, sources 13 (F10 9 + news 4). All green.
 
 ---
 
@@ -205,7 +208,7 @@ Pages:
   `["NDX", "STAR50", "CYB50", "HSI"]` (SPX/A500 removed from the picker).
 - AI sidebar — 420 px desktop panel, full-screen on mobile; real
   `POST /v1/agent/sessions` + SSE prompt/cancel; company context; suggestions;
-  source chips; GFM Markdown; tool-use trajectory.
+  source chips; GFM Markdown; one live→static trajectory card above the answer.
 
 Themes: light/dark via `data-theme` + `localStorage`; zh/en toggle for UI chrome
 and number formatting (company data stays in its source language).
@@ -269,6 +272,12 @@ Normalized events: `run.started`, `assistant.delta`, `thought.delta`,
 is capped at 4 KB / 16 KB before SSE (shape-preserving, `…[truncated]`).
 `thought.delta` is deliberately not rendered.
 
+dsh sends tool results as ACP `content` blocks
+(`[{type:"content",content:{type:"text",text}}]`) and leaves `rawOutput`
+unset. The runtime forwards `content` when `rawOutput` is absent; without that
+bridge `tool.updated.output` is empty and every trajectory row loses its
+result count, domains and links (found 2026-10-29 while building UX v3).
+
 ### Turn budget and limits
 
 - `OCC_AGENT_TURN_TIMEOUT_MS` — wall clock.
@@ -324,18 +333,26 @@ orchestration (pre-inject the company card) instead of relying on the prompt.
 - Markdown: `react-markdown@10` + `remark-gfm@4`, lazy-loaded; raw HTML is
   escaped, images become alt text, only http(s) links are allowed, tables
   scroll horizontally. Streaming text is flushed every ~90 ms.
-- **Live activity panel** (`apps/web/src/components/AgentActivity.tsx`): while
-  the model researches and has not written answer text, a transient card shows
-  a rotating orb, ticker, step/source counts. The current tool group is
-  expanded with a shimmering running line; completed groups fold to one line;
-  repeated calls merge by kind (“搜索了 3 次网页”, “打开了 9 个网页”,
-  “查找公司 2 次”). Only the last 4 groups are shown; older ones roll into
-  “此前 N 组操作”.
-- **Collapsed trace** (`AgentTrace.tsx`): as soon as answer text streams, the
-  live panel is replaced by one line such as
-  “工作了 57s · 打开了 9 个网页 · 搜索了 3 次网页 · 运行了 1 条命令 ·
-  另有 2 类操作 · 7 个来源”. Expanding shows plan, grouped tool cards, the
-  deduplicated source ledger (已引用 / 仅查阅) and token usage.
+- **One work-trajectory card** (`apps/web/src/components/AgentTrajectory.tsx`)
+  sits at the top of every assistant bubble, above the answer, and is the same
+  element in both states — it never moves or duplicates below the answer.
+  - Live (researching, no answer text yet): rotating orb, “正在研究”, ticking
+    steps/elapsed/consulted sources; the group holding the active call opens
+    itself, finished groups fold, repeated calls merge by kind
+    (“搜索了 3 次网页”, “打开了 9 个网页”, “查找公司 2 次”).
+  - Static (answer streaming or finished): same card in place, no spinner;
+    header “工作轨迹 · 13 步 · 58s · 5 个来源”, merged group lines closed by
+    default, so 20+ calls never become 20+ cards. Opening a group lists its
+    calls; each search/fetch row opens to query, status, result count, top
+    domains, hit links (new tab) and duration, plus a **已引用** badge when the
+    answer cites that URL. “计划与来源” holds the plan, the source ledger
+    (已引用 / 仅查阅) and token usage. Pure helpers live in
+    `apps/web/src/lib/agent-trace.ts` (`groupToolCalls`, `describeTool`,
+    `toolCallLinks`, `isCallCited`, `callDurationMs`).
+- Verified end-to-end 2026-10-29 (Playwright + live dsh): live header at 2 步 ·
+  8.6s with one auto-open group; finished header 12 步 · 58s · 5 个来源 with the
+  card above the answer; search group 3 calls (2 已引用), row body 8 results /
+  8 domains / links; no console errors.
 - No raw JSON, token stream or `thought.delta`; animations respect
   `prefers-reduced-motion`.
 - `deep_research` is still only a tool card; a first-class sub-agent card with
@@ -409,22 +426,27 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     Phase 0); sharing causes `session/new` backend errors.
 17. **News is a link-only coverage layer**; don’t treat RSS summaries as
     audited facts or redistribute full text.
-18. **Trajectory is progressive disclosure, not a debug panel**: default answer
-    + sources + one summary line; no raw JSON/token/CoT. Sub-agents should
-    reuse the `deep_research` pg-boss job rather than inventing a sync protocol.
-19. **Web UI keeps prototype CSS tokens**; no Tailwind/shadcn without an
+18. **Trajectory is one card above the answer, progressive disclosure, not a
+    debug panel**: the same element goes live → static in place (never a second
+    block below the answer, never 20 cards); no raw JSON/token/CoT. Sub-agents
+    should reuse the `deep_research` pg-boss job rather than inventing a sync
+    protocol.
+19. **Tool output crosses the ACP boundary as `content`**: dsh's generic tool
+    calls set `content`, not `rawOutput`; the runtime must forward either or
+    the sidebar cards are empty. Keep the bridge in `mapUpdate`, not the UI.
+20. **Web UI keeps prototype CSS tokens**; no Tailwind/shadcn without an
     explicit migration that preserves tokens. Web-first, no OS branches.
-20. **Search relevance guard lives in the UI**: short Chinese queries with no
+21. **Search relevance guard lives in the UI**: short Chinese queries with no
     exact/alias/fuzzy hit and dense < 0.35 show “没找到 + 问助手”; API/CLI
     results stay raw for eval.
-21. **Graph layout adapts to node count**: ≤6 nodes 800×640 (magnified), >6
+22. **Graph layout adapts to node count**: ≤6 nodes 800×640 (magnified), >6
     nodes 960×720; direct neighbours on an equal-angle ring, colour by relation
     family.
-22. **Agent budget is budget + repetition, not a flat call count**:
+23. **Agent budget is budget + repetition, not a flat call count**:
     `OCC_AGENT_MAX_TOOL_CALLS=80`, `OCC_AGENT_MAX_REPEATED_TOOL_CALLS=4`,
     forced-answer follow-up, `reasoningEffort=low`, idle dispose. Closing the
     sidebar does not cancel; closing the page does.
-23. **Synthetic seed fixtures remain on A500/SPX** for E2E compatibility even
+24. **Synthetic seed fixtures remain on A500/SPX** for E2E compatibility even
     though the v1 backfill scope changed. Do not reseed the real corpus with
     `occ seed` just to rename fixture memberships.
 
@@ -436,7 +458,8 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 |---|---|
 | dsh is a developer preview; interfaces change | Pin `0.2.1-rc.3`; spawn/parse only in `lib/dsh.mjs` / `packages/agent`. Try rc.4 when broken. |
 | ACP `session/new` fails with an `Internal error` / zstd vs jsonl mismatch | ACP must use its own `OCC_AGENT_DSH_HOME` (`.occ/dsh-acp-home`); never point it at `phase0/.dsh-home`. |
-| Sidebar hangs / no answer | `reasoningEffort: low` + timeout + 80-call budget + repetition guard + forced-answer follow-up. Live panel shows steps/sources. |
+| Sidebar hangs / no answer | `reasoningEffort: low` + timeout + 80-call budget + repetition guard + forced-answer follow-up. The live trajectory card shows steps/sources. |
+| Trajectory rows have no result count/domains/links | dsh sends results as ACP `content`, not `rawOutput`; `mapUpdate` forwards `content` when `rawOutput` is absent. Restart the API after changing `packages/agent` (the API loads its `dist`). |
 | Legitimate research stopped by the tool cap | Do not lower 30 back. The 2026-10-29 failure was 32 distinct calls. Use the repetition guard for loops. |
 | npm `~/.npm/_cacache` not writable | Use `OCC_NPM_CACHE` / `$TMPDIR/occ-npm-cache`; don’t inherit `npm_config_cache`. |
 | Python 3.9 vs F10’s 3.10+ | `uv` + Python 3.12 in `services/finance-analyst`; container image is TODO. |
@@ -463,22 +486,18 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 
 ## 10. Next tasks
 
-### P3.4 UX v3 (user request, not implemented)
+### P3.4 UX v3 — done 2026-10-29
 
-1. **Keep a static tool-card block after the turn finishes.** Today
-   `AgentSidebar` unmounts `AgentActivity` as soon as the first
-   `assistant.delta` arrives; only the collapsed `AgentTrace` one-liner remains.
-   Keep a static grouped trajectory (no spinner/animation) visible for
-   reference, using the existing `groupToolCalls` merge (search 3× / opened 9
-   pages / N other kinds). Do not re-expand into 23 equal cards by default.
-   Data is already in `message.tools`; no runtime/persistence change.
-2. **Make each `web_search` / `web_fetch` row expandable (Grok-like).** Each
-   sub-row should reveal query, result count, top domains, hit URLs (open in a
-   new tab), duration/status, and whether it was cited. `describeTool` already
-   extracts query/result meta/URLs; `extractLinks` has titled links. Use
-   `details/summary` or equivalent; keep keyboard access; never show raw
-   JSON/HTML. Optionally reuse `SourceSheet` for the ledger.
-3. Optional: keep the source ledger (“已引用 / 仅查阅”) in the static block.
+Shipped: **one** trajectory card at the top of the assistant bubble (above the
+answer), live while researching and static in place once text streams; merged
+group lines; expandable search/fetch rows (query, status, result count, top
+domains, hit links in a new tab, duration, 已引用 badge); and a “计划与来源”
+disclosure with the ledger. `AgentActivity.tsx` was removed — the card reuses
+the same element for both states. Files:
+`apps/web/src/components/AgentTrajectory.tsx`, `apps/web/src/lib/agent-trace.ts`,
+`styles.css`, `i18n.tsx`, and the `packages/agent/src/runtime.ts` content
+bridge. Verification: Playwright on the live sidebar + 17 web / 10 agent unit
+tests.
 
 ### P3.4 remaining
 

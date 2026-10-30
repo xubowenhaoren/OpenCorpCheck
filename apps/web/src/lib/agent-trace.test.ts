@@ -3,12 +3,17 @@ import { describe, expect, it } from "vitest";
 import {
   activityHeadline,
   buildSourceLedger,
+  callDurationMs,
+  citedUrlSet,
   describeTool,
   extractUrls,
   formatDuration,
   groupCountLabel,
   groupToolCalls,
+  isCallCited,
+  outputText,
   planSteps,
+  toolCallLinks,
   toolErrorSummary,
   type AgentToolCall,
 } from "./agent-trace";
@@ -278,5 +283,89 @@ describe("tool trajectory", () => {
         lang: "zh",
       }),
     ).toBe("正在研究 · 0 步 · 12s");
+  });
+
+  it("lists a search's result links and marks the cited ones", () => {
+    const searched = call({
+      tool: "web_search",
+      kind: "search",
+      input: { queries: ["Alphabet GOOGL stock drop today"] },
+      output: { content: [{ type: "text", text: SEARCH_TEXT }] },
+    });
+
+    const links = toolCallLinks(searched);
+    expect(links.map((link) => link.url)).toEqual([
+      "https://uk.finance.yahoo.com/news/why-alphabet-googl-shares-sliding-174434959.html",
+      "https://stcn.com/article/detail/4286010.html",
+    ]);
+    expect(links[0]?.title).toContain("Why Alphabet");
+
+    const cited = citedUrlSet(
+      "见 [Yahoo](https://uk.finance.yahoo.com/news/why-alphabet-googl-shares-sliding-174434959.html)。",
+    );
+    expect(isCallCited(searched, cited)).toBe(true);
+    expect(isCallCited(searched, citedUrlSet("没有引用任何链接。"))).toBe(false);
+  });
+
+  it("keeps only the opened URL for a fetch instead of page-content links", () => {
+    const fetched = call({
+      tool: "web_fetch",
+      kind: "fetch",
+      input: {
+        url: "https://www.barrons.com/livecoverage/alphabet",
+      },
+      output: {
+        content: [
+          {
+            type: "text",
+            text: "Fetched page. Nav: [Home](https://www.barrons.com/) [Markets](https://www.barrons.com/markets) [Login](https://www.barrons.com/login)",
+          },
+        ],
+      },
+    });
+
+    expect(toolCallLinks(fetched)).toEqual([
+      { url: "https://www.barrons.com/livecoverage/alphabet" },
+    ]);
+    expect(
+      isCallCited(fetched, citedUrlSet("来源：https://www.barrons.com/livecoverage/alphabet")),
+    ).toBe(true);
+  });
+
+  it("reads result metadata from ACP content-block tool results", () => {
+    const searched = call({
+      tool: "web_search",
+      kind: "other",
+      input: { queries: ["Alphabet GOOGL stock drop today"] },
+      // dsh sends tool results as [{type:"content", content:{type:"text",...}}].
+      output: [
+        { type: "content", content: { type: "text", text: SEARCH_TEXT } },
+      ],
+    });
+
+    const described = describeTool(searched, "zh");
+    expect(described.label).toBe("搜索网页");
+    expect(described.meta).toContain("2 个结果");
+    expect(described.meta).toContain("finance.yahoo.com");
+    expect(toolCallLinks(searched)).toHaveLength(2);
+  });
+
+  it("ignores ACP image blocks instead of dumping base64", () => {
+    expect(
+      outputText([
+        {
+          type: "content",
+          content: { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
+        },
+      ]),
+    ).toBe("");
+  });
+
+  it("measures a call's duration only once it has ended", () => {
+    expect(
+      callDurationMs(call({ startedAt: 1_000, endedAt: 4_200 })),
+    ).toBe(3_200);
+    expect(callDurationMs(call({ startedAt: 1_000 }))).toBeUndefined();
+    expect(callDurationMs(call({ startedAt: 5_000, endedAt: 4_000 }))).toBeUndefined();
   });
 });

@@ -643,7 +643,7 @@ function canonicalJson(value: unknown): string {
     .join(",")}}`;
 }
 
-function mapUpdate(update: SessionUpdate): AgentEvent | null {
+export function mapUpdate(update: SessionUpdate): AgentEvent | null {
   switch (update.sessionUpdate) {
     case "agent_message_chunk":
       return update.content.type === "text"
@@ -673,15 +673,22 @@ function mapUpdate(update: SessionUpdate): AgentEvent | null {
         status: update.status ?? null,
         input: summarizeToolPayload(update.rawInput, 4_000),
       };
-    case "tool_call_update":
+    case "tool_call_update": {
+      // dsh reports results as ACP `content` blocks ({type:"content",
+      // content:{type:"text",text}}) and does not set `rawOutput`. Prefer the
+      // raw payload when an agent sends one, otherwise forward the blocks so
+      // the sidebar can show links/result counts instead of an empty card.
+      const output =
+        update.rawOutput !== undefined ? update.rawOutput : update.content;
       return {
         type: "tool.updated",
         callId: update.toolCallId,
         title: update.title ?? null,
         status: update.status ?? null,
         input: summarizeToolPayload(update.rawInput, 4_000),
-        output: summarizeToolPayload(update.rawOutput, 16_000),
+        output: summarizeToolPayload(output, 16_000),
       };
+    }
     case "plan":
       return { type: "plan", entries: update.entries };
     case "usage_update":

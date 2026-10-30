@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentEvent } from "../src/events.js";
-import { DshAcpRuntime, summarizeToolPayload } from "../src/runtime.js";
+import { DshAcpRuntime, mapUpdate, summarizeToolPayload } from "../src/runtime.js";
 
 type Message =
   | { kind: "session_update"; update: Record<string, unknown> }
@@ -262,5 +262,42 @@ describe("summarizeToolPayload", () => {
     expect(summarizeToolPayload("a".repeat(50), 10)).toBe(
       `${"a".repeat(10)}\n…[truncated]`,
     );
+  });
+});
+
+describe("mapUpdate", () => {
+  const resultContent = [
+    {
+      type: "content" as const,
+      content: { type: "text" as const, text: "Sources: [A](https://a.test/x)" },
+    },
+  ];
+
+  it("forwards ACP content blocks as tool output when rawOutput is absent", () => {
+    const event = mapUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "call_1",
+      status: "completed",
+      content: resultContent,
+    } as never);
+    expect(event).toMatchObject({
+      type: "tool.updated",
+      callId: "call_1",
+      status: "completed",
+      output: resultContent,
+    });
+  });
+
+  it("prefers rawOutput when the agent sends it", () => {
+    const event = mapUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "call_2",
+      status: "completed",
+      rawOutput: { content: [{ type: "text", text: "raw" }] },
+      content: resultContent,
+    } as never);
+    expect(event).toMatchObject({
+      output: { content: [{ type: "text", text: "raw" }] },
+    });
   });
 });

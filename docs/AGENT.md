@@ -27,7 +27,7 @@ occ MCP server → OpenCorpCheck API / finance-analyst sidecar
 | Session service | [`apps/api/src/services/agent.ts`](../apps/api/src/services/agent.ts) | One dsh process, in-memory sessions, prompt/cancel/cancel-on-disconnect |
 | HTTP surface | [`apps/api/src/app.ts`](../apps/api/src/app.ts) | Session create, SSE prompt, cancel, HTML sidebar |
 | Sidebar UI | [`apps/api/src/agent-ui.ts`](../apps/api/src/agent-ui.ts) | Dependency-free debug console (raw tool cards) |
-| Consumer sidebar | [`apps/web/src/components/AgentSidebar.tsx`](../apps/web/src/components/AgentSidebar.tsx) | React sidebar: GFM Markdown, collapsed tool trajectory, source ledger |
+| Consumer sidebar | [`apps/web/src/components/AgentSidebar.tsx`](../apps/web/src/components/AgentSidebar.tsx) | React sidebar: GFM Markdown, one live→static trajectory card above the answer, source ledger |
 
 The `occ` MCP server exposes nine tools to the agent: `search_companies`,
 `get_company`, `search_documents`, `deep_research`, `get_run`, `propose_fact`,
@@ -194,23 +194,26 @@ never injected as HTML.
 
 **Trajectory**
 
-The UI has two layers, both progressive disclosure:
+One trajectory card ([`AgentTrajectory.tsx`](../apps/web/src/components/AgentTrajectory.tsx))
+sits at the top of every assistant bubble and never moves or duplicates. It has
+two states of the same element:
 
-1. **Live activity panel** ([`AgentActivity.tsx`](../apps/web/src/components/AgentActivity.tsx))
-   — while the model is researching and has not written any answer text, a
-   transient card sits at the top of the assistant bubble. It shows a rotating
-   orb, “正在研究”, a ticking elapsed time, the step count and consulted
-   sources. The current tool group is expanded with a shimmering running line;
-   finished groups collapse to one check-marked line; new calls automatically
-   fold the previous group. Repeated calls merge by kind (“搜索了 3 次网页”,
-   “打开了 9 个网页”, “查找公司 2 次”) instead of one card per call. Only the
-   last four groups are shown; older ones roll into “此前 N 组操作”.
-2. **Collapsed trace** ([`AgentTrace.tsx`](../apps/web/src/components/AgentTrace.tsx))
-   — as soon as answer text starts streaming, the live panel is replaced by a
-   one-line summary under the answer:
-   “工作了 57s · 打开了 9 个网页 · 搜索了 3 次网页 · 运行了 1 条命令 ·
-   另有 2 类操作 · 7 个来源”. Expanding it shows the plan, grouped tool cards,
-   the deduplicated source ledger (已引用 / 仅查阅) and token usage.
+- **Live** (researching, no answer text yet) — a rotating orb, “正在研究”, a
+  ticking step count/elapsed time/consulted sources, and the group holding the
+  active call open with its rows. Finished groups fold; new calls fold the
+  previous group.
+- **Static** (answer streaming or finished) — the same card in place, no
+  spinner: header “工作轨迹 · 13 步 · 58s · 4 个来源”, then one merged group
+  line per activity. Groups are closed by default, so 20+ calls never turn into
+  20+ cards. Opening a group lists its calls; each search/fetch row opens to
+  show the query, status, result count, top domains, hit links (new tab) and
+  duration. A “已引用” badge marks a row whose URLs the answer cites.
+  “计划与来源” holds the plan, the deduplicated source ledger
+  (已引用 / 仅查阅) and token usage.
+
+The card keeps its position when the answer streams in below it, matching
+Grok's single-trajectory behaviour; there is no second summary block under the
+answer.
 
 - Groups are built by [`groupToolCalls`](../apps/web/src/lib/agent-trace.ts):
   `web_search`, `web_fetch`, shell and each MCP tool get their own bucket.
@@ -225,11 +228,15 @@ The UI has two layers, both progressive disclosure:
 - Status is shown as text (排队中 / 进行中 / 已完成 / 失败 / 已取消), not colour
   alone. There is no raw JSON, token stream or `thought.delta` in the trace;
   tool output is rendered as a summary plus links.
-- `packages/agent/src/runtime.ts` caps `rawInput`/`rawOutput` before SSE
-  (4 KB / 16 KB, shape-preserving) so a fetched page cannot flood the browser.
-- Animations respect `prefers-reduced-motion`; the panel is a live region
-  (`role="status"`), and the ticking clock is `aria-hidden` to avoid screen
-  reader chatter.
+- `packages/agent/src/runtime.ts` caps tool payloads before SSE (4 KB input /
+  16 KB output, shape-preserving) so a fetched page cannot flood the browser.
+  dsh sends ACP tool results as `content` blocks
+  (`[{type:"content",content:{type:"text",text}}]`) and leaves `rawOutput`
+  unset, so the runtime forwards `content` when `rawOutput` is absent; without
+  this the browser cards have no links or result counts.
+- Animations respect `prefers-reduced-motion`; while live the title is a polite
+  `role="status"` live region and the ticking stats are `aria-hidden` to avoid
+  screen-reader chatter.
 - `deep_research` still appears as a tool card; a first-class sub-agent card
   with `get_run` progress polling and event persistence is still reserved (see
   [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §6 P3.4).

@@ -22,8 +22,7 @@ import {
   type AgentToolCall,
   type UsageSummary,
 } from "../lib/agent-trace";
-import { AgentActivity } from "./AgentActivity";
-import { AgentTrace } from "./AgentTrace";
+import { AgentTrajectory } from "./AgentTrajectory";
 
 // Code-split: the Markdown parser only loads once an assistant answer renders.
 const MarkdownMessage = lazy(() => import("./MarkdownMessage"));
@@ -465,21 +464,24 @@ export function AgentSidebar() {
               const hasTrace =
                 message.role === "assistant" &&
                 (message.tools.length > 0 || message.plan.length > 0);
-              // While researching and before any answer text arrives, show the
-              // transient activity panel; the collapsed trace takes over as
-              // soon as the model starts writing.
-              const live =
-                message.role === "assistant" &&
-                message.status === "streaming" &&
-                !message.text &&
-                message.tools.length > 0;
               return (
                 <div className={`msg ${message.role}`} key={message.id}>
                   <div className="bubble">
-                    {live ? (
-                      <AgentActivity
+                    {/* One trajectory card: live while researching, static
+                        once the answer streams. It never moves or duplicates. */}
+                    {hasTrace ? (
+                      <AgentTrajectory
                         calls={message.tools}
+                        answer={message.text}
+                        plan={message.plan}
                         startedAt={message.startedAt}
+                        elapsedMs={
+                          message.status === "streaming"
+                            ? undefined
+                            : message.elapsedMs
+                        }
+                        streaming={message.status === "streaming"}
+                        usage={message.usage}
                       />
                     ) : null}
                     {message.text ? (
@@ -496,7 +498,7 @@ export function AgentSidebar() {
                       ) : (
                         <Linkified text={message.text} />
                       )
-                    ) : !live && message.status === "streaming" ? (
+                    ) : !hasTrace && message.status === "streaming" ? (
                       <span className="agent-status">
                         <span className="spinner" />
                         {t("agent.thinking")}
@@ -516,20 +518,6 @@ export function AgentSidebar() {
                           </a>
                         ))}
                       </div>
-                    ) : null}
-                    {hasTrace && !live ? (
-                      <AgentTrace
-                        calls={message.tools}
-                        answer={message.text}
-                        plan={message.plan}
-                        elapsedMs={
-                          message.status === "streaming"
-                            ? undefined
-                            : message.elapsedMs
-                        }
-                        streaming={message.status === "streaming"}
-                        usage={message.usage}
-                      />
                     ) : null}
                   </div>
                 </div>
