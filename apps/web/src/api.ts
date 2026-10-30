@@ -197,6 +197,22 @@ export interface AgentSessionReplay {
   turns: AgentReplayTurn[];
 }
 
+/** One row in the sidebar history menu. */
+export interface AgentSessionSummary {
+  sessionId: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  turns: number;
+}
+
+export async function listAgentSessions(): Promise<AgentSessionSummary[]> {
+  const result = await request<{ data: { sessions: AgentSessionSummary[] } }>(
+    "/v1/agent/sessions",
+  );
+  return result.data.sessions;
+}
+
 /**
  * Read a persisted dsh session. Returns 404 once the log is gone, so callers
  * can drop a stale local session id.

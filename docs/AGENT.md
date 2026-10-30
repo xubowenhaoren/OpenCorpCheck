@@ -65,6 +65,7 @@ The agent needs a DeepSeek key. `apps/api` reads, in order:
 ## API
 
 ```bash
+GET  /v1/agent/sessions                 # persisted sessions (history menu)
 POST /v1/agent/sessions                 # 201 { data: { sessionId } }
 POST /v1/agent/sessions/{id}/prompt     # text/event-stream
 POST /v1/agent/sessions/{id}/cancel
@@ -260,12 +261,19 @@ shape the SSE stream produces:
   `{prompt, answer, status, startedAt, endedAt, calls}`. Inputs/outputs are
   capped (4 KB / 16 KB) exactly like live SSE. Read-only; it never writes to
   `DSH_HOME`.
+- `listPersistedSessions` scans the session directories, reads dsh's projection
+  cache for the first question and prompt count (no log decompression for the
+  menu), skips subagent child sessions (`origin=subagent` /
+  `delegationDepth>0`) and other `cwd`s, and returns newest first.
+- `GET /v1/agent/sessions` — list persisted sessions for the history menu.
 - `GET /v1/agent/sessions/{id}/replay` — returns those turns; `404` when the
   session has no persisted log.
 - `apps/web` — stores the dsh session id in `localStorage`
   (`occ.agent.sessionId`) after creating a session, restores it on mount, and
   renders each replayed turn with the same `AgentTrajectory` card plus GFM
-  Markdown. The header’s“新对话”button cancels the session, clears the stored
+  Markdown. The clock button opens a Claude-Code-style history popover
+  (search + title + relative age + prompt count); picking a row loads that
+  session. The header’s“新对话”button cancels the session, clears the stored
   id and returns to the greeting. A 404 clears a stale id automatically.
 
 Limitations:

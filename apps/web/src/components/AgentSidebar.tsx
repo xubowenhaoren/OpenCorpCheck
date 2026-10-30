@@ -13,13 +13,17 @@ import {
   cancelAgentSession,
   createAgentSession,
   getAgentSessionReplay,
+  listAgentSessions,
   streamAgentPrompt,
+  type AgentReplayTurn,
+  type AgentSessionSummary,
   type AgentStreamEvent,
 } from "../api";
 import { useAgent } from "../contexts/AgentContext";
 import { useLang } from "../i18n";
 import {
   clearStoredAgentSession,
+  formatSessionAge,
   readStoredAgentSession,
   replayElapsedMs,
   replayToolCalls,
@@ -111,6 +115,33 @@ function mergeTool(
   return next;
 }
 
+/** Persisted turns → the same message shape the live SSE path builds. */
+function messagesFromReplay(turns: AgentReplayTurn[]): Message[] {
+  const messages: Message[] = [];
+  for (const turn of turns) {
+    messages.push({
+      id: `replay-user-${turn.turn}`,
+      role: "user",
+      text: stripReplayPrompt(turn.prompt),
+      status: "done",
+      startedAt: turn.startedAt,
+      tools: [],
+      plan: [],
+    });
+    messages.push({
+      id: `replay-assistant-${turn.turn}`,
+      role: "assistant",
+      text: turn.answer,
+      status: "done",
+      startedAt: turn.startedAt,
+      elapsedMs: replayElapsedMs(turn),
+      tools: replayToolCalls(turn),
+      plan: [],
+    });
+  }
+  return messages;
+}
+
 export function AgentSidebar() {
   const { open, company, initialQuestion, closeAgent, consumeInitialQuestion } =
     useAgent();
@@ -119,8 +150,17 @@ export function AgentSidebar() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historySessions, setHistorySessions] = useState<AgentSessionSummary[]>(
+    [],
+  );
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyFailed, setHistoryFailed] = useState(false);
+  const [historyQuery, setHistoryQuery] = useState("");
+  const historyRef = useRef<HTMLDivElement | null>(null);
+  const historyRequestRef = useRef(0);
   const sessionRef = useRef<string | null>(null);
-  /** A live prompt started; a slow replay must not overwrite its messages. */
+  /** A live prompt or history pick started; a slow mount replay must not overwrite it. */
   const liveStartedRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -146,28 +186,7 @@ export function AgentSidebar() {
     void getAgentSessionReplay(stored)
       .then((replay) => {
         if (cancelled || liveStartedRef.current) return;
-        const restored: Message[] = [];
-        for (const turn of replay.turns) {
-          restored.push({
-            id: `replay-user-${turn.turn}`,
-            role: "user",
-            text: stripReplayPrompt(turn.prompt),
-            status: "done",
-            startedAt: turn.startedAt,
-            tools: [],
-            plan: [],
-          });
-          restored.push({
-            id: `replay-assistant-${turn.turn}`,
-            role: "assistant",
-            text: turn.answer,
-            status: "done",
-            startedAt: turn.startedAt,
-            elapsedMs: replayElapsedMs(turn),
-            tools: replayToolCalls(turn),
-            plan: [],
-          });
-        }
+        const restored = messagesFromReplay(replay.turns);
         if (restored.length > 0) setMessages(restored);
       })
       .catch((caught: unknown) => {
@@ -182,6 +201,47 @@ export function AgentSidebar() {
       cancelled = true;
     };
   }, []);
+
+  // Load the history menu from dsh's persisted sessions on each open.
+  useEffect(() => {
+    if (!historyOpen) return;
+    let cancelled = false;
+    setHistoryLoading(true);
+    setHistoryFailed(false);
+    historyRequestRef.current += 1;
+    void listAgentSessions()
+      .then((sessions) => {
+        if (!cancelled) setHistorySessions(sessions);
+      })
+      .catch(() => {
+        if (!cancelled) setHistoryFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [historyOpen]);
+
+  // Dismiss the popover on outside click or Escape.
+  useEffect(() => {
+    if (!historyOpen) return;
+    function onPointerDown(event: MouseEvent): void {
+      if (!historyRef.current?.contains(event.target as Node)) {
+        setHistoryOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") setHistoryOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [historyOpen]);
 
   // Closing/reloading the page must not leave a dsh turn running. The SSE
   // request abort usually reaches the API, but sendBeacon survives page
@@ -225,6 +285,7 @@ export function AgentSidebar() {
     const question = raw.trim();
     if (!question || busyRef.current) return;
     liveStartedRef.current = true;
+    setHistoryOpen(false);
     busyRef.current = true;
     setBusy(true);
     setError(null);
@@ -454,9 +515,35 @@ export function AgentSidebar() {
     }
   }
 
+  /** Open a persisted session from the history menu. */
+  async function openSession(sessionId: string) {
+    setHistoryOpen(false);
+    if (busyRef.current || sessionId === sessionRef.current) return;
+    const request = ++historyRequestRef.current;
+    try {
+      const replay = await getAgentSessionReplay(sessionId);
+      if (request !== historyRequestRef.current) return;
+      liveStartedRef.current = true;
+      sessionRef.current = sessionId;
+      storeAgentSession(sessionId);
+      setMessages(messagesFromReplay(replay.turns));
+      setError(null);
+      setInput("");
+      setHistoryFailed(false);
+    } catch (caught) {
+      if (request !== historyRequestRef.current) return;
+      if (caught instanceof ApiError && caught.status === 404) {
+        setHistoryFailed(true);
+        return;
+      }
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
   /** Drop the persisted session and return to the empty greeting. */
   function newChat() {
     liveStartedRef.current = true;
+    setHistoryOpen(false);
     if (busyRef.current) {
       stop();
     } else if (sessionRef.current) {
@@ -486,6 +573,15 @@ export function AgentSidebar() {
         t("agent.genericSuggest3"),
       ];
 
+  const historyQueryText = historyQuery.trim().toLowerCase();
+  const historyFiltered = historyQueryText
+    ? historySessions.filter(
+        (session) =>
+          session.title.toLowerCase().includes(historyQueryText) ||
+          session.sessionId.startsWith(historyQueryText),
+      )
+    : historySessions;
+
   return (
     <>
       <aside
@@ -509,6 +605,97 @@ export function AgentSidebar() {
               </div>
             </div>
             <div className="ask-head-actions">
+              <div className="ask-history" ref={historyRef}>
+                <button
+                  className="ask-icon"
+                  type="button"
+                  onClick={() => {
+                    setHistoryQuery("");
+                    setHistoryOpen((value) => !value);
+                  }}
+                  disabled={busy}
+                  aria-label={t("agent.history")}
+                  aria-haspopup="dialog"
+                  aria-expanded={historyOpen}
+                  title={t("agent.history")}
+                >
+                  <svg
+                    width="17"
+                    height="17"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 7v5l3 2" />
+                  </svg>
+                </button>
+                {historyOpen ? (
+                  <div
+                    className="ask-history-menu"
+                    role="dialog"
+                    aria-label={t("agent.history")}
+                  >
+                    <input
+                      className="ask-history-search"
+                      type="search"
+                      value={historyQuery}
+                      onChange={(event) => setHistoryQuery(event.target.value)}
+                      placeholder={t("agent.historySearch")}
+                      aria-label={t("agent.historySearch")}
+                      autoFocus
+                    />
+                    <div className="ask-history-list">
+                      {historyLoading ? (
+                        <p className="ask-history-empty">
+                          {t("agent.historyLoading")}
+                        </p>
+                      ) : historyFailed ? (
+                        <p className="ask-history-empty">
+                          {t("agent.historyFailed")}
+                        </p>
+                      ) : historyFiltered.length === 0 ? (
+                        <p className="ask-history-empty">
+                          {t("agent.historyEmpty")}
+                        </p>
+                      ) : (
+                        historyFiltered.map((session) => (
+                          <button
+                            key={session.sessionId}
+                            className={`ask-history-item${
+                              session.sessionId === sessionRef.current
+                                ? " active"
+                                : ""
+                            }`}
+                            type="button"
+                            onClick={() => void openSession(session.sessionId)}
+                          >
+                            <span className="ask-history-title">
+                              {session.title || t("agent.historyUntitled")}
+                            </span>
+                            <span className="ask-history-meta">
+                              {formatSessionAge(
+                                session.updatedAt,
+                                Date.now(),
+                                lang,
+                              )}
+                              {session.turns > 1
+                                ? ` · ${t("agent.historyTurns", {
+                                    count: session.turns,
+                                  })}`
+                                : ""}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
               <button
                 className="ask-new"
                 type="button"

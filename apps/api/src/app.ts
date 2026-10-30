@@ -1,4 +1,4 @@
-import { readSessionReplay } from "@occ/agent";
+import { listPersistedSessions, readSessionReplay } from "@occ/agent";
 import {
   AppError,
   CompanyCardQuerySchema,
@@ -306,6 +306,22 @@ export function createApp(deps: AppDeps): Hono {
         decision: parsed.data.decision,
         updated: result.updated,
         skipped: result.skipped,
+      },
+    });
+  });
+
+  app.get("/v1/agent/sessions", async (c) => {
+    const requestId = crypto.randomUUID();
+    const sessions = await listPersistedSessions(config.agentDshHome, {
+      cwd: config.repoRoot,
+      limit: 50,
+    });
+    c.header("x-request-id", requestId);
+    return c.json({
+      data: { sessions },
+      meta: {
+        request_id: requestId,
+        as_of: new Date().toISOString(),
       },
     });
   });

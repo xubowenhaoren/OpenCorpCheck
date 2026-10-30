@@ -70,3 +70,23 @@ export function replayElapsedMs(turn: AgentReplayTurn): number | undefined {
   if (!turn.endedAt || !turn.startedAt) return undefined;
   return Math.max(turn.endedAt - turn.startedAt, 1);
 }
+
+/**
+ * Compact age label for the history menu, matching Claude Code's style:
+ * `刚刚`, `5m`, `20h`, `3d`, `2w`.
+ */
+export function formatSessionAge(
+  updatedAt: number,
+  now = Date.now(),
+  lang: "zh" | "en" = "zh",
+): string {
+  const diff = Math.max(now - updatedAt, 0);
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return lang === "zh" ? "刚刚" : "now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return `${Math.floor(days / 7)}w`;
+}

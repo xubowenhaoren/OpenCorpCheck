@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { AgentReplayTurn } from "../api";
 import {
+  formatSessionAge,
   replayElapsedMs,
   replayToolCalls,
   stripReplayPrompt,
@@ -84,5 +85,18 @@ describe("replayToolCalls", () => {
   it("computes the turn duration from persisted timestamps", () => {
     expect(replayElapsedMs(turn)).toBe(2_000);
     expect(replayElapsedMs({ ...turn, endedAt: undefined })).toBeUndefined();
+  });
+});
+
+describe("formatSessionAge", () => {
+  const now = 1_700_000_000_000;
+
+  it("uses Claude-Code-style compact units", () => {
+    expect(formatSessionAge(now - 10_000, now)).toBe("刚刚");
+    expect(formatSessionAge(now - 5 * 60_000, now)).toBe("5m");
+    expect(formatSessionAge(now - 20 * 3_600_000, now)).toBe("20h");
+    expect(formatSessionAge(now - 3 * 86_400_000, now)).toBe("3d");
+    expect(formatSessionAge(now - 15 * 86_400_000, now)).toBe("2w");
+    expect(formatSessionAge(now - 10_000, now, "en")).toBe("now");
   });
 });

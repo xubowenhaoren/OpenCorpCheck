@@ -79,7 +79,9 @@ without CORS.
 - The sidebar restores the last dsh session from `localStorage`
   (`occ.agent.sessionId`) and replays dsh's persisted event log through
   `GET /v1/agent/sessions/{id}/replay`; replayed turns render the same
-  trajectory card and Markdown as a finished live turn. “新对话” clears it.
+  trajectory card and Markdown as a finished live turn. The clock button opens
+  a searchable history popover backed by `GET /v1/agent/sessions`; “新对话”
+  clears the current session.
   See [`docs/AGENT.md`](../../docs/AGENT.md#session-persistence-and-replay-2026-10-30).
 - Sub-agent cards (deep_research job progress / nested tool timeline) are
   **not** implemented yet; `deep_research` currently appears as a tool card.

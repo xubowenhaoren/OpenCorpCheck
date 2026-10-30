@@ -56,6 +56,29 @@ export interface SessionReplay {
   turns: ReplayedTurn[];
 }
 
+/** One row in the sidebar's history menu. */
+export interface PersistedSessionSummary {
+  sessionId: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  /** Number of user prompts (dsh's own count). */
+  turns: number;
+}
+
+async function sessionLogIn(dir: string): Promise<string | null> {
+  let files: string[];
+  try {
+    files = await fs.readdir(dir);
+  } catch {
+    return null;
+  }
+  const name =
+    files.find((file) => /^session(\.v\d+)?\.jsonl\.zstd$/.test(file)) ??
+    files.find((file) => /^session(\.v\d+)?\.jsonl$/.test(file));
+  return name ? path.join(dir, name) : null;
+}
+
 /**
  * Locate one session's log. dsh groups sessions by project directory; the
  * grouping is internal, so scan one level rather than reimplementing the
@@ -76,19 +99,165 @@ export async function findSessionLog(
     return null;
   }
   for (const project of projects) {
-    const dir = path.join(sessionsRoot, project, sessionId);
-    let files: string[];
+    const file = await sessionLogIn(path.join(sessionsRoot, project, sessionId));
+    if (file) return file;
+  }
+  return null;
+}
+
+interface ProjectionSummary {
+  title: string;
+  createdAt: number;
+  cwd?: string;
+  turns: number;
+}
+
+/** Read only the session header (the first zstd frame holds it). */
+async function readSessionHeader(file: string): Promise<{
+  delegationDepth?: number;
+  origin?: string;
+}> {
+  try {
+    const raw = await fs.readFile(file);
+    let text: string;
     try {
-      files = await fs.readdir(dir);
+      // Node stops after the first frame, which is exactly the header batch.
+      text = zstdDecompressSync(raw).toString("utf8");
+    } catch {
+      text = decompressSessionLog(raw);
+    }
+    const first = text.split("\n").find((line) => line.trim());
+    if (!first) return {};
+    const record = JSON.parse(first) as Record<string, unknown>;
+    if (record.type !== "session") return {};
+    return {
+      ...(typeof record.delegationDepth === "number"
+        ? { delegationDepth: record.delegationDepth }
+        : {}),
+      ...(typeof record.origin === "string" ? { origin: record.origin } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * dsh keeps a small projection cache beside each log (title input, prompt
+ * count, token usage). Reading it avoids decompressing every log just to build
+ * the history menu.
+ */
+async function readProjectionSummary(
+  dshHome: string,
+  sessionId: string,
+): Promise<ProjectionSummary | null> {
+  const file = path.join(
+    dshHome,
+    "storages",
+    "session_projcache",
+    "sessions",
+    `${sessionId}.json`,
+  );
+  try {
+    const parsed = JSON.parse(await fs.readFile(file, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    const record = asRecord(parsed.record);
+    const identity = asRecord(record.identity);
+    const rows = asRecord(record.rows);
+    const titleInput = asRecord(asRecord(rows.titleInput).val);
+    const first = asRecord(titleInput.first);
+    const raw = typeof first.text === "string" ? first.text : "";
+    const question = promptFromRaw(raw);
+    const rawTitle = asRecord(rows.title).val;
+    const fallback =
+      typeof rawTitle === "string" &&
+      rawTitle.trim() &&
+      !rawTitle.startsWith("你正在 OpenCorpCheck")
+        ? shortTitle(rawTitle)
+        : "";
+    return {
+      title: question ? shortTitle(question) : fallback,
+      createdAt:
+        typeof identity.createdAt === "number" ? identity.createdAt : 0,
+      cwd: typeof identity.cwd === "string" ? identity.cwd : undefined,
+      turns: typeof titleInput.count === "number" ? titleInput.count : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * List persisted sessions for the history menu, newest first. Only sessions
+ * with a readable log are returned; `cwd` filters out other dsh projects that
+ * share the same DSH_HOME.
+ */
+export async function listPersistedSessions(
+  dshHome: string,
+  options: { cwd?: string; limit?: number } = {},
+): Promise<PersistedSessionSummary[]> {
+  const sessionsRoot = path.join(dshHome, "sessions");
+  let projects: string[];
+  try {
+    projects = await fs.readdir(sessionsRoot);
+  } catch {
+    return [];
+  }
+  const summaries: PersistedSessionSummary[] = [];
+  for (const project of projects) {
+    let entries;
+    try {
+      entries = await fs.readdir(path.join(sessionsRoot, project), {
+        withFileTypes: true,
+      });
     } catch {
       continue;
     }
-    const name =
-      files.find((file) => /^session(\.v\d+)?\.jsonl\.zstd$/.test(file)) ??
-      files.find((file) => /^session(\.v\d+)?\.jsonl$/.test(file));
-    if (name) return path.join(dir, name);
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const sessionId = entry.name;
+      if (
+        !SESSION_ID_PATTERN.test(sessionId) ||
+        sessionId.includes("..")
+      ) {
+        continue;
+      }
+      const log = await sessionLogIn(
+        path.join(sessionsRoot, project, sessionId),
+      );
+      if (!log) continue;
+      let stat;
+      try {
+        stat = await fs.stat(log);
+      } catch {
+        continue;
+      }
+      // Subagent child sessions are internal; only user-facing parents belong
+      // in the history menu.
+      const header = await readSessionHeader(log);
+      if (header.origin === "subagent" || (header.delegationDepth ?? 0) > 0) {
+        continue;
+      }
+      const cache = await readProjectionSummary(dshHome, sessionId);
+      if (
+        options.cwd &&
+        cache?.cwd &&
+        path.resolve(cache.cwd) !== path.resolve(options.cwd)
+      ) {
+        continue;
+      }
+      summaries.push({
+        sessionId,
+        title: cache?.title || sessionId.slice(0, 8),
+        createdAt: cache?.createdAt || stat.birthtimeMs || stat.mtimeMs,
+        updatedAt: stat.mtimeMs,
+        turns: cache?.turns ?? 0,
+      });
+    }
   }
-  return null;
+  summaries.sort((left, right) => right.updatedAt - left.updatedAt);
+  return summaries.slice(0, options.limit ?? 50);
 }
 
 /**
@@ -160,6 +329,22 @@ function callKind(name: string): ReplayedToolCall["kind"] {
     return "execute";
   }
   return "other";
+}
+
+/** Extract the human question from an injected prompt (context + company line). */
+function promptFromRaw(raw: string): string {
+  const marker = raw.lastIndexOf(PROMPT_MARKER);
+  const text = marker >= 0 ? raw.slice(marker + PROMPT_MARKER.length) : raw;
+  return text
+    .replace(/^(?:当前公司：|Current company:)[^\n]*\n+/u, "")
+    .trim();
+}
+
+function shortTitle(text: string, max = 80): string {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  return collapsed.length > max
+    ? `${collapsed.slice(0, max - 1)}…`
+    : collapsed;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -238,11 +423,8 @@ export function parseSessionReplay(
       case "user/message": {
         if (currentTurn === null) break;
         const raw = blocksText(data.content);
-        const marker = raw.lastIndexOf(PROMPT_MARKER);
-        if (marker >= 0) {
-          turnFor(currentTurn).prompt = raw
-            .slice(marker + PROMPT_MARKER.length)
-            .trim();
+        if (raw.lastIndexOf(PROMPT_MARKER) >= 0) {
+          turnFor(currentTurn).prompt = promptFromRaw(raw);
         }
         break;
       }

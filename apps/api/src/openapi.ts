@@ -324,6 +324,14 @@ export function openApiDocument() {
         },
       },
       "/v1/agent/sessions": {
+        get: {
+          operationId: "listAgentSessions",
+          description:
+            "List persisted dsh sessions for the history menu, newest first.",
+          responses: {
+            "200": { description: "Persisted session summaries" },
+          },
+        },
         post: {
           operationId: "createAgentSession",
           description:
