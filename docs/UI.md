@@ -1,7 +1,7 @@
 # OpenCorpCheck UI — 企查查式公司情报页
 
 > Status: implemented in [`apps/web`](../apps/web) · 2026-10-29
-> (tool-use trajectory + GFM Markdown shipped; sub-agent cards / persistence
+> (tool-use trajectory + GFM Markdown + session replay shipped; sub-agent cards
 > remain reserved in §8.4)
 > Audience: 本项目作者 / 前端实现者
 > Related: [Architecture](ARCHITECTURE.md) §1、§7.4、§8.4 · [Search](SEARCH.md) ·
@@ -445,13 +445,15 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 | F10 抓取 | 查最新财报 |
 | `propose_*` | **不暴露**，只进内部审核队列 |
 
-### 8.4 轨迹与子代理（tool use 已实现；子代理卡片/持久化预留）
+### 8.4 轨迹与子代理（tool use + 会话回放已实现；子代理卡片预留）
 
-> 工具轨迹（P3.4 UX v3：静态分组轨迹 + 可展开的搜索/抓取行）、来源账本和
-> Markdown 渲染已在 `apps/web` 实现（2026-10-29）。子代理卡片（deep_research
-> 的 job 进度/嵌套轨迹）和事件持久化仍是预留设计，
-> 见 [CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §6「P3.4」和
-> [AGENT.md](AGENT.md)「Trajectory and Markdown」。
+> 工具轨迹（P3.4 UX v3：静态分组轨迹 + 可展开的搜索/抓取行）、来源账本、
+> Markdown 渲染和**会话回放**已在 `apps/web` 实现（2026-10-29/30）。侧栏把
+> dsh 会话 id 存在 `localStorage`，重新打开时通过
+> `GET /v1/agent/sessions/{id}/replay` 读取 dsh 持久化的 `session.v4.jsonl.zstd`，
+> 用同一张轨迹卡回放历史。子代理卡片（deep_research 的 job 进度/嵌套轨迹）
+> 仍是预留设计，见 [CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §6「P3.4」和
+> [AGENT.md](AGENT.md)「Session persistence and replay」。
 
 - **工作轨迹卡片（一个组件、一个位置）**：位于助手气泡顶部、答案上方，从研究到结束
   始终是同一张卡片，不会在答案下面再出现第二块。
@@ -471,6 +473,8 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
   先以「发起深度研究」工具卡片呈现。
 - **来源账本**：去重后的 URL，分「已引用 / 仅查阅」，放在「计划与来源」里，
   与计划、token 用量一起按需展开。
+- **会话回放**：页面刷新/重开后恢复上次会话的问答与轨迹；头部「新对话」取消并清空
+  当前会话。只回放父会话；dsh 子代理的子会话（`delegationDepth=1`）不显示。
 - **不显示原始思考链**（`thought.delta`）；原始事件只在 local debug 模式可见。
 - 侧栏宽度和布局不变；trajectory 在消息内滚动，不撑破侧栏（390px 已验收）。
 

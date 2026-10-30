@@ -166,6 +166,50 @@ export async function createAgentSession(): Promise<{ sessionId: string }> {
   return result.data;
 }
 
+/** One tool call as rebuilt from dsh's persisted session log. */
+export interface AgentReplayCall {
+  callId: string;
+  title: string;
+  tool: string | null;
+  kind: string | null;
+  status: string;
+  input?: unknown;
+  output?: unknown;
+  startedAt: number;
+  endedAt?: number;
+}
+
+export interface AgentReplayTurn {
+  turn: number;
+  prompt: string;
+  answer: string;
+  status: "completed" | "failed" | "cancelled" | "running";
+  startedAt: number;
+  endedAt?: number;
+  calls: AgentReplayCall[];
+}
+
+export interface AgentSessionReplay {
+  sessionId: string;
+  title: string;
+  createdAt: number;
+  cwd?: string;
+  turns: AgentReplayTurn[];
+}
+
+/**
+ * Read a persisted dsh session. Returns 404 once the log is gone, so callers
+ * can drop a stale local session id.
+ */
+export async function getAgentSessionReplay(
+  sessionId: string,
+): Promise<AgentSessionReplay> {
+  const result = await request<{ data: AgentSessionReplay }>(
+    `/v1/agent/sessions/${encodeURIComponent(sessionId)}/replay`,
+  );
+  return result.data;
+}
+
 export async function cancelAgentSession(sessionId: string): Promise<void> {
   await request(`/v1/agent/sessions/${encodeURIComponent(sessionId)}/cancel`, undefined, {
     method: "POST",

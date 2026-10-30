@@ -382,6 +382,25 @@ export function openApiDocument() {
           responses: { "200": { description: "Cancellation requested" } },
         },
       },
+      "/v1/agent/sessions/{id}/replay": {
+        get: {
+          operationId: "replayAgentSession",
+          description:
+            "Read dsh's persisted session log and return turns with tool calls for the sidebar trajectory.",
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            "200": { description: "Persisted turns and tool-call trajectory" },
+            "404": errorResponse,
+          },
+        },
+      },
       "/v1/agent/ui": {
         get: {
           operationId: "agentUi",

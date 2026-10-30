@@ -5,9 +5,11 @@
 >
 > Current phase: Phase 0 + P1 + P2 + P2.5 + P3.1–P3.5 complete.
 > P3.4 agent trajectory / Markdown / tool-budget fix / UX v2 + **UX v3 complete**
-> (static work trace, expandable search/fetch rows, ACP content pass-through).
-> **35% agent sidebar done** (2026-10-29). Next: **P4 backfill** (STAR 50 +
-> ChiNext 50 + HSI) or the remaining P3.4 sub-agent/persistence work.
+> (static work trace, expandable search/fetch rows, ACP content pass-through),
+> **35% agent sidebar done** and **session replay complete** (2026-10-30:
+> reads dsh's persisted `session.v4.jsonl.zstd`, replays tool cards on reload).
+> Next: **P4 backfill** (STAR 50 + ChiNext 50 + HSI) or the remaining P3.4
+> sub-agent/persistence work (ACP `session/resume`, sub-agent cards).
 >
 > **Scope change (2026-10-29)**: A-share backfill = **STAR 50 (科创50, 000688) +
 > ChiNext 50 (创业板50, 399673)**. Hang Seng backfill unchanged. **S&P 500 (SPX)
@@ -72,7 +74,8 @@ on-demand private companies):
   fixed (80 calls + repetition detection + forced-answer follow-up); Grok-like
   live activity panel; **UX v3** static work trace with expandable
   search/fetch rows (query, result count, domains, URLs, duration, cited).
-  See §6 below.
+  **Session replay** (2026-10-30): dsh's persisted log is folded back into the
+  same tool cards on reload. See §6 below.
 - **P3.5**: React 19 + Vite 8 web UI (home / search / company 5 tabs / graph /
   NDX index / AI sidebar). See §5.
 
@@ -211,6 +214,8 @@ Pages:
   full-screen on mobile; real
   `POST /v1/agent/sessions` + SSE prompt/cancel; company context; suggestions;
   source chips; GFM Markdown; one live→static trajectory card above the answer.
+  The session id is stored in `localStorage` (`occ.agent.sessionId`) and the
+  conversation is replayed from dsh's log on reload; “新对话” clears it.
 
 Themes: light/dark via `data-theme` + `localStorage`; zh/en toggle for UI chrome
 and number formatting (company data stays in its source language).
@@ -223,6 +228,8 @@ Backend endpoints added with the UI:
   loaded), with ticker/sector/markets/as_of.
 - `GET /v1/sectors` — industry filter values (fixtures hidden).
 - `GET /v1/search/companies` — new `sector` filter.
+- `GET /v1/agent/sessions/:id/replay` — persisted turns + tool calls from
+  dsh's `session.v4.jsonl.zstd`; 404 when no log exists.
 - `@occ/db` — `listIndexCompanyIds`, `listSectors`.
 - `@occ/core` — `CompanyGraphQuerySchema`, `CompanyGraphView`,
   `IndexMemberView`, `IndexView`; `SearchCompaniesQuery.sector`.
@@ -311,7 +318,9 @@ result count, domains and links (found 2026-10-29 while building UX v3).
   ~17 tool calls; turn 2 only added 6.
 - Memory is **in-memory only**. Idle disposal (10 min default), API restart or
   a new browser session loses it; the next prompt starts a fresh dsh session
-  under the old UI id. There is no event persistence/replay yet.
+  under the old UI id. **The event log itself is persisted by dsh** and the
+  sidebar replays it (see below); conversation memory still is not restored
+  (`session/resume` is the official fix, not implemented yet).
 
 ### Does the agent read our DB before answering?
 
@@ -359,6 +368,41 @@ orchestration (pre-inject the company card) instead of relying on the prompt.
   `prefers-reduced-motion`.
 - `deep_research` is still only a tool card; a first-class sub-agent card with
   `get_run` polling and nested trajectory is not implemented.
+
+### Session persistence and replay (2026-10-30)
+
+dsh already persists every session; we do not add a database table.
+
+- **Official store**: append-only `SessionEvent` log at
+  `<OCC_AGENT_DSH_HOME>/sessions/<project>/<session-id>/session.v4.jsonl.zstd`,
+  one checksummed zstd frame per append batch; `SessionHeader` sits beside the
+  log (`version`, `cwd`, `parentSession`, `delegationDepth`).
+- **Official ACP surface**: upstream `@deepseek-ai/dsh-acp` supports
+  `session/list` (paginated, `cwd` filter) and `session/resume` (restores the
+  log, **does not replay updates**). It explicitly does **not** implement
+  `session/load`, delete, fork or transcript replay. Third-party plugins add
+  load+replay, but we stay on the official profile.
+- **Our wrapper**: [`packages/agent/src/session-log.ts`](packages/agent/src/session-log.ts)
+  locates the log, decodes the **concatenated zstd frames** (Node's
+  `zstdDecompressSync` stops after the first frame; we decode each frame and
+  concatenate), then folds `user/message` + `assistant/message` + `tool/call` +
+  `tool/result` + `turn/end` into turns. Inputs/outputs are capped 4 KB / 16 KB,
+  same as live SSE. Read-only.
+- **API**: `GET /v1/agent/sessions/:id/replay` → `{ turns: [{ prompt, answer,
+  status, startedAt, endedAt, calls[] }] }`; 404 if the log is missing.
+- **Web**: the dsh session id is stored in `localStorage`
+  (`occ.agent.sessionId`); on mount the sidebar replays it into the same
+  `AgentTrajectory` + Markdown components. The header’s “新对话” cancels the
+  session, clears the id and returns to the greeting; a 404 clears a stale id.
+- **Verified 2026-10-30**: replayed the 22-call NVDA/AMD probe (header
+  “22 步 · 1m 59s · 6 个来源”; search row 6.9 s / 8 results / 8 domains);
+  multi-turn session `3ae5f035…` replayed both turns (17 + 6 calls); live
+  “只回复 OK” → reload restored the bubble. `@occ/agent` 13 tests, web 21.
+- **Known limits**: replay is per dsh session (after API restart/idle the next
+  prompt starts a fresh dsh session under the old UI id — aliases are
+  in-memory), so a later reload replays the original log only. Child subagent
+  sessions (`delegationDepth=1`) are not replayed. `session/resume` is the
+  official fix for both memory and session continuity; not wired yet.
 
 More detail: [`docs/AGENT.md`](docs/AGENT.md).
 
@@ -451,6 +495,12 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 24. **Synthetic seed fixtures remain on A500/SPX** for E2E compatibility even
     though the v1 backfill scope changed. Do not reseed the real corpus with
     `occ seed` just to rename fixture memberships.
+25. **Session persistence belongs to dsh; replay is a read-only projection**.
+    Read `session.v4.jsonl.zstd` and fold it into the existing tool-card model
+    instead of adding an `agent_sessions` event table. Upstream `dsh-acp` has
+    `session/list` + `session/resume` but no `session/load`/replay. Keep the
+    wrapper in `packages/agent`, not the web. Child subagent sessions are out
+    of scope; `session/resume` is the official fix for cross-restart memory.
 
 ---
 
@@ -483,6 +533,10 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 | API holds a pg-boss connection | Stop with SIGTERM; `kill -9` can leave jobs active until expiry. |
 | Same chat session after idle | Memory is in-memory; idle dispose/restart starts a fresh dsh session. Persistence is still TODO. |
 | Agent may answer from web without DB | Prompt says DB-first but does not enforce it. Add orchestration if determinism is required. |
+| Replay returns only the session header / one record | dsh writes concatenated zstd frames and Node's `zstdDecompressSync` stops at the first frame. Use `decompressSessionLog` (decodes every frame, ignoring false magic bytes). Verified against `zstd -dc` on 30 logs. |
+| Replay after API restart misses the newest turn | Replay is per dsh session; after a restart the next prompt starts a fresh session under the old UI id. Implement ACP `session/resume` or persist the alias chain. |
+| Replay 404 after changing `OCC_AGENT_DSH_HOME` | The UI drops `occ.agent.sessionId` on 404 and starts a fresh conversation. |
+| Replayed question shows the injected context/company line | `session-log` strips at 「用户问题：」; `apps/web/src/lib/agent-replay.ts` strips the company prefix. Keep both in sync if the prompt format changes. |
 
 ---
 
@@ -516,8 +570,10 @@ tests.
 ### P3.4 remaining
 
 - First-class sub-agent card for `deep_research`/`get_run` with nested steps.
-- Event persistence + replay (`agent_sessions` / `agent_steps` /
-  `agent_citations`); currently client-side only.
+- **Replay done** (read dsh's log). Remaining: `session/resume` so an API
+  restart/idle keeps the same dsh session (memory + one continuous log), and a
+  persistent alias chain for sessions already split. Child subagent sessions
+  still do not replay.
 - Consider “continue research” after a budget stop.
 
 ### P4 — A/HK coverage (revised scope)
@@ -561,6 +617,8 @@ and a UI smoke suite.
 - [ ] Web: `corepack pnpm --filter @occ/web typecheck` + `build` pass.
 - [ ] Agent: same-session follow-ups work; idle/restart behavior is understood;
       no limit notice on a normal research question.
+- [ ] Replay: after one live turn, reload shows the same question/answer and
+      trajectory; “新对话” clears `occ.agent.sessionId`.
 - [ ] A/HK backfill plan is STAR 50 + ChiNext 50 + HSI; **SPX is not planned**.
 - [ ] Do not write `deepseek-v4-pro` back into any config.
 - [ ] Do not commit keys, tokens, cookies, or `.env`.

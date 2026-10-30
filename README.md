@@ -22,8 +22,8 @@ skill that produces cited company profiles. No UI, no database. See
 The web UI is implemented in [`apps/web`](apps/web/README.md): search, company pages with
 financials / relationship graph / news / sources, NASDAQ-100 browse, and the live ACP
 assistant sidebar. Tool-use trajectory (live activity panel + grouped static trace) and
-GFM Markdown are built; a first-class sub-agent card and event persistence are designed
-but not built.
+GFM Markdown are built; the sidebar replays dsh's persisted session log into the same
+trajectory cards after a reload. A first-class sub-agent card is still reserved.
 
 ## Why
 

@@ -9,13 +9,23 @@ import {
 } from "react";
 
 import {
+  ApiError,
   cancelAgentSession,
   createAgentSession,
+  getAgentSessionReplay,
   streamAgentPrompt,
   type AgentStreamEvent,
 } from "../api";
 import { useAgent } from "../contexts/AgentContext";
 import { useLang } from "../i18n";
+import {
+  clearStoredAgentSession,
+  readStoredAgentSession,
+  replayElapsedMs,
+  replayToolCalls,
+  storeAgentSession,
+  stripReplayPrompt,
+} from "../lib/agent-replay";
 import {
   isTerminalStatus,
   uniqueUrls,
@@ -110,6 +120,8 @@ export function AgentSidebar() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sessionRef = useRef<string | null>(null);
+  /** A live prompt started; a slow replay must not overwrite its messages. */
+  const liveStartedRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -122,6 +134,54 @@ export function AgentSidebar() {
     element.inert = !open;
     element.setAttribute("aria-hidden", String(!open));
   }, [open]);
+
+  // Restore the last dsh session from its persisted log. dsh owns the log;
+  // the API folds it into the same tool-call shape the SSE stream produces, so
+  // the trajectory card renders history exactly like a finished live turn.
+  useEffect(() => {
+    const stored = readStoredAgentSession();
+    if (!stored) return;
+    sessionRef.current = stored;
+    let cancelled = false;
+    void getAgentSessionReplay(stored)
+      .then((replay) => {
+        if (cancelled || liveStartedRef.current) return;
+        const restored: Message[] = [];
+        for (const turn of replay.turns) {
+          restored.push({
+            id: `replay-user-${turn.turn}`,
+            role: "user",
+            text: stripReplayPrompt(turn.prompt),
+            status: "done",
+            startedAt: turn.startedAt,
+            tools: [],
+            plan: [],
+          });
+          restored.push({
+            id: `replay-assistant-${turn.turn}`,
+            role: "assistant",
+            text: turn.answer,
+            status: "done",
+            startedAt: turn.startedAt,
+            elapsedMs: replayElapsedMs(turn),
+            tools: replayToolCalls(turn),
+            plan: [],
+          });
+        }
+        if (restored.length > 0) setMessages(restored);
+      })
+      .catch((caught: unknown) => {
+        if (cancelled) return;
+        // The log is gone (new machine, cleared DSH_HOME): forget the id.
+        if (caught instanceof ApiError && caught.status === 404) {
+          clearStoredAgentSession();
+          if (!liveStartedRef.current) sessionRef.current = null;
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Closing/reloading the page must not leave a dsh turn running. The SSE
   // request abort usually reaches the API, but sendBeacon survives page
@@ -164,6 +224,7 @@ export function AgentSidebar() {
   async function send(raw: string) {
     const question = raw.trim();
     if (!question || busyRef.current) return;
+    liveStartedRef.current = true;
     busyRef.current = true;
     setBusy(true);
     setError(null);
@@ -252,6 +313,7 @@ export function AgentSidebar() {
         const session = await createAgentSession();
         sessionId = session.sessionId;
         sessionRef.current = sessionId;
+        storeAgentSession(sessionId);
       }
 
       const controller = new AbortController();
@@ -392,6 +454,21 @@ export function AgentSidebar() {
     }
   }
 
+  /** Drop the persisted session and return to the empty greeting. */
+  function newChat() {
+    liveStartedRef.current = true;
+    if (busyRef.current) {
+      stop();
+    } else if (sessionRef.current) {
+      void cancelAgentSession(sessionRef.current).catch(() => undefined);
+    }
+    sessionRef.current = null;
+    clearStoredAgentSession();
+    setMessages([]);
+    setError(null);
+    setInput("");
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void send(input);
@@ -431,15 +508,27 @@ export function AgentSidebar() {
                 </p>
               </div>
             </div>
-            <button
-              className="ask-close"
-              type="button"
-              onClick={closeAgent}
-              aria-label={lang === "zh" ? "收起助手" : "Collapse assistant"}
-              title={lang === "zh" ? "收起助手" : "Collapse assistant"}
-            >
-              ›
-            </button>
+            <div className="ask-head-actions">
+              <button
+                className="ask-new"
+                type="button"
+                onClick={newChat}
+                disabled={busy}
+                aria-label={t("agent.newChat")}
+                title={t("agent.newChat")}
+              >
+                {t("agent.newChat")}
+              </button>
+              <button
+                className="ask-close"
+                type="button"
+                onClick={closeAgent}
+                aria-label={lang === "zh" ? "收起助手" : "Collapse assistant"}
+                title={lang === "zh" ? "收起助手" : "Collapse assistant"}
+              >
+                ›
+              </button>
+            </div>
           </div>
 
           <div className="ask-body" ref={bodyRef}>

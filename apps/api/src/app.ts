@@ -1,3 +1,4 @@
+import { readSessionReplay } from "@occ/agent";
 import {
   AppError,
   CompanyCardQuerySchema,
@@ -362,6 +363,31 @@ export function createApp(deps: AppDeps): Hono {
   app.post("/v1/agent/sessions/:id/cancel", async (c) => {
     await deps.agent.cancel(c.req.param("id"));
     return c.json({ data: { cancelled: true } });
+  });
+
+  // Read-only replay of dsh's persisted session log. This is deliberately
+  // outside the ACP connection: upstream dsh-acp supports session/list and
+  // session/resume but not session/load, and never replays history.
+  app.get("/v1/agent/sessions/:id/replay", async (c) => {
+    const requestId = crypto.randomUUID();
+    const replay = await readSessionReplay(
+      config.agentDshHome,
+      c.req.param("id"),
+    );
+    if (!replay) {
+      throw new AppError(
+        "not_found",
+        `agent session not found: ${c.req.param("id")}`,
+      );
+    }
+    c.header("x-request-id", requestId);
+    return c.json({
+      data: replay,
+      meta: {
+        request_id: requestId,
+        as_of: new Date().toISOString(),
+      },
+    });
   });
 
   app.get("/v1/agent/ui", (c) => c.html(agentUiHtml()));

@@ -76,8 +76,13 @@ without CORS.
   deduplicated source ledger (cited vs consulted) and token usage. Raw JSON,
   token streams and `thought.delta` are never rendered. See
   [`src/lib/agent-trace.ts`](src/lib/agent-trace.ts).
-- Sub-agent cards (deep_research job progress / nested tool timeline) and
-  event persistence/replay are **not** implemented yet; `deep_research`
-  currently appears as a tool card.
+- The sidebar restores the last dsh session from `localStorage`
+  (`occ.agent.sessionId`) and replays dsh's persisted event log through
+  `GET /v1/agent/sessions/{id}/replay`; replayed turns render the same
+  trajectory card and Markdown as a finished live turn. “新对话” clears it.
+  See [`docs/AGENT.md`](../../docs/AGENT.md#session-persistence-and-replay-2026-10-30).
+- Sub-agent cards (deep_research job progress / nested tool timeline) are
+  **not** implemented yet; `deep_research` currently appears as a tool card.
+  Native dsh subagent child sessions are not replayed.
 - Tests: `corepack pnpm --filter @occ/web test` (trajectory helpers) plus
   `typecheck` / `build`.

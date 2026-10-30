@@ -68,6 +68,7 @@ The agent needs a DeepSeek key. `apps/api` reads, in order:
 POST /v1/agent/sessions                 # 201 { data: { sessionId } }
 POST /v1/agent/sessions/{id}/prompt     # text/event-stream
 POST /v1/agent/sessions/{id}/cancel
+GET  /v1/agent/sessions/{id}/replay     # persisted turns + tool cards
 GET  /v1/agent/ui                       # local HTML sidebar
 ```
 
@@ -238,8 +239,46 @@ answer.
   `role="status"` live region and the ticking stats are `aria-hidden` to avoid
   screen-reader chatter.
 - `deep_research` still appears as a tool card; a first-class sub-agent card
-  with `get_run` progress polling and event persistence is still reserved (see
+  with `get_run` progress polling is still reserved (see
   [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §6 P3.4).
+
+### Session persistence and replay (2026-10-30)
+
+dsh owns persistence. Every ACP session is an append-only `SessionEvent` log at
+`<DSH_HOME>/sessions/<project>/<session-id>/session.v4.jsonl.zstd`; the header
+(version, cwd, lineage, `delegationDepth`) sits beside the log. The official
+`@deepseek-ai/dsh-acp` server supports `session/list` and `session/resume` but
+**not** `session/load`, delete, fork or transcript replay — replaying history
+over ACP is deliberately out of scope upstream.
+
+We therefore read dsh's log directly and project it onto the same tool-call
+shape the SSE stream produces:
+
+- `packages/agent/src/session-log.ts` — locate the log by session id, decode
+  the concatenated zstd frames, fold `user/message`, `assistant/message`,
+  `tool/call`, `tool/result` and `turn/end` into turns with
+  `{prompt, answer, status, startedAt, endedAt, calls}`. Inputs/outputs are
+  capped (4 KB / 16 KB) exactly like live SSE. Read-only; it never writes to
+  `DSH_HOME`.
+- `GET /v1/agent/sessions/{id}/replay` — returns those turns; `404` when the
+  session has no persisted log.
+- `apps/web` — stores the dsh session id in `localStorage`
+  (`occ.agent.sessionId`) after creating a session, restores it on mount, and
+  renders each replayed turn with the same `AgentTrajectory` card plus GFM
+  Markdown. The header’s“新对话”button cancels the session, clears the stored
+  id and returns to the greeting. A 404 clears a stale id automatically.
+
+Limitations:
+
+- Replay is per dsh session. After an API restart/idle dispose, the next prompt
+  starts a fresh dsh session under the old UI id (aliases are in memory only),
+  so a later reload replays the original log and not the post-restart turn.
+  Fix by implementing ACP `session/resume` (official) or persisting the alias.
+- Only the parent session is replayed; `subagent` child sessions
+  (`delegationDepth=1`) are not rendered. dsh never replays child steps over
+  ACP either.
+- The prompt shown in the bubble strips the API’s injected context and the
+  web’s company line; the raw log keeps both.
 
 Build size after the activity panel: main JS 400.2 KB (gzip 123 KB); lazy
 Markdown chunk 162.7 KB (gzip 49 KB); CSS 45.5 KB (gzip 9.3 KB).
@@ -297,11 +336,14 @@ Markdown chunk 162.7 KB (gzip 49 KB); CSS 45.5 KB (gzip 9.3 KB).
   call appears transiently, finished groups fold to one line, repeated calls
   merge, and the answer starts with a single summary line. Event persistence,
   replay and a first-class sub-agent card are still reserved.
-- **Trajectory is client-side only.** Tool cards, plan and the source ledger are
-  built from the live SSE stream; nothing is persisted. `thought.delta` is
-  deliberately not rendered. A first-class sub-agent card (deep-research job
-  status via `get_run`, nested tool timeline), event persistence and replay are
-  still reserved in [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §6 P3.4.
+- **Trajectory is client-side while live; replay reads dsh's log.**
+  Tool cards, plan and the source ledger are built from the live SSE stream;
+  dsh persists the underlying events, and
+  `GET /v1/agent/sessions/{id}/replay` folds them back into the same cards on
+  reload (see “Session persistence and replay”). `thought.delta` is deliberately
+  not rendered. A first-class sub-agent card (deep-research job status via
+  `get_run`, nested tool timeline) is still reserved in
+  [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §6 P3.4.
 - `additionalDirectories`, client filesystem, terminals and elicitation are not
   advertised; dsh rejects additional directories by design.
 - **Separate DSH_HOME is mandatory.** The ACP profile stores zstd-compressed
