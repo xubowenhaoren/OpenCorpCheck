@@ -51,6 +51,8 @@ interface Message {
   tools: AgentToolCall[];
   plan: string[];
   usage?: UsageSummary;
+  /** Stable notice code; drives highlighting such as the resume fallback. */
+  noticeCode?: string;
 }
 
 /** Keep the streaming UI responsive without re-parsing Markdown per token. */
@@ -459,9 +461,16 @@ export function AgentSidebar() {
               : fallback;
             const text = localized === code ? fallback : localized;
             if (text) {
-              setMessages((previous) => [
-                ...previous,
-                {
+              setMessages((previous) => {
+                // The assistant bubble is created when the question is sent,
+                // so a notice would otherwise land below the answer. Put it
+                // above the answer, right after the user's question, where it
+                // explains what happened before the model responded.
+                const next = [...previous];
+                const at = next.findIndex(
+                  (message) => message.id === assistantId,
+                );
+                const notice: Message = {
                   id: crypto.randomUUID(),
                   role: "system",
                   text,
@@ -469,8 +478,12 @@ export function AgentSidebar() {
                   startedAt: Date.now(),
                   tools: [],
                   plan: [],
-                },
-              ]);
+                  ...(code ? { noticeCode: code } : {}),
+                };
+                if (at >= 0) next.splice(at, 0, notice);
+                else next.push(notice);
+                return next;
+              });
             }
             return;
           }
@@ -727,8 +740,16 @@ export function AgentSidebar() {
 
             {messages.map((message) => {
               if (message.role === "system") {
+                // The resume fallback is a real loss of context, not chatter:
+                // render it in a highlighted warning box.
+                const highlighted =
+                  message.noticeCode === "agent.resume.failed";
                 return (
-                  <div className="msg system" key={message.id}>
+                  <div
+                    className={`msg system${highlighted ? " notice-warn" : ""}`}
+                    key={message.id}
+                    role={highlighted ? "status" : undefined}
+                  >
                     <div className="bubble">{message.text}</div>
                   </div>
                 );

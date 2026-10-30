@@ -4,6 +4,7 @@ import { AppError } from "@occ/core";
 import {
   DshAcpRuntime,
   defaultMcpServer,
+  findSessionLog,
   type AgentEvent,
   type McpServerSpec,
 } from "@occ/agent";
@@ -48,9 +49,9 @@ export interface AgentServiceOptions {
  *
  * The runtime is disposed after it has been idle for `idleTimeoutMs`, so a
  * forgotten sidebar does not keep a dsh process (and its MCP child) alive. The
- * UI keeps using the session id it was given; the next prompt transparently
- * starts a fresh dsh session under that id (conversation history is lost, which
- * is acceptable after an idle period).
+ * UI keeps using the session id it was given; the next prompt resumes the
+ * persisted dsh session when possible (same id, same log, same memory) and
+ * only falls back to a fresh session when there is no log or resume fails.
  */
 export class AgentService {
   private runtime: DshAcpRuntime | null = null;
@@ -97,25 +98,56 @@ export class AgentService {
     message: string,
   ): AsyncGenerator<AgentEvent> {
     const runtime = await this.ensureRuntime();
-    let target = this.resolveSession(sessionId);
-    if (!target) {
-      // The idle disposer (or a crashed child) dropped the session; start a
-      // fresh one and keep routing the UI's old id to it.
-      try {
-        target = (await runtime.createSession()).sessionId;
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        throw new AppError(
-          "upstream_error",
-          `failed to restart dsh ACP session: ${detail}`,
-        );
-      }
-      this.aliases.set(target, target);
-      this.aliases.set(sessionId, target);
-    }
+    // Count the prompt before any await (log lookup / resume) so the idle
+    // disposer cannot kill the runtime while we are reattaching it.
     this.clearIdleTimer();
     this.activePrompts += 1;
     try {
+      let target = this.resolveSession(sessionId);
+      let contextResetReason: string | null = null;
+      if (!target) {
+        // The idle disposer, a crashed child or an API restart dropped the live
+        // session. If dsh persisted a log for this id, resume it so the model
+        // keeps its memory and appends to the same log; otherwise start fresh.
+        const log = await findSessionLog(this.options.dshHome, sessionId);
+        if (log) {
+          try {
+            target = (await runtime.resumeSession(sessionId)).sessionId;
+            this.aliases.set(sessionId, sessionId);
+          } catch (error) {
+            contextResetReason =
+              error instanceof Error ? error.message : String(error);
+          }
+        }
+        if (!target) {
+          try {
+            target = (await runtime.createSession()).sessionId;
+          } catch (error) {
+            const detail =
+              error instanceof Error ? error.message : String(error);
+            throw new AppError(
+              "upstream_error",
+              `failed to restart dsh ACP session: ${detail}`,
+            );
+          }
+          this.aliases.set(target, target);
+          this.aliases.set(sessionId, target);
+        }
+      }
+      if (contextResetReason !== null) {
+        // Resume was attempted and failed: say so instead of silently
+        // pretending the previous conversation is still in context. The web
+        // renders this code as a highlighted warning box.
+        yield {
+          type: "notice",
+          severity: "warning",
+          title: "Previous conversation context was not restored",
+          description:
+            "The saved transcript is still visible, but the model could not " +
+            `resume its memory and started a new conversation. ${contextResetReason}`,
+          code: "agent.resume.failed",
+        };
+      }
       yield* runtime.prompt(
         target,
         `${SYSTEM_CONTEXT}\n\n用户问题：${message}`,

@@ -8,10 +8,14 @@ import {
   ndJsonStream,
   type ActiveSession,
   type ActiveSessionMessage,
+  type AgentCapabilities,
   type ClientConnection,
+  type InitializeResponse,
   type McpServerStdio,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
+  type ResumeSessionRequest,
+  type ResumeSessionResponse,
   type SessionUpdate,
 } from "@agentclientprotocol/sdk";
 
@@ -122,6 +126,7 @@ export interface DshAcpRuntimeOptions {
 export class DshAcpRuntime {
   private child: ChildProcessWithoutNullStreams | null = null;
   private connection: ClientConnection | null = null;
+  private initializeResult: InitializeResponse | null = null;
   private stderr = "";
   private readonly sessions = new Map<string, ActiveSession>();
   private readonly busy = new Set<string>();
@@ -131,6 +136,16 @@ export class DshAcpRuntime {
 
   get started(): boolean {
     return this.connection !== null;
+  }
+
+  /** The `initialize` capabilities advertised by the running dsh, if any. */
+  get capabilities(): AgentCapabilities | null {
+    return this.initializeResult?.agentCapabilities ?? null;
+  }
+
+  /** Whether dsh explicitly advertises `session/resume`. */
+  get supportsSessionResume(): boolean {
+    return this.capabilities?.sessionCapabilities?.resume != null;
   }
 
   async start(): Promise<void> {
@@ -171,6 +186,7 @@ export class DshAcpRuntime {
         // already closed
       }
       this.connection = null;
+      this.initializeResult = null;
       this.sessions.clear();
       this.busy.clear();
     });
@@ -212,11 +228,14 @@ export class DshAcpRuntime {
     this.connection = app.connect(ndJsonStream(output, input));
 
     try {
-      await this.connection.agent.request(methods.agent.initialize, {
-        protocolVersion: PROTOCOL_VERSION,
-        clientCapabilities: {},
-        clientInfo: { name: "OpenCorpCheck", version: VERSION },
-      });
+      this.initializeResult = await this.connection.agent.request(
+        methods.agent.initialize,
+        {
+          protocolVersion: PROTOCOL_VERSION,
+          clientCapabilities: {},
+          clientInfo: { name: "OpenCorpCheck", version: VERSION },
+        },
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const detail = this.stderr.trim();
@@ -234,27 +253,91 @@ export class DshAcpRuntime {
   } = {}): Promise<{ sessionId: string; acpSessionId: string }> {
     await this.start();
     const connection = this.requireConnection();
-    const mcpServers: McpServerStdio[] = (this.options.mcpServers ?? []).map(
-      (server) => ({
-        name: server.name,
-        command: server.command,
-        args: server.args,
-        env: Object.entries(server.env ?? {}).map(([name, value]) => ({
-          name,
-          value,
-        })),
-      }),
-    );
     const request = {
       cwd: options.cwd ?? this.options.cwd,
       ...(options.additionalDirectories?.length
         ? { additionalDirectories: options.additionalDirectories }
         : {}),
-      mcpServers,
+      mcpServers: this.mcpServerSpecs(),
     };
     const active = await connection.agent.buildSession(request).start();
     this.sessions.set(active.sessionId, active);
     return { sessionId: active.sessionId, acpSessionId: active.sessionId };
+  }
+
+  /**
+   * Reattach to a session dsh already persisted (after an API restart or an
+   * idle dispose) so the model keeps its conversation memory and appends to
+   * the same log.
+   *
+   * ACP's `session/resume` restores the log but does not replay updates; the
+   * sidebar replays separately from `session-log.ts`. If this fails the caller
+   * must fall back to `createSession()` and tell the user the context was lost.
+   */
+  async resumeSession(
+    sessionId: string,
+    options: { cwd?: string; additionalDirectories?: string[] } = {},
+  ): Promise<{ sessionId: string; acpSessionId: string }> {
+    // Already attached in this process: reusing it is the live path and must
+    // never issue a second resume.
+    if (this.sessions.has(sessionId)) {
+      return { sessionId, acpSessionId: sessionId };
+    }
+    await this.start();
+    const connection = this.requireConnection();
+    // Annotated on purpose: the SDK's typed overload only infers its response
+    // for contextual params; a widened object literal falls back to `unknown`.
+    const request: ResumeSessionRequest = {
+      sessionId,
+      cwd: options.cwd ?? this.options.cwd,
+      ...(options.additionalDirectories?.length
+        ? { additionalDirectories: options.additionalDirectories }
+        : {}),
+      mcpServers: this.mcpServerSpecs(),
+    };
+    const response = await connection.agent.request(
+      methods.agent.session.resume,
+      request,
+    );
+    const active = this.attachResumedSession(sessionId, response);
+    this.sessions.set(sessionId, active);
+    return { sessionId, acpSessionId: sessionId };
+  }
+
+  private mcpServerSpecs(): McpServerStdio[] {
+    return (this.options.mcpServers ?? []).map((server) => ({
+      name: server.name,
+      command: server.command,
+      args: server.args,
+      env: Object.entries(server.env ?? {}).map(([name, value]) => ({
+        name,
+        value,
+      })),
+    }));
+  }
+
+  /**
+   * The stable SDK only builds update routing for `session/new` responses, so
+   * reuse its private `attachSession` with the resumed id. `attachSession`
+   * only reads `sessionId`; the rest is kept for `ActiveSession` accessors.
+   * Confined here on purpose: re-check on any SDK upgrade.
+   */
+  private attachResumedSession(
+    sessionId: string,
+    response: ResumeSessionResponse,
+  ): ActiveSession {
+    const agent = this.requireConnection().agent as unknown as {
+      attachSession(response: {
+        sessionId: string;
+        modes?: ResumeSessionResponse["modes"];
+        configOptions?: ResumeSessionResponse["configOptions"];
+      }): ActiveSession;
+    };
+    return agent.attachSession({
+      sessionId,
+      modes: response.modes,
+      configOptions: response.configOptions,
+    });
   }
 
   hasSession(sessionId: string): boolean {
@@ -493,6 +576,7 @@ export class DshAcpRuntime {
       // already closed
     }
     this.connection = null;
+    this.initializeResult = null;
     if (this.child) {
       const child = this.child;
       this.child = null;

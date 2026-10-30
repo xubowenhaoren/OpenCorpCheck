@@ -168,8 +168,9 @@ step and consulted-source counts while the turn runs.
   (deliberate: users often hide the panel while reading).
 - When no prompt has run for `OCC_AGENT_IDLE_TIMEOUT_MS`, `AgentService`
   disposes the dsh process (and its `occ` MCP child). The UI keeps its old
-  session id; the next prompt transparently starts a fresh dsh session under
-  that id (conversation history is lost).
+  session id; the next prompt **resumes the persisted dsh session** (same id,
+  same log, same model memory) when a log exists, and only starts a fresh
+  session when there is none or resume fails (see “Session resume” below).
 
 ### Trajectory and Markdown (2026-10-29)
 
@@ -276,12 +277,40 @@ shape the SSE stream produces:
   session. The header’s“新对话”button cancels the session, clears the stored
   id and returns to the greeting. A 404 clears a stale id automatically.
 
+### Session resume (2026-10-30)
+
+Replay restores the transcript; `session/resume` restores the **model's memory**.
+The pinned `dsh@0.2.1-rc.3` advertises
+`agentCapabilities.sessionCapabilities.resume = {}` (verified with a 10-line
+`initialize` probe), so we use the official method.
+
+- `DshAcpRuntime.resumeSession(sessionId)` in
+  [`packages/agent/src/runtime.ts`](../packages/agent/src/runtime.ts) sends
+  `session/resume` with the same `cwd` and `occ` MCP spec as `session/new`,
+  then attaches the response to the SDK's update router. The stable SDK’s
+  `attachSession` is private, so one narrow cast keeps resume confined to that
+  method; the response has no `sessionId`, so the requested id is used and must
+  be injected before attaching. A session already live in this process returns
+  immediately without a second resume.
+- `AgentService.prompt` calls `findSessionLog` on a `resolveSession` miss:
+  a persisted log → resume (same id / same log / same memory); no log →
+  `createSession`. If resume throws, it falls back to a fresh session and emits
+  a `notice` with `code: "agent.resume.failed"` **before** `run.started`; it
+  never fails the prompt.
+- The web localizes that code and renders it as a highlighted yellow box
+  between the question and the answer, so the UI never silently pretends the
+  previous context survived.
+
+Verified live: one turn → API restart → “请原样复述我上一条问题” returned the
+original question; replay showed 2 turns and the history menu one row. Repeated
+with `OCC_AGENT_IDLE_TIMEOUT_MS=1000` (idle dispose). A deliberately corrupt log
+produced the yellow notice followed by a normal answer.
+
 Limitations:
 
-- Replay is per dsh session. After an API restart/idle dispose, the next prompt
-  starts a fresh dsh session under the old UI id (aliases are in memory only),
-  so a later reload replays the original log and not the post-restart turn.
-  Fix by implementing ACP `session/resume` (official) or persisting the alias.
+- Replay and resume are per dsh session; both now stay on one id and one log
+  after an API restart or idle dispose. A corrupt / unsupported log falls back
+  to a fresh session with the notice above.
 - Only the parent session is replayed; `subagent` child sessions
   (`delegationDepth=1`) are not rendered. dsh never replays child steps over
   ACP either.
@@ -321,9 +350,10 @@ Markdown chunk 162.7 KB (gzip 49 KB); CSS 45.5 KB (gzip 9.3 KB).
 
 ## Limits / next
 
-- Sessions are in-memory. Restarting the API invalidates session ids; the UI
-  creates a new one on the next send, and `AgentService` remaps an old id to a
-  fresh dsh session after an idle dispose.
+- Session ids survive an API restart / idle dispose: `AgentService` resumes the
+  persisted dsh session (same memory and log). Only a missing or unreadable log
+  causes a fresh dsh session, in which case the UI shows the yellow
+  `agent.resume.failed` notice.
 - One ACP process hosts all sessions; there is no per-session resource quota,
   but each turn has a wall-clock and tool-call cap (see Configuration).
 - The dsh process is disposed after `OCC_AGENT_IDLE_TIMEOUT_MS` of inactivity;

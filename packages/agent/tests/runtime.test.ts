@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AgentEvent } from "../src/events.js";
 import { DshAcpRuntime, mapUpdate, summarizeToolPayload } from "../src/runtime.js";
@@ -234,6 +234,90 @@ describe("DshAcpRuntime turn limits", () => {
       "assistant.delta",
       "run.completed",
     ]);
+  });
+});
+
+describe("DshAcpRuntime resumeSession", () => {
+  function makeResumeRuntime() {
+    const runtime = new DshAcpRuntime({
+      cwd: "/repo",
+      dshVersion: "0.0.0-test",
+      dshHome: "/tmp/occ-agent-test-home",
+      npmCache: "/tmp/occ-agent-test-cache",
+      mcpServers: [
+        {
+          name: "occ",
+          command: "node",
+          args: ["/repo/apps/cli/dist/mcp.js"],
+          env: { OCC_API_URL: "http://127.0.0.1:8787" },
+        },
+      ],
+    });
+    const request = vi.fn(async () => ({ modes: null, configOptions: null }));
+    const attachSession = vi.fn((response: { sessionId: string }) => ({
+      sessionId: response.sessionId,
+      dispose: () => undefined,
+    }));
+    (
+      runtime as unknown as { connection: unknown }
+    ).connection = {
+      agent: { request, attachSession },
+      close: () => undefined,
+    };
+    return { runtime, request, attachSession };
+  }
+
+  it("resumes with the same cwd and MCP servers, then routes updates", async () => {
+    const { runtime, request, attachSession } = makeResumeRuntime();
+
+    const result = await runtime.resumeSession("saved-1");
+
+    expect(request).toHaveBeenCalledTimes(1);
+    const [method, params] = request.mock.calls[0] as unknown as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(method).toBe("session/resume");
+    expect(params).toMatchObject({
+      sessionId: "saved-1",
+      cwd: "/repo",
+      mcpServers: [
+        {
+          name: "occ",
+          command: "node",
+          args: ["/repo/apps/cli/dist/mcp.js"],
+          env: [{ name: "OCC_API_URL", value: "http://127.0.0.1:8787" }],
+        },
+      ],
+    });
+    // The response has no sessionId; the requested id must be attached.
+    expect(attachSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "saved-1" }),
+    );
+    expect(runtime.hasSession("saved-1")).toBe(true);
+    expect(result).toEqual({ sessionId: "saved-1", acpSessionId: "saved-1" });
+  });
+
+  it("does not resume the same session twice", async () => {
+    const { runtime, request } = makeResumeRuntime();
+
+    await runtime.resumeSession("saved-1");
+    await runtime.resumeSession("saved-1");
+
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the advertised resume capability", () => {
+    const { runtime } = makeResumeRuntime();
+    const holder = runtime as unknown as { initializeResult: unknown };
+
+    expect(runtime.supportsSessionResume).toBe(false);
+    holder.initializeResult = {
+      agentCapabilities: { sessionCapabilities: { resume: {} } },
+    };
+    expect(runtime.supportsSessionResume).toBe(true);
+    holder.initializeResult = { agentCapabilities: { sessionCapabilities: {} } };
+    expect(runtime.supportsSessionResume).toBe(false);
   });
 });
 

@@ -1,11 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { findSessionLog } from "@occ/agent";
+
 import { AgentService } from "../src/services/agent.js";
+
+// The service asks dsh's own log store whether a session can be resumed. The
+// tests drive that decision instead of touching a real DSH_HOME.
+vi.mock("@occ/agent", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@occ/agent")>();
+  return { ...actual, findSessionLog: vi.fn(async () => null) };
+});
 
 interface FakeRuntimeState {
   disposed: boolean;
   prompted: string[];
   cancelled: string[];
+  resumed: string[];
+  resumeFails: boolean;
 }
 
 function fakeRuntime(): {
@@ -18,6 +29,8 @@ function fakeRuntime(): {
     disposed: false,
     prompted: [],
     cancelled: [],
+    resumed: [],
+    resumeFails: false,
   };
   let counter = 0;
   const runtime = {
@@ -27,6 +40,12 @@ function fakeRuntime(): {
     hasSession: (id: string): boolean => live.has(id),
     createSession: async () => {
       const id = `s${++counter}`;
+      live.add(id);
+      return { sessionId: id, acpSessionId: id };
+    },
+    resumeSession: async (id: string) => {
+      state.resumed.push(id);
+      if (state.resumeFails) throw new Error("resume blew up");
       live.add(id);
       return { sessionId: id, acpSessionId: id };
     },
@@ -78,8 +97,16 @@ async function drain(iterable: AsyncIterable<unknown>): Promise<void> {
   }
 }
 
+async function collect(iterable: AsyncIterable<unknown>): Promise<unknown[]> {
+  const events: unknown[] = [];
+  for await (const event of iterable) events.push(event);
+  return events;
+}
+
 afterEach(() => {
   vi.useRealTimers();
+  vi.mocked(findSessionLog).mockReset();
+  vi.mocked(findSessionLog).mockResolvedValue(null);
 });
 
 describe("AgentService", () => {
@@ -142,4 +169,73 @@ describe("AgentService", () => {
 
     expect(state.cancelled).toEqual(["s2"]);
   });
+
+  it("resumes a persisted session instead of starting a new one", async () => {
+    vi.mocked(findSessionLog).mockResolvedValue("/tmp/dsh/log");
+    const service = makeService();
+    const { runtime, state, live } = fakeRuntime();
+    attach(service, runtime);
+    await service.createSession(); // s1
+    live.clear(); // API restart / idle dispose dropped the live session
+
+    const events = await collect(service.prompt("s1", "follow-up"));
+
+    expect(state.resumed).toEqual(["s1"]);
+    expect(state.prompted).toEqual(["s1"]);
+    expect(events.some((event) => eventType(event) === "notice")).toBe(false);
+  });
+
+  it("starts a fresh session when no persisted log exists", async () => {
+    const service = makeService();
+    const { runtime, state, live } = fakeRuntime();
+    attach(service, runtime);
+    await service.createSession(); // s1
+    live.clear();
+
+    await drain(service.prompt("s1", "follow-up"));
+
+    expect(state.resumed).toEqual([]);
+    expect(state.prompted).toEqual(["s2"]);
+  });
+
+  it("falls back with a highlighted notice when resume fails", async () => {
+    vi.mocked(findSessionLog).mockResolvedValue("/tmp/dsh/log");
+    const service = makeService();
+    const { runtime, state, live } = fakeRuntime();
+    state.resumeFails = true;
+    attach(service, runtime);
+    await service.createSession(); // s1
+    live.clear();
+
+    const events = await collect(service.prompt("s1", "follow-up"));
+
+    expect(state.resumed).toEqual(["s1"]);
+    expect(state.prompted).toEqual(["s2"]);
+    expect(events[0]).toMatchObject({
+      type: "notice",
+      severity: "warning",
+      code: "agent.resume.failed",
+    });
+  });
+
+  it("never resumes a session that is still live", async () => {
+    vi.mocked(findSessionLog).mockResolvedValue("/tmp/dsh/log");
+    const service = makeService();
+    const { runtime, state } = fakeRuntime();
+    attach(service, runtime);
+    await service.createSession(); // s1
+
+    await drain(service.prompt("s1", "one"));
+    await drain(service.prompt("s1", "two"));
+
+    expect(state.resumed).toEqual([]);
+    expect(state.prompted).toEqual(["s1", "s1"]);
+    expect(findSessionLog).not.toHaveBeenCalled();
+  });
 });
+
+function eventType(event: unknown): string | undefined {
+  return typeof event === "object" && event !== null
+    ? (event as { type?: string }).type
+    : undefined;
+}
