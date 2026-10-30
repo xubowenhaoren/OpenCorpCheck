@@ -1,6 +1,6 @@
 # OpenCorpCheck — Context Transfer
 
-> Handoff: **2026-10-29** · compressed handoff (the old 1,394-line document is
+> Handoff: **2026-10-30** · compressed handoff (the old 1,394-line document is
 > preserved verbatim in [`context_transfer_history.md`](context_transfer_history.md)).
 >
 > Current phase: Phase 0 + P1 + P2 + P2.5 + P3.1–P3.5 complete.
@@ -9,8 +9,9 @@
 > **35% agent sidebar done** and **session replay + history menu complete**
 > (2026-10-30: reads dsh's persisted `session.v4.jsonl.zstd`, replays tool
 > cards on reload, clock-button history popover).
-> Next: **P4 backfill** (STAR 50 + ChiNext 50 + HSI) or the remaining P3.4
-> sub-agent/persistence work (ACP `session/resume`, sub-agent cards).
+> **Next: ACP `session/resume`** (restore model memory after API restart/idle;
+> see §10). After that: P4 backfill (STAR 50 + ChiNext 50 + HSI) or the
+> remaining P3.4 sub-agent card.
 >
 > **Scope change (2026-10-29)**: A-share backfill = **STAR 50 (科创50, 000688) +
 > ChiNext 50 (创业板50, 399673)**. Hang Seng backfill unchanged. **S&P 500 (SPX)
@@ -322,8 +323,13 @@ result count, domains and links (found 2026-10-29 while building UX v3).
 - Memory is **in-memory only**. Idle disposal (10 min default), API restart or
   a new browser session loses it; the next prompt starts a fresh dsh session
   under the old UI id. **The event log itself is persisted by dsh** and the
-  sidebar replays it (see below); conversation memory still is not restored
-  (`session/resume` is the official fix, not implemented yet).
+  sidebar replays it (see below), but **replay ≠ memory**.
+- Verified 2026-10-30: after an API restart, posting to the stored id
+  `9ece6cfe…` (“今天标普、纳指都大跌…”), then asking “请原样复述我上一条问题”
+  answered **“不知道。这是我们对话中的第一条消息”**. The new turn was written
+  to a **separate** log `18bd84ff…`; the old id still replayed only its original
+  turn, and the history menu showed two conversations. `session/resume` is the
+  official fix; see §10 “Next — ACP session/resume”.
 
 ### Does the agent read our DB before answering?
 
@@ -410,9 +416,10 @@ dsh already persists every session; we do not add a database table.
   `@occ/agent` 14 tests, web 22.
 - **Known limits**: replay is per dsh session (after API restart/idle the next
   prompt starts a fresh dsh session under the old UI id — aliases are
-  in-memory), so a later reload replays the original log only. Child subagent
-  sessions (`delegationDepth=1`) are not replayed. `session/resume` is the
-  official fix for both memory and session continuity; not wired yet.
+  in-memory), so a later reload replays the original log only and the new turn
+  appears as a separate history row. Child subagent sessions
+  (`delegationDepth=1`) are not replayed. `session/resume` is the official fix
+  for memory + one continuous log; **next task, see §10**.
 
 More detail: [`docs/AGENT.md`](docs/AGENT.md).
 
@@ -544,7 +551,8 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 | Same chat session after idle | Memory is in-memory; idle dispose/restart starts a fresh dsh session. Persistence is still TODO. |
 | Agent may answer from web without DB | Prompt says DB-first but does not enforce it. Add orchestration if determinism is required. |
 | Replay returns only the session header / one record | dsh writes concatenated zstd frames and Node's `zstdDecompressSync` stops at the first frame. Use `decompressSessionLog` (decodes every frame, ignoring false magic bytes). Verified against `zstd -dc` on 30 logs. |
-| Replay after API restart misses the newest turn | Replay is per dsh session; after a restart the next prompt starts a fresh session under the old UI id. Implement ACP `session/resume` or persist the alias chain. |
+| Replay after API restart misses the newest turn | Replay is per dsh session; after a restart the next prompt starts a fresh session under the old UI id. Fix: ACP `session/resume` (§10 Next). |
+| Model says “这是第一条消息/不知道” after a restart or 10 min idle | Expected today: replay ≠ memory. The new dsh session contains only the current prompt. Implement `session/resume` (§10 Next); until then, tell the user the sidebar replayed the transcript but the model context was reset. |
 | Replay 404 after changing `OCC_AGENT_DSH_HOME` | The UI drops `occ.agent.sessionId` on 404 and starts a fresh conversation. |
 | Replayed question shows the injected context/company line | `session-log` strips at 「用户问题：」; `apps/web/src/lib/agent-replay.ts` strips the company prefix. Keep both in sync if the prompt format changes. |
 
@@ -562,7 +570,113 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
   leaves a gap. The ≤1100 px overlay (420 px) and full-screen mobile width are
   unchanged, and the left-side layout is untouched.
 
-### Next — P4 A/HK backfill (or remaining P3.4)
+### Next — ACP `session/resume` (restore model memory)
+
+**Why.** Replay restores the UI, not the model. When `AgentService.prompt`
+cannot resolve a session it calls `runtime.createSession()`
+([`apps/api/src/services/agent.ts:100`](apps/api/src/services/agent.ts#L100))
+and aliases the old UI id in memory. The new dsh session contains only
+`SYSTEM_CONTEXT` + the current question; prior turns are absent. Verified
+2026-10-30 (session `9ece6cfe…` → new `18bd84ff…`): asking the model to repeat
+the previous question answered “不知道”; the new turn went to a separate log and
+a separate history row. See §6 “Session memory”.
+
+**Goal.** After API restart / idle dispose / process restart, reuse the **same
+dsh session id and log** whenever a persisted log exists, so memory, replay and
+the history menu stay on one continuous conversation.
+
+**Official facts (checked 2026-10-30).**
+
+- Upstream `@deepseek-ai/dsh-acp` supports `session/list` and `session/resume`.
+  `session/resume` restores the persisted log but **does not replay updates** —
+  exactly what we want (our replay stays independent).
+- `session/load` (replay-on-load), delete, fork and transcript replay are
+  **not supported upstream**. Do not switch to third-party plugins for this.
+- Request shape: `{ sessionId, cwd, mcpServers, additionalDirectories? }`.
+  The response contains `modes`/`configOptions` but **no `sessionId`**.
+- `@agentclientprotocol/sdk@2.1.0` exposes the raw request as
+  `connection.agent.request("session/resume", …)`; it has no public resume
+  builder (see implementation note below).
+- **Verify the pinned dsh first.** `DshAcpRuntime.start` currently ignores the
+  `initialize` response. Check that `@deepseek-ai/dsh@0.2.1-rc.3` returns
+  `agentCapabilities.sessionCapabilities.resume` (a 10-line probe can print
+  it). If it does not, inspect the bundled `@deepseek-ai/dsh-acp` version or
+  bump dsh — do not assume the npm docs match rc.3.
+
+**Implementation sketch.**
+
+1. `DshAcpRuntime.resumeSession(sessionId, options?)` in
+   [`packages/agent/src/runtime.ts`](packages/agent/src/runtime.ts):
+   - Extract the `mcpServers` builder from `createSession` into a helper; reuse
+     it so the resumed session gets the exact same `occ` MCP attachment.
+   - `await this.start()` (spawns `dsh --profile acp` if the idle disposer
+     killed it), then
+     `connection.agent.request("session/resume", { sessionId, cwd, mcpServers })`.
+   - Attach the resumed session to the SDK's update router, otherwise
+     `prompt()`/`nextUpdate()` never receive `session/update`. The SDK's
+     `ClientContext.attachSession(response)` is private but only needs
+     `response.sessionId`; call it through one narrow cast and keep it in this
+     single method:
+     ```ts
+     // `ActiveSession` is already imported in runtime.ts.
+     const attach = (
+       connection.agent as unknown as {
+         attachSession(response: {
+           sessionId: string;
+           modes?: unknown;
+           configOptions?: unknown;
+         }): ActiveSession;
+       }
+     ).attachSession.bind(connection.agent);
+     const active = attach({ ...response, sessionId });
+     ```
+     If a future SDK exposes a public resume builder, switch to it.
+   - Store it: `this.sessions.set(sessionId, active)`; return
+     `{ sessionId, acpSessionId: sessionId }`. If `hasSession(sessionId)` is
+     already true, return it without resuming.
+2. `AgentService.prompt` ([`apps/api/src/services/agent.ts`](apps/api/src/services/agent.ts)):
+   - On `resolveSession` miss, call `findSessionLog(options.dshHome, sessionId)`
+     (already exported from `@occ/agent`, read-only). If a log exists →
+     `runtime.resumeSession(sessionId)`; otherwise → `runtime.createSession()`.
+   - Keep the alias map for legacy ids; after a successful resume set
+     `aliases.set(sessionId, sessionId)`.
+   - If resume fails (corrupt/unsupported log, dsh error), fall back to
+     `createSession()` **and emit a localized `notice`** (new code, e.g.
+     `agent.resume.failed`) so the UI knows the context was reset. Do not fail
+     the prompt and do not silently pretend memory survived.
+3. `apps/web`: no protocol change needed — the stored id already points at the
+   log. Optional polish: when `run.started.sessionId` differs from the stored
+   id (fallback path), update `occ.agent.sessionId` and show the notice.
+
+**Tests / acceptance.**
+
+- Runtime unit test with a fake connection: `session/resume` is called with the
+  same `cwd` + `mcpServers`; updates for that id route to the session; calling
+  it twice does not resume twice.
+- `AgentService` unit test: unknown id + existing log → resume; unknown id +
+  no log → create; resume throws → create + notice.
+- Live: one turn, restart the API, follow-up “请原样复述我上一条问题” must
+  answer correctly; replay of the same id shows **2 turns**; history shows
+  **1 row**. Repeat with `OCC_AGENT_IDLE_TIMEOUT_MS=1000` (idle dispose) and
+  with a fresh browser holding the stored id.
+- Keep the current live path green: same-process follow-ups must not call
+  resume (session already attached).
+
+**Pitfalls.**
+
+- `attachSession` is private API; confined to `resumeSession()`, SDK pinned.
+  Re-check on any `@agentclientprotocol/sdk` upgrade.
+- The resume response has no `sessionId`: use the requested id.
+- Never point `OCC_AGENT_DSH_HOME` at `phase0/.dsh-home` (plaintext vs zstd).
+- A crashed turn leaves an open `turn/start`; dsh appends `interrupted`
+  closers on resume. If resume still fails, use the notice + fresh-session
+  fallback.
+- The resumed session must receive the same `occ` MCP server spec; reuse the
+  helper extracted from `createSession`.
+- After resume, `hasSession(id)` must be true so later prompts don’t create
+  yet another session.
+- `findSessionLog` rejects unsafe ids; do not pass raw UI input into path
+  joins.
 
 ### P3.4 UX v3 — done 2026-10-29
 
@@ -580,10 +694,10 @@ tests.
 ### P3.4 remaining
 
 - First-class sub-agent card for `deep_research`/`get_run` with nested steps.
-- **Replay done** (read dsh's log). Remaining: `session/resume` so an API
-  restart/idle keeps the same dsh session (memory + one continuous log), and a
-  persistent alias chain for sessions already split. Child subagent sessions
-  still do not replay.
+- **Replay done** (read dsh's log). **Memory continuity is the next task —
+  see “Next — ACP `session/resume`”.** Once resume lands, new sessions stay
+  continuous; sessions already split before it will remain split (a persisted
+  alias chain is optional cleanup). Child subagent sessions still do not replay.
 - Consider “continue research” after a budget stop.
 
 ### P4 — A/HK coverage (revised scope)
@@ -630,6 +744,9 @@ and a UI smoke suite.
 - [ ] Replay: after one live turn, reload shows the same question/answer and
       trajectory; “新对话” clears `occ.agent.sessionId`; the clock menu lists
       persisted sessions and opens one.
+- [ ] Known, not a regression: after API restart/idle, a follow-up starts a
+      fresh dsh session **without prior context** (replay only). `session/resume`
+      is the next task; see §10.
 - [ ] A/HK backfill plan is STAR 50 + ChiNext 50 + HSI; **SPX is not planned**.
 - [ ] Do not write `deepseek-v4-pro` back into any config.
 - [ ] Do not commit keys, tokens, cookies, or `.env`.
