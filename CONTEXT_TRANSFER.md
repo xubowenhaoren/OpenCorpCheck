@@ -6,8 +6,8 @@
 > Current phase: Phase 0 + P1 + P2 + P2.5 + P3.1–P3.5 complete.
 > P3.4 agent trajectory / Markdown / tool-budget fix / UX v2 + **UX v3 complete**
 > (static work trace, expandable search/fetch rows, ACP content pass-through).
-> Next: **agent sidebar = 35% of page width** (hardcoded; see §10), then P4
-> backfill or the remaining P3.4 sub-agent/persistence work.
+> **35% agent sidebar done** (2026-10-29). Next: **P4 backfill** (STAR 50 +
+> ChiNext 50 + HSI) or the remaining P3.4 sub-agent/persistence work.
 >
 > **Scope change (2026-10-29)**: A-share backfill = **STAR 50 (科创50, 000688) +
 > ChiNext 50 (创业板50, 399673)**. Hang Seng backfill unchanged. **S&P 500 (SPX)
@@ -207,7 +207,7 @@ Pages:
 - `/indices/NDX` — 100 QQQ constituents; planned A/HK index pages show the
   not-loaded state. The UI filter codes are
   `["NDX", "STAR50", "CYB50", "HSI"]` (SPX/A500 removed from the picker).
-- AI sidebar — 420 px desktop panel today (next task: 35% page width),
+- AI sidebar — 35% of page width on desktop (hardcoded `35vw`; was 420 px),
   full-screen on mobile; real
   `POST /v1/agent/sessions` + SSE prompt/cancel; company context; suggestions;
   source chips; GFM Markdown; one live→static trajectory card above the answer.
@@ -488,19 +488,17 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 
 ## 10. Next tasks
 
-### Next — wider agent sidebar (requested 2026-10-29, not implemented)
+### Wider agent sidebar — done 2026-10-29
 
-- The AI assistant sidebar must occupy **35% of the page width** on desktop.
-  Today it is a fixed 420 px (`.ask-sidebar` in
-  [`apps/web/src/styles.css`](apps/web/src/styles.css)).
-- **Hardcode the width.** Do not add drag-to-resize, persisted widths or
-  adaptive layout logic.
-- Update the layout offset as well: `body.ask-open .app-shell {
-  padding-right: … }` must match the new width, otherwise page content is
-  overlapped or leaves a gap. Keep the ≤1100 px overlay behaviour and the
-  full-screen mobile width.
-- **Do not change the left-side layout or spacing.** Only the right panel gets
-  wider.
+- The AI assistant sidebar is **35% of the page width** on desktop
+  (`35vw` on `.ask-sidebar`, hardcoded in
+  [`apps/web/src/styles.css`](apps/web/src/styles.css)). No drag-to-resize.
+- Layout offset matches (`body.ask-open .app-shell { padding-right: 35vw }`,
+  nav search `min(560px, 65vw - 200px)`), so page content neither overlaps nor
+  leaves a gap. The ≤1100 px overlay (420 px) and full-screen mobile width are
+  unchanged, and the left-side layout is untouched.
+
+### Next — P4 A/HK backfill (or remaining P3.4)
 
 ### P3.4 UX v3 — done 2026-10-29
 

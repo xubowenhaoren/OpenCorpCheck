@@ -561,11 +561,11 @@
   .app-shell { transition: padding-right 280ms cubic-bezier(.2, .7, .2, 1); }
   /* The sidebar reserves space by reducing the available width. The page keeps
      its own column structure; it must never reflow into a single column. */
-  body.ask-open .app-shell { padding-right: 420px; }
+  body.ask-open .app-shell { padding-right: 35vw; }
   .nav-links, .nav-actions, .nav-search { transition: opacity .18s ease, max-width .28s ease; }
   body.ask-open .nav-links,
   body.ask-open .nav-actions { opacity: 0; pointer-events: none; }
-  body.ask-open .nav-search { max-width: min(560px, calc(100vw - 620px)); }
+  body.ask-open .nav-search { max-width: min(560px, calc(65vw - 200px)); }
 
   .ask-fab {
     position: fixed; z-index: 50;
@@ -583,7 +583,7 @@
   .scrim { position: fixed; inset: 0; z-index: 70; background: rgba(0, 0, 0, .35); }
   .ask-sidebar {
     position: fixed; top: 0; right: 0; bottom: 0; z-index: 35;
-    width: 420px; display: flex; flex-direction: column;
+    width: 35vw; display: flex; flex-direction: column;
     background: var(--bg-elev); border-left: 1px solid var(--line);
     box-shadow: -18px 0 44px rgba(0, 0, 0, .12);
     transform: translateX(100%);
