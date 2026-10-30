@@ -602,10 +602,10 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     twice, then `needs_review`. The UI shows aggregate progress only, never
     reviewer internals or fake success.
 33. **One shared task dock for news and research** (decision 2026-10-30): both
-    workflows report into the same top-right downloader-style UI, distinguished
-    by a task-kind badge (`更新新闻` / `公司数据获取`). Do not build separate
-    progress widgets. A standalone prototype with mock data must be approved
-    before the production component and API wiring.
+    workflows report into the same **top-nav** control (last item after `EN` /
+    `深色`), distinguished by a task-kind badge (`更新新闻` / `公司数据获取`).
+    Do not build separate progress widgets. A standalone prototype with mock
+    data must be approved before the production component and API wiring.
 
 ---
 
@@ -699,7 +699,7 @@ Stage 2 — automatic stale sweep:
    real sweep; the page-entry call only nudges it.
 3. TTL: `OCC_NEWS_REFRESH_TTL_MS`, default 24 h. Respect Google News terms: one
    request per company, reuse `newsConcurrency`, per-domain rate limits.
-4. UI: **reuse the shared top-right task dock** (defined in Next 2) with task
+4. UI: **reuse the shared top-nav task dock** (defined in Next 2) with task
    kind `news_refresh`. Do not build a separate news progress widget: the dock
    shows one group “更新新闻 · 42 家公司” with per-company subtasks and the
    same completed/failed states as research.
@@ -774,12 +774,13 @@ Reviewer agent (after research + ingest):
 - The reviewer is **hidden in the UI**; only aggregate status, counts and token
   usage appear in the progress dock.
 
-Shared task dock (top-right; used by **both** news refresh and company research):
+Shared task dock (top nav, last control after `EN` / `深色`; used by **both** news refresh and company research):
 
-- One global `<TaskDock>` mounted in the app shell, visible across routes. It is
-  visually modeled on the browser download bubble (Chrome/Chrono): a circular
-  top-right button with a progress ring, opening a compact card anchored under
-  it. It is **not** a per-page widget and there is only one of it.
+- One global `<TaskDock>` mounted in the **top navigation**, as the last control
+  after `EN` and `深色`, visible across routes. It is visually modeled on the
+  browser download bubble (Chrome/Chrono): the circular button sits inline in
+  the nav and opens a compact card anchored under it, right-aligned. It is
+  **not** a per-page widget and there is only one of it.
 - Every dock item carries a **task kind badge** so the two workflows share the
   UI without ambiguity:
   - `news_refresh` — badge “更新新闻”, newspaper icon. One group per sweep:
@@ -809,10 +810,10 @@ Shared task dock (top-right; used by **both** news refresh and company research)
   horizontal scroll.
 
 **Prototype first (required).** Before wiring the API, build a standalone
-prototype of this dock with mock data for approval: top-right button, popover,
-both task kinds, mixed running/completed/failed/needs-review states, expandable
-subtasks, filters, light/dark and phone width. Do not start the production
-component until the prototype is approved.
+prototype of this dock with mock data for approval: nav button after `EN` /
+`深色`, popover, both task kinds, mixed running/completed/failed/needs-review
+states, expandable subtasks, filters, light/dark and phone width. Do not start
+the production component until the prototype is approved.
 
 Acceptance:
 
