@@ -601,6 +601,11 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     review checks evidence and completeness; `revise` re-runs research at most
     twice, then `needs_review`. The UI shows aggregate progress only, never
     reviewer internals or fake success.
+33. **One shared task dock for news and research** (decision 2026-10-30): both
+    workflows report into the same top-right downloader-style UI, distinguished
+    by a task-kind badge (`更新新闻` / `公司数据获取`). Do not build separate
+    progress widgets. A standalone prototype with mock data must be approved
+    before the production component and API wiring.
 
 ---
 
@@ -694,8 +699,10 @@ Stage 2 — automatic stale sweep:
    real sweep; the page-entry call only nudges it.
 3. TTL: `OCC_NEWS_REFRESH_TTL_MS`, default 24 h. Respect Google News terms: one
    request per company, reuse `newsConcurrency`, per-domain rate limits.
-4. Optional UI: a small top-right chip “新闻更新中 3/42”; never blocking and
-   not required for acceptance.
+4. UI: **reuse the shared top-right task dock** (defined in Next 2) with task
+   kind `news_refresh`. Do not build a separate news progress widget: the dock
+   shows one group “更新新闻 · 42 家公司” with per-company subtasks and the
+   same completed/failed states as research.
 
 Acceptance:
 
@@ -767,18 +774,45 @@ Reviewer agent (after research + ingest):
 - The reviewer is **hidden in the UI**; only aggregate status, counts and token
   usage appear in the progress dock.
 
-Progress UI (top-right, downloader-style):
+Shared task dock (top-right; used by **both** news refresh and company research):
 
-- A global task dock, visible across routes, modeled on a download manager
-  (e.g. Chrono): collapsed pill shows overall `12/37 · 32%` plus a spinner;
-  expanding shows one row per company with ticker/name, state, an indeterminate
-  or step-based bar, elapsed time and error reason.
-- Data source: poll `GET /v1/runs/:runId` (or a progress endpoint) every 1–2 s
-  while open; optionally SSE later. Polling is DB/API only — no LLM.
-- Closing/minimizing the dock does not cancel jobs. A “全部完成” summary
-  appears when the run settles; failures remain listed.
+- One global `<TaskDock>` mounted in the app shell, visible across routes. It is
+  visually modeled on the browser download bubble (Chrome/Chrono): a circular
+  top-right button with a progress ring, opening a compact card anchored under
+  it. It is **not** a per-page widget and there is only one of it.
+- Every dock item carries a **task kind badge** so the two workflows share the
+  UI without ambiguity:
+  - `news_refresh` — badge “更新新闻”, newspaper icon. One group per sweep:
+    “更新新闻 · 42 家公司”, subtasks are companies; completion summary is
+    “已更新 128 条 · 3 家失败”.
+  - `company_research` — badge “公司数据获取” (single company) or “全量公司
+    数据获取” (batch), building icon. Subtasks are companies with stages
+    queued/running/reviewing; completion summary is “37 家已收录 · 1 家待复核”.
+- Collapsed button: ring shows aggregate progress; a small count badge appears
+  when tasks are active. Expanded card header: overall `12/37 · 32%`, filter
+  tabs “全部 / 新闻更新 / 公司数据”, and a “查看全部任务” footer.
+- Each row: kind badge, title (company name/ticker or “更新新闻 · 42 家”),
+  status line (`更新中 12/42 · 28%`, `已完成 — 128 条`, `2 家需要重试`),
+  a determinate or step-based progress bar, elapsed time, and a chevron to
+  expand per-company subtasks. A failed/needs-review row keeps its error reason
+  and a retry action; clicking a company row navigates to `/c/:ticker`.
+- States: `queued`, `running`, `completed`, `partial`, `failed`,
+  `needs_review`. Color encodes state (semantic, not accent-only); text always
+  names the state too. Use `role="progressbar"` with `aria-valuenow` and a
+  polite live region for completion; respect `prefers-reduced-motion`.
+- Data source: one polling manager per active run (`GET /v1/runs/:runId` every
+  1–2 s while the dock is open; slower when collapsed), optionally SSE later.
+  Polling is DB/API only — no LLM. Closing/minimizing the dock does not cancel.
 - When the company the user is viewing becomes `ready`, invalidate the company
   query so the placeholder flips to the full profile without a manual reload.
+- Mobile: the card becomes a full-width sheet under the header; never causes
+  horizontal scroll.
+
+**Prototype first (required).** Before wiring the API, build a standalone
+prototype of this dock with mock data for approval: top-right button, popover,
+both task kinds, mixed running/completed/failed/needs-review states, expandable
+subtasks, filters, light/dark and phone width. Do not start the production
+component until the prototype is approved.
 
 Acceptance:
 
@@ -1013,6 +1047,8 @@ and a UI smoke suite.
       pages and direct `/c/:ticker` show the 未收录 state.
 - [ ] Placeholder CTA: one job per company, dock shows progress, reviewer pass
       flips the page to the full profile, `revise` is capped at 2 cycles.
+- [ ] Shared task dock prototype approved (both task kinds, mixed states,
+      light/dark, phone width) before building the production component.
 - [ ] A/HK **bulk backfill** plan is STAR 50 + ChiNext 50 + HSI; SPX stays
       on-demand only (placeholder + user-triggered research), not bulk.
 - [ ] Do not write `deepseek-v4-pro` back into any config.
