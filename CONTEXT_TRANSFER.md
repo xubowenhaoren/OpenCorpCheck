@@ -11,9 +11,20 @@
 > cards on reload, clock-button history popover), and **ACP `session/resume`
 > complete** (2026-10-30: API restart / idle dispose resumes the same dsh
 > session, log and model memory; failure falls back with a yellow notice).
-> **Next: P4 backfill (STAR 50 + ChiNext 50 + HSI)** (see §10). The P3.4
-> first-class sub-agent card is **deferred — not needed for this project**
-> (2026-10-30); `deep_research` stays a tool card.
+> **Next (in order, planned 2026-10-30)**: (1) **news auto-update** — stage 1
+> per-company “刷新新闻” button, stage 2 stale-timestamp sweep on page entry;
+> (2) **A500 + S&P 500 placeholder coverage + headless batch research
+> pipeline/worker pool** with a reviewer loop. Then P4 A/HK bulk backfill. See
+> §10. The P3.4 first-class sub-agent card is **deferred — not needed for this
+> project** (2026-10-30); `deep_research` stays a tool card.
+>
+> **Scope change (2026-10-30, planned)**: placeholder coverage expands to
+> **CSI A500 (中证A500, 000510) + S&P 500 (SPX)**. Every constituent not already
+> in the DB gets a stub company page storing only ticker + Chinese/English
+> name + index membership. The earlier “S&P 500 backfill cancelled” still
+> applies to **bulk backfill**: SP500 data is fetched **on demand** through the
+> batch research pipeline. P4 bulk backfill (STAR50 + ChiNext50 + HSI) is
+> unchanged.
 >
 > **Scope change (2026-10-29)**: A-share backfill = **STAR 50 (科创50, 000688) +
 > ChiNext 50 (创业板50, 399673)**. Hang Seng backfill unchanged. **S&P 500 (SPX)
@@ -35,17 +46,23 @@ OpenCorpCheck is an open, agentic, provenance-first company intelligence store.
 Every number/relation should link back to a source; the agent can propose facts
 but cannot write verified data directly.
 
-**v1 universe** (~280 deduplicated companies, plus an AI watchlist and
-on-demand private companies):
+**v1 universe** (~280 research-filled companies, ~1,000 placeholder rows,
+plus an AI watchlist and on-demand private companies):
 
 | Index | Code | Market | Status |
 |---|---|---|---|
-| STAR 50 / 科创50 | `000688` | A (SSE) | planned (P4) |
-| ChiNext 50 / 创业板50 | `399673` | A (SZSE) | planned (P4) |
-| Hang Seng Index | `HSI` | HK | planned (P4), unchanged |
+| CSI A500 / 中证A500 | `000510` | A | **placeholder (planned)**: stub pages, on-demand research |
+| S&P 500 | `SPX` | US | **placeholder (planned)**: stub pages, on-demand research |
+| STAR 50 / 科创50 | `000688` | A (SSE) | planned bulk backfill (P4) |
+| ChiNext 50 / 创业板50 | `399673` | A (SZSE) | planned bulk backfill (P4) |
+| Hang Seng Index | `HSI` | HK | planned bulk backfill (P4), unchanged |
 | NASDAQ-100 | `NDX` | US | **done**: 100 companies backfilled |
 
-- S&P 500 was dropped from the v1 backfill plan (token/time saving).
+- S&P 500 remains **cancelled for bulk backfill**; it is covered by placeholder
+  pages and user-triggered on-demand research only.
+- Placeholder rows are intentionally minimal: ticker, Chinese/English name,
+  market and index membership. No profile, documents, financials or embeddings
+  until the user requests research.
 - AI watchlist (~24 names: OpenAI, Anthropic, DeepSeek, Moonshot/Kimi, Zhipu,
   MiniMax, ByteDance, Huawei, …) lives in [`config/universe.yaml`](config/universe.yaml).
 - The product is exposed through a web UI, CLI, MCP server and a DeepSeek
@@ -254,6 +271,9 @@ Known limitations:
 - Many NDX companies have `sector = null`; the index page shows `—`.
 - English mode translates UI chrome only; company descriptions stay as sourced.
 - Hot companies are a static front-end list; there is no admin backend.
+- News is a static DB snapshot: no refresh button and no automatic stale sweep
+  yet; ingestion is CLI/worker-only (planned in §10 Next 1). The source is
+  Google News RSS, not agentic search, so a refresh costs 0 DeepSeek tokens.
 - No web unit tests beyond trajectory helpers; acceptance is currently
   Playwright/manual.
 - Production static hosting (API/nginx same-origin) is still TODO.
@@ -482,6 +502,9 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
   upload failures warn but do not block ingestion.
 - **News** (`packages/sources/news`): Google News RSS, link-only, ~10 items /
   company / 30 days, `doc_type='news'`. No full-text fetch or redistribution.
+  Ingestion is deterministic and LLM-free; today it runs only through the
+  `news.company` worker queue (`occ-backfill enqueue news`). Manual refresh and
+  stale sweep are §10 Next 1.
 - **F10** (`services/finance-analyst` + `packages/sources/eastmoney-f10`):
   A/HK/US structured pages, per-domain rate limits, table/XHR extraction,
   2 MB cap, retries + jitter. Eastmoney data is for internal demo + attribution.
@@ -559,6 +582,25 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     not need it; `deep_research` remains a normal tool card. Treat it as
     deferred permanently for v1, not as missing work. This does not affect
     child-session replay/resume, which is separately out of scope.
+28. **News refresh is RSS-only and LLM-free** (decision 2026-10-30): the
+    refresh path reuses the Google News RSS adapter and local embeddings, so it
+    costs **0 DeepSeek tokens**. No summarization/review agent in this path;
+    add AI summaries as a separate, explicitly opt-in feature later.
+29. **News refresh is idempotent and server-deduped**: one active news run per
+    company; stage 2 stale sweeps run server-side and multiple browser tabs
+    only nudge them. Track `news_updated_at` per company; TTL is configurable.
+30. **Placeholders are first-class rows, not seed data**: `coverage_tier='stub'`
+    + `is_placeholder=true`, only ticker + Chinese/English names + index
+    membership. They are excluded from default semantic search, listed on index
+    pages and reachable by direct `/c/:ticker`; never overwrite a real profile.
+31. **Batch research uses our own durable queue, not a DSH batch plugin**
+    (decision 2026-10-30): pg-boss is the queue/retry/progress store and a
+    worker pool runs one `dsh --profile headless` process per company. The DSH
+    ecosystem has no production-grade batch pipeline; do not add one.
+32. **Reviewer is a second agent with a bounded loop**: a hidden headless
+    review checks evidence and completeness; `revise` re-runs research at most
+    twice, then `needs_review`. The UI shows aggregate progress only, never
+    reviewer internals or fake success.
 
 ---
 
@@ -587,6 +629,11 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 | News ingestion says `company not found` | Ingest the company profile first. |
 | Google News RSS is link-only, ~10/company | Don’t fetch/redistribute full text; add a separate adapter for bodies. |
 | News rerun shows `skipped=5` | Idempotent title+summary sha256; not a failure. |
+| “刷新新闻”完成但 UI 不变 | News events come from `documents` via `listEvents`; invalidate the company query after the run completes instead of relying on a cached response. Do not pass `force=true` for unchanged items. |
+| Two tabs trigger two news refreshes | Server-side dedupe with one active run per company; the page-entry call is only a nudge, not the scheduler. |
+| Placeholder companies pollute search | Default search excludes `is_placeholder`; index pages/direct routes include them with a “未收录” badge. |
+| Reviewer/research loop never ends | Cap at 2 revise cycles, then `needs_review`; every attempt is logged. Never retry unbounded. |
+| Tempted to add a DSH batch plugin | Don’t. pg-boss + worker already provide durability, retries, concurrency and progress; DSH is only the per-company executor. |
 | `pnpm -r test` hits `ENOTEMPTY` on `.vitest-cache` | Run with `--workspace-concurrency=1`. |
 | API holds a pg-boss connection | Stop with SIGTERM; `kill -9` can leave jobs active until expiry. |
 | Same chat session after idle | Memory lives in dsh; idle dispose/restart resumes the persisted session, so context survives. If resume fails, expect the yellow `agent.resume.failed` notice. |
@@ -601,6 +648,156 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 ---
 
 ## 10. Next tasks
+
+### Next 1 — News auto-update (planned; implement first)
+
+**Source facts (verified 2026-10-30).** The news tab is **Google News RSS**, not
+agentic search: [`packages/sources/news/src/google-news.ts`](packages/sources/news/src/google-news.ts)
+fetches `news.google.com/rss/search` (one request per company, 10 items / 30
+days, link-only, no article bodies). [`packages/ingest/src/news.ts`](packages/ingest/src/news.ts)
+writes `documents(doc_type='news')` + one chunk + one source row and indexes
+the chunk; it is idempotent by title+snippet hash. The UI reads
+[`listEvents`](packages/db/src/repositories/insights.ts) from Postgres. **The
+refresh path must stay LLM-free: 0 DeepSeek tokens; only local BGE-M3 embedding,
+and unchanged items skip embedding.**
+
+Stage 1 — manual refresh (per company):
+
+1. Add a **刷新新闻** button to the News tab header
+   ([`CompanyNews.tsx`](apps/web/src/components/CompanyNews.tsx)); states
+   `idle → refreshing → done | error`, disabled while a refresh is active.
+2. New API: `POST /v1/companies/:ref/news/refresh`.
+   - Resolve the company; reject fixtures and placeholders (no profile → no news).
+   - Deduplicate: if an active/recent news run for this company exists, return
+     it instead of enqueueing a second job (unique run/job key per company +
+     window).
+   - Enqueue the existing `news.company` pg-boss queue (2 retries, polite RSS);
+     respond `202 { runId, status }`.
+3. Persist a company-level timestamp on success (and on a successful empty
+   check): add `companies.news_updated_at` (or a small
+   `company_refresh_state` table). This is also the stage-2 input.
+4. UI polls the run (`GET /v1/runs/:runId` or a dedicated news status endpoint)
+   every ~1 s while visible; on `completed` invalidate the company query so the
+   list re-renders without a reload. Toast: “已更新 N 条” / “已是最新” / error.
+5. Do not pass `force=true` for normal refreshes: unchanged articles must not
+   re-embed.
+
+Stage 2 — automatic stale sweep:
+
+1. On entering any page, the client calls `POST /v1/news/refresh` (cheap,
+   idempotent). The server selects companies with
+   `news_updated_at < now() - ttl` (exclude fixtures/placeholders), caps the
+   sweep (`OCC_NEWS_REFRESH_BATCH`, e.g. 50), and enqueues one `news` run with
+   one job per stale company.
+2. **The server owns dedupe** (advisory lock / unique run per sweep); multiple
+   tabs must not fan out. A pg-boss schedule (e.g. every 15 min) should do the
+   real sweep; the page-entry call only nudges it.
+3. TTL: `OCC_NEWS_REFRESH_TTL_MS`, default 24 h. Respect Google News terms: one
+   request per company, reuse `newsConcurrency`, per-domain rate limits.
+4. Optional UI: a small top-right chip “新闻更新中 3/42”; never blocking and
+   not required for acceptance.
+
+Acceptance:
+
+- Manual refresh shows new items without a full reload; unchanged refresh is a
+  clear no-op (“已是最新”).
+- Two clicks / two tabs produce one job.
+- Stage 2 enqueues stale companies once after TTL; a second page entry before
+  TTL does nothing.
+- No DeepSeek API call anywhere in the refresh path; embeddings are local.
+
+### Next 2 — A500 + S&P 500 placeholders + headless batch research pipeline (after Next 1)
+
+**Scope.** Add index snapshots `config/indices/a500.yaml` (CSI A500, `000510`)
+and `config/indices/sp500.yaml` (`SPX`), each with `as_of`, optional weights and
+license/source. `occ indices sync` (new command) inserts a **placeholder** row
+for every constituent not already resolvable by ticker+exchange/name. A real
+profile is never overwritten.
+
+Placeholder row:
+
+- `companies.coverage_tier='stub'`, `is_placeholder=true`, market,
+  `display_name`, `name_en` / `name_zh` (or aliases when one language is
+  unknown), `profile={}`.
+- `index_memberships` rows for `A500` / `SPX` with `as_of`.
+- **No** documents, chunks, financials, embeddings or profile sections.
+- Default semantic search excludes placeholders; index pages and direct
+  `/c/:ticker` routes include them. An exact ticker/name match may show a row
+  with a “未收录” badge.
+
+Placeholder page:
+
+- `/c/:ref` resolves the ticker; render names, ticker, market, index/weight and
+  a “尚未收录” state with a **获取公司相关数据** CTA. Other tabs stay empty
+  (no fake data).
+- The CTA calls `POST /v1/companies/:ref/research`:
+  - if an active research job exists, return it (one job per company);
+  - otherwise enqueue `research.company`, write `company_research_state`
+    (`queued`), and return `{ runId, status }`.
+- Button states: `获取公司相关数据 → 排队中 → 研究中 → 已完成`; the page
+  auto-refreshes (query invalidation) when the state becomes `ready`.
+
+Pipeline and worker pool:
+
+- **Do not adopt a DSH batch plugin.** The durable queue and worker pool are
+  already [`pg-boss`](packages/jobs/src/queues.ts) + [`apps/worker`](apps/worker);
+  DSH is the executor only: one `dsh --profile headless` process per company via
+  [`runDshResearch`](apps/worker/src/research/dsh.ts).
+- State machine per company: `queued → running → reviewing → ready`, with
+  terminal `failed` / `needs_review`. Store it in a small
+  `company_research_state` table (company_id PK, status, run_id, attempts,
+  review_attempts, last_error, requested_at, updated_at); keep the detailed
+  run/checkpoint rows in the existing run store.
+- Retries/timeouts: pg-boss `retryLimit` + exponential backoff; the dsh turn
+  timeout; no unbounded loops. One active job per company (unique key).
+- Worker concurrency: configurable (start 2–4) to respect model/API rate limits;
+  queue backpressure rather than unbounded fan-out.
+
+Reviewer agent (after research + ingest):
+
+- Enqueue `review.company` (new queue) or run it as a second phase of the same
+  job. It is a second **headless dsh** run with a checklist prompt: numbers
+  match cited sources, relations have evidence, no unsupported claims, required
+  profile sections present.
+- Structured output:
+  `{ verdict: "pass" | "revise", issues: [{field, reason, evidence}], fix_instructions }`.
+- `pass` → mark `ready`; `revise` → re-enqueue research with the feedback,
+  **max 2 review cycles**, then `needs_review`; `needs_review` is visible to the
+  operator (review queue/logs), not as a fake success.
+- The reviewer is **hidden in the UI**; only aggregate status, counts and token
+  usage appear in the progress dock.
+
+Progress UI (top-right, downloader-style):
+
+- A global task dock, visible across routes, modeled on a download manager
+  (e.g. Chrono): collapsed pill shows overall `12/37 · 32%` plus a spinner;
+  expanding shows one row per company with ticker/name, state, an indeterminate
+  or step-based bar, elapsed time and error reason.
+- Data source: poll `GET /v1/runs/:runId` (or a progress endpoint) every 1–2 s
+  while open; optionally SSE later. Polling is DB/API only — no LLM.
+- Closing/minimizing the dock does not cancel jobs. A “全部完成” summary
+  appears when the run settles; failures remain listed.
+- When the company the user is viewing becomes `ready`, invalidate the company
+  query so the placeholder flips to the full profile without a manual reload.
+
+Acceptance:
+
+- A500 + SPX seed: constituent count minus already-present companies; no
+  duplicate slugs/tickers; existing real profiles untouched; placeholders have
+  no documents/embeddings.
+- Placeholder page CTA → one job → dock row updates through
+  queued/running/reviewing; on pass the page becomes a full profile.
+- Reviewer `revise` triggers exactly one bounded retry cycle; repeated failure
+  ends in `needs_review` and is logged.
+- Two tabs/clicks on the same placeholder produce one job.
+- No reviewer internals or raw JSON in the UI.
+
+Token discipline:
+
+- News refresh: **0 DeepSeek tokens**.
+- Research: one headless run per company, only on user request; reviewer adds
+  one run per attempt; at most 2 revisions. **No bulk pre-research of A500/SPX.**
+- Progress polling and page refreshes never call an LLM.
 
 ### Wider agent sidebar — done 2026-10-29
 
@@ -807,7 +1004,17 @@ and a UI smoke suite.
       replay of the same id shows 2 turns; history shows 1 row.
 - [ ] Resume failure shows the yellow `agent.resume.failed` notice between the
       question and the answer, then answers normally (do not fail the prompt).
-- [ ] A/HK backfill plan is STAR 50 + ChiNext 50 + HSI; **SPX is not planned**.
+- [ ] News stage 1: “刷新新闻” updates the tab without a reload; unchanged run
+      says “已是最新”; two clicks/tabs produce one job; no DeepSeek tokens.
+- [ ] News stage 2: entering a page after the TTL enqueues each stale company
+      once; before the TTL it does nothing.
+- [ ] A500 + SPX placeholders: constituent counts match minus existing
+      companies; no documents/embeddings; default search excludes them; index
+      pages and direct `/c/:ticker` show the 未收录 state.
+- [ ] Placeholder CTA: one job per company, dock shows progress, reviewer pass
+      flips the page to the full profile, `revise` is capped at 2 cycles.
+- [ ] A/HK **bulk backfill** plan is STAR 50 + ChiNext 50 + HSI; SPX stays
+      on-demand only (placeholder + user-triggered research), not bulk.
 - [ ] Do not write `deepseek-v4-pro` back into any config.
 - [ ] Do not commit keys, tokens, cookies, or `.env`.
 
