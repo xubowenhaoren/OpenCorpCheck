@@ -11,8 +11,9 @@
 > cards on reload, clock-button history popover), and **ACP `session/resume`
 > complete** (2026-10-30: API restart / idle dispose resumes the same dsh
 > session, log and model memory; failure falls back with a yellow notice).
-> **Next: P4 backfill (STAR 50 + ChiNext 50 + HSI)** or the remaining P3.4
-> sub-agent card (see §10).
+> **Next: P4 backfill (STAR 50 + ChiNext 50 + HSI)** (see §10). The P3.4
+> first-class sub-agent card is **deferred — not needed for this project**
+> (2026-10-30); `deep_research` stays a tool card.
 >
 > **Scope change (2026-10-29)**: A-share backfill = **STAR 50 (科创50, 000688) +
 > ChiNext 50 (创业板50, 399673)**. Hang Seng backfill unchanged. **S&P 500 (SPX)
@@ -405,8 +406,9 @@ orchestration (pre-inject the company card) instead of relying on the prompt.
   8 domains / links; no console errors.
 - No raw JSON, token stream or `thought.delta`; animations respect
   `prefers-reduced-motion`.
-- `deep_research` is still only a tool card; a first-class sub-agent card with
-  `get_run` polling and nested trajectory is not implemented.
+- `deep_research` stays a tool card. A first-class sub-agent card with
+  `get_run` polling and nested trajectory is **deferred (2026-10-30): not
+  needed for this project**, so there is nothing pending there.
 
 ### Session persistence and replay (2026-10-30)
 
@@ -553,6 +555,10 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     and emit `agent.resume.failed` before `run.started`; the web renders it as
     a yellow box between the question and the answer. Do not claim the previous
     context survived.
+27. **No first-class sub-agent card** (decision 2026-10-30): this project does
+    not need it; `deep_research` remains a normal tool card. Treat it as
+    deferred permanently for v1, not as missing work. This does not affect
+    child-session replay/resume, which is separately out of scope.
 
 ---
 
@@ -743,7 +749,9 @@ tests.
 
 ### P3.4 remaining
 
-- First-class sub-agent card for `deep_research`/`get_run` with nested steps.
+- ~~First-class sub-agent card for `deep_research`/`get_run` with nested steps.~~
+  **Deferred 2026-10-30 — not needed for this project.** `deep_research` stays
+  a tool card; do not re-propose it as roadmap work.
 - **Replay + resume done** (read dsh's log; ACP `session/resume` for memory).
   New turns stay on one continuous session/log; sessions split before
   2026-10-30 remain split (a persisted alias chain is optional cleanup). Child

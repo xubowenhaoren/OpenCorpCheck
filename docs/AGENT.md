@@ -240,9 +240,9 @@ answer.
 - Animations respect `prefers-reduced-motion`; while live the title is a polite
   `role="status"` live region and the ticking stats are `aria-hidden` to avoid
   screen-reader chatter.
-- `deep_research` still appears as a tool card; a first-class sub-agent card
-  with `get_run` progress polling is still reserved (see
-  [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §6 P3.4).
+- `deep_research` stays a tool card. A first-class sub-agent card with
+  `get_run` progress polling is **deferred (2026-10-30: not needed for this
+  project)**; see [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §8 decision 27.
 
 ### Session persistence and replay (2026-10-30)
 
@@ -372,16 +372,17 @@ Markdown chunk 162.7 KB (gzip 49 KB); CSS 45.5 KB (gzip 9.3 KB).
   limit notice.
 - The live activity panel replaced the permanent collapsed block: each tool
   call appears transiently, finished groups fold to one line, repeated calls
-  merge, and the answer starts with a single summary line. Event persistence,
-  replay and a first-class sub-agent card are still reserved.
+  merge, and the answer starts with a single summary line. Event persistence
+  and replay are implemented; a first-class sub-agent card is **deferred (not
+  needed for v1, 2026-10-30)**.
 - **Trajectory is client-side while live; replay reads dsh's log.**
   Tool cards, plan and the source ledger are built from the live SSE stream;
   dsh persists the underlying events, and
   `GET /v1/agent/sessions/{id}/replay` folds them back into the same cards on
   reload (see “Session persistence and replay”). `thought.delta` is deliberately
   not rendered. A first-class sub-agent card (deep-research job status via
-  `get_run`, nested tool timeline) is still reserved in
-  [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §6 P3.4.
+  `get_run`, nested tool timeline) is **deferred — not needed for v1**
+  ([`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §8 decision 27).
 - `additionalDirectories`, client filesystem, terminals and elicitation are not
   advertised; dsh rejects additional directories by design.
 - **Separate DSH_HOME is mandatory.** The ACP profile stores zstd-compressed
