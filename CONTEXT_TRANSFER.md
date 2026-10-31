@@ -123,6 +123,10 @@ node apps/worker/dist/cli.js states --limit 100
 # queue depth / pending jobs
 node apps/worker/dist/cli.js status --json | jq '.counts'
 
+# are the workers and gateway still alive?
+ps aux | grep 'apps/worker/dist/cli.js work' | grep -v grep
+lsof -nP -iTCP:4010 -sTCP:LISTEN
+
 # HSI members and reported edges
 psql postgres://occ@127.0.0.1:5432/occdb -c \
   "select count(*) from index_memberships where index_code='HSI' and as_of='2026-10-31';"
