@@ -106,7 +106,8 @@ node apps/worker/dist/nim-gateway-server.js
   episodic NIM 500 that escaped the gateway. pg-boss has a retry pending; a
   failed row with `retry`/`attempts` is not terminal. Do not “fix” it by
   re-enqueueing the universe.
-- `relations.status='reported'`: **4** (CK group edges; see §2 verified list).
+- `relations.status='reported'`: **4** (CK group + 恒基兆业地产→香港中华煤气; see
+  §2 verified list).
 - `index_memberships` HSI `as_of=2026-10-31`: **7** (grows as batch completes).
 - The `research.company` retry count can rise from NIM 500s; only dead-lettered
   jobs (`*.dead`) or a run with `failed_jobs > 0` need operator action.
@@ -168,6 +169,7 @@ names. Report the final counts, not a claim that every company passed review.
 - `76aa5c2` research prompt: verify cited URLs / strip process residue
 - `51caabf` handoff: HSI cross-holding edges and batch run
 - `5358580` jobs: reset research state counters on a new queued run
+- `95395a0` handoff: live HSI batch supervision state
 
 ---
 
