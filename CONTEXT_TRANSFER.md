@@ -166,9 +166,10 @@ Verified this round (2026-10-31):
   quality gate; the profile is still ingested and visible.
 - F10 shareholder parsing verified against the real `00006` page: 长江基建
   (`01038`) and 长江和记 (`00001`) resolve to `invests_in` edges at 36.01%.
-  The live cross-holding pilot also wrote a real edge from `01038`'s page:
-  **长江和记 owns 75.67% of 长江基建** (`status='reported'`, evidence quote +
-  F10 URL + review item).
+  The live cross-holding pilot also wrote real `reported` edges:
+  **长江和记 owns 75.67% of 长江基建**, and **长江和记 / 长江基建 each
+  invest_in 電能實業 (36.01%)** — with evidence quotes, F10 URLs and review
+  items.
 - Reviewer with the stricter prompt/content checklist now has only
   web search/fetch tools; file/shell/sub-agent tools are disabled.
 
