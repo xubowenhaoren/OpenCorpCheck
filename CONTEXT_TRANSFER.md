@@ -65,7 +65,7 @@
 |---|---|---|
 | `86264` | 13:16 | cross-holding pilot worker (`work --queues research,ingest,review,f10 --drain`); **owns the NIM gateway on :4010** |
 | `88701` | 13:26 | full HSI batch worker; `OCC_RESEARCH_CONCURRENCY=2`, `OCC_INGEST_CONCURRENCY=2`, `OCC_REVIEW_CONCURRENCY=1` |
-| `89118` | 13:28 | shell waiter: polls :4010, then `exec node apps/worker/dist/nim-gateway-server.js` |
+| `89118` | 13:28 | shell waiter: polls :4010, then `exec node apps/worker/dist/nim-gateway-server.js` — **exited 14:13 (code 144); no standalone gateway is running** |
 
 Do **not** start a third worker without checking :4010. If the cross worker
 exits first, the waiter binds the standalone gateway within ~2 s; the batch
@@ -88,6 +88,10 @@ without retries), start it manually:
 ```bash
 node apps/worker/dist/nim-gateway-server.js
 ```
+
+If you switch the worker default to official DeepSeek
+(`OCC_LLM_PROVIDER=deepseek`), no gateway is needed: rebuild, restart the
+worker once, and it applies `phase0/dsh-deepseek.patch.yml`.
 
 ### 0.2 Runs
 
