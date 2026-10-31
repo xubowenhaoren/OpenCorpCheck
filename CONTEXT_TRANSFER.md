@@ -55,7 +55,7 @@
 
 ## 0. LIVE STATE — HSI backfill in progress (read first)
 
-> Snapshot: **2026-10-31 13:39 PT**. This section is authoritative for the
+> Snapshot: **2026-10-31 13:47 PT**. This section is authoritative for the
 > in-flight batch; later numbers will change. The next agent's job is to
 > **supervise, not re-enqueue**.
 
@@ -98,19 +98,20 @@ node apps/worker/dist/nim-gateway-server.js
 
 ### 0.3 Counts at snapshot
 
-- research queue: `created=76 retry=1 active=6 completed=127` (all runs)
-- ingest queue: `completed=119`, no active
-- review queue: `completed=14 active=1`
-- `company_research_state`: `running=14 reviewing=1 queued=68 needs_review=1 failed=1`
-- `HK:00101` is **failed** with `dsh: PI_AI_ERROR: Internal server error` — an
-  episodic NIM 500 that escaped the gateway. pg-boss has a retry pending; a
-  failed row with `retry`/`attempts` is not terminal. Do not “fix” it by
-  re-enqueueing the universe.
-- `relations.status='reported'`: **4** (CK group + 恒基兆业地产→香港中华煤气; see
-  §2 verified list).
-- `index_memberships` HSI `as_of=2026-10-31`: **7** (grows as batch completes).
+- research queue (all runs): `created=77 retry=0 active=6 completed=128`
+- ingest queue: `completed=120`, no active
+- review queue: `completed=15 active=1`
+- `company_research_state`: `running=16 queued=68 needs_review=1`
+- `HK:00101` hit an episodic NIM 500 (`PI_AI_ERROR`) and was **retried
+  successfully**: job attempts=2 and state is now `running`. A failed row with
+  a pending pg-boss retry is not terminal; do not re-enqueue the universe.
+- `relations.status='reported'`: **4** (CK group + 恒基兆业地产→香港中华煤气;
+  see §2 verified list).
+- `index_memberships` HSI `as_of=2026-10-31`: **8** (grows as batch completes).
 - The `research.company` retry count can rise from NIM 500s; only dead-lettered
   jobs (`*.dead`) or a run with `failed_jobs > 0` need operator action.
+- The cross-pilot revisions (`5e7da4c4-…`) are **queued at priority 30** behind
+  the full batch. They are not stuck; they will run when batch slots free.
 
 ### 0.4 Monitor commands
 
