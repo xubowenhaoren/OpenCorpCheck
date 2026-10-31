@@ -59,6 +59,30 @@
 > in-flight batch; later numbers will change. The next agent's job is to
 > **supervise, not re-enqueue**.
 
+> **14:13 update — batch is PAUSED, not finished.** Both background workers
+> (`86264`, `88701`) and the gateway exited cleanly; **no process is listening
+> on :4010**. The work is durable in pg-boss: research `created=74 retry=9
+> active=0 failed=1`, run `a19a67ba-…` shows `running` with 16 completed / 1
+> dead; `states` still lists `running=17 queued=63 failed=4 needs_review=1`
+> because the last active rows were not reconciled on exit. Those `running`
+> rows are stale; a new worker will pick the queued/retry jobs and overwrite
+> them.
+>
+> **Resume after the provider switch:** the working tree has uncommitted
+> changes in `apps/worker/src/cli.ts`, `config.ts`, `research/profiler.ts` and
+> `phase0/dsh.patch.yml` that switch the default back to official DeepSeek
+> (no gateway). Do not revert or commit them on the next agent's behalf.
+> Rebuild, then:
+>
+> ```bash
+> corepack pnpm --filter @occ/worker build
+> node apps/worker/dist/cli.js work --queues research,ingest,review,f10 --drain
+> ```
+>
+> If the default is still NIM, start `node apps/worker/dist/nim-gateway-server.js`
+> first and use `OCC_NIM_RPM=20` / `OCC_RESEARCH_CONCURRENCY=2`. Requeue the dead
+> `HK:00101` separately with `enqueue research --tickers 00101:HK --force`.
+
 ### 0.1 Running processes
 
 | PID | Started | What |
