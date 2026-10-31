@@ -95,6 +95,11 @@ Environment:
 | `OCC_F10_RELATIONS` | `on` (`none` disables) |
 | `NVIDIA_API_KEY` / `_FILE` | required for live research on NIM |
 | `DEEPSEEK_API_KEY` / `_FILE` | required for ingest/extraction and the reviewer |
+
+`occ-backfill work --queues research,...` starts the NIM gateway automatically.
+When two worker processes run at once, the second reuses the first gateway via
+`/health`; run `node apps/worker/dist/nim-gateway-server.js` if you want the
+gateway to outlive any single worker.
 | `OCC_RUNS_DIR` | `.occ/runs` |
 | `OCC_WORKER_SECTIONS_DIR` | `.occ/sections` (falls back to `OCC_SECTIONS_DIR`) |
 | `OCC_RESEARCH_MODEL` | `deepseek-flash` |

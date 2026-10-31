@@ -39,9 +39,13 @@ export async function startNimGateway(
   options: StartOptions = {},
 ): Promise<NimGateway | null> {
   if (config.llmProvider === "deepseek") return null;
-  if (activeGateway) return activeGateway;
-
   const port = options.port ?? config.nimGatewayPort;
+  if (activeGateway) {
+    // A shared gateway may have been closed by the worker that owned it.
+    if (await probe(port).catch(() => false)) return activeGateway;
+    activeGateway = null;
+  }
+
   const upstreamUrl = (options.upstreamUrl ?? config.nimBaseUrl).replace(/\/+$/, "");
   const apiKey = options.apiKey ?? config.nvidiaApiKey;
   if (!apiKey) {
