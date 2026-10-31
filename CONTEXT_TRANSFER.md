@@ -23,8 +23,10 @@
 >
 > **Next after the HSI pilot/batch**: the `HK:00700` pilot completed research +
 > ingest + 3 reviewer cycles and ended `needs_review` with 6 real issues (the
-> gate working as designed). A 3-company cross-holding pilot (`00001` / `00006`
-> / `01038`) validates F10 ownership edges; then run the capped HSI batch.
+> gate working as designed). The 3-company cross-holding pilot (`00001` /
+> `00006` / `01038`) is still finishing reviewer revisions and has already
+> written real F10 ownership edges. **The full HSI batch (81 companies, run
+> `a19a67ba-8739-4361-833b-6887395556ad`) is live — supervise it via §0.**
 > News auto-update and A500/SPX placeholders remain §10 Next 1/2. The P3.4
 > first-class sub-agent card is **deferred — not needed for this project**;
 > `deep_research` stays a tool card.
@@ -48,6 +50,124 @@
 > Postgres 17, Qdrant 1.18, uv sidecars and Node 24. Cross-platform macOS +
 > WSL2/Linux remains a v1 requirement: no OS-specific branches, use
 > `node:path`/`URL`, and keep scripts working on Darwin and Linux.
+
+---
+
+## 0. LIVE STATE — HSI backfill in progress (read first)
+
+> Snapshot: **2026-10-31 13:39 PT**. This section is authoritative for the
+> in-flight batch; later numbers will change. The next agent's job is to
+> **supervise, not re-enqueue**.
+
+### 0.1 Running processes
+
+| PID | Started | What |
+|---|---|---|
+| `86264` | 13:16 | cross-holding pilot worker (`work --queues research,ingest,review,f10 --drain`); **owns the NIM gateway on :4010** |
+| `88701` | 13:26 | full HSI batch worker; `OCC_RESEARCH_CONCURRENCY=2`, `OCC_INGEST_CONCURRENCY=2`, `OCC_REVIEW_CONCURRENCY=1` |
+| `89118` | 13:28 | shell waiter: polls :4010, then `exec node apps/worker/dist/nim-gateway-server.js` |
+
+Do **not** start a third worker without checking :4010. If the cross worker
+exits first, the waiter binds the standalone gateway within ~2 s; the batch
+worker keeps using `127.0.0.1:4010`. If all workers/waiter are gone, resume
+with:
+
+```bash
+cd /Users/bowenxu/Downloads/Projects/OpenCorpCheck
+node apps/worker/dist/cli.js work --queues research,ingest,review,f10 --drain
+```
+
+This picks up queued/retry jobs from pg-boss. **Never re-run `enqueue research
+--universe hsi`** for the same targets — that creates a second run and duplicate
+LLM work. The batch is durable in `pgboss` + `backfill_jobs`.
+
+If the gateway is down (worker reports connection refused / `PI_AI_ERROR`
+without retries), start it manually:
+
+```bash
+node apps/worker/dist/nim-gateway-server.js
+```
+
+### 0.2 Runs
+
+| Run id | What | Status at snapshot |
+|---|---|---|
+| `a19a67ba-8739-4361-833b-6887395556ad` | **full HSI batch**, 81 targets; excludes pilots `00700,00001,00006,01038` | running |
+| `5e7da4c4-4aa8-4c28-aa41-7f8604cabc60` | cross-holding pilot `00001` / `00006` / `01038` | running (reviewer revisions) |
+| `b9d9b644-58c9-4ee1-b58a-f0401eecbc75` | `HK:00700` pilot | partial; `needs_review` after 2 revisions |
+
+### 0.3 Counts at snapshot
+
+- research queue: `created=76 retry=1 active=6 completed=127` (all runs)
+- ingest queue: `completed=119`, no active
+- review queue: `completed=14 active=1`
+- `company_research_state`: `running=14 reviewing=1 queued=68 needs_review=1 failed=1`
+- `HK:00101` is **failed** with `dsh: PI_AI_ERROR: Internal server error` — an
+  episodic NIM 500 that escaped the gateway. pg-boss has a retry pending; a
+  failed row with `retry`/`attempts` is not terminal. Do not “fix” it by
+  re-enqueueing the universe.
+- `relations.status='reported'`: **4** (CK group edges; see §2 verified list).
+- `index_memberships` HSI `as_of=2026-10-31`: **7** (grows as batch completes).
+- The `research.company` retry count can rise from NIM 500s; only dead-lettered
+  jobs (`*.dead`) or a run with `failed_jobs > 0` need operator action.
+
+### 0.4 Monitor commands
+
+```bash
+cd /Users/bowenxu/Downloads/Projects/OpenCorpCheck
+
+node apps/worker/dist/cli.js status --run a19a67ba-8739-4361-833b-6887395556ad
+node apps/worker/dist/cli.js states --limit 100
+
+# queue depth / pending jobs
+node apps/worker/dist/cli.js status --json | jq '.counts'
+
+# HSI members and reported edges
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select count(*) from index_memberships where index_code='HSI' and as_of='2026-10-31';"
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select status,count(*) from relations group by 1;"
+```
+
+### 0.5 What “normal” looks like
+
+- **NIM 500s are episodic.** The gateway retries 3×; dsh can still surface
+  `PI_AI_ERROR`, which pg-boss retries. One failed company is not a reason to
+  stop the batch.
+- **`needs_review` is success of the gate**, not a bug. The reviewer is strict
+  and finds real numeric/citation issues. Do not flip `needs_review` to
+  `ready`, and do not raise `OCC_REVIEW_MAX_CYCLES` in production.
+- **`backfill_runs.total_jobs` grows** when the reviewer enqueues another
+  research/ingest/review cycle. Use `status`/`states`, not the original 81.
+- The full batch was started with two concurrent workers; running a single
+  worker with the default `OCC_RESEARCH_CONCURRENCY=4` on resume is fine.
+- F10 page JSON under `.occ/f10/` is the source for the post-batch relations
+  pass; do not delete it.
+
+### 0.6 When the batch is done
+
+```bash
+node apps/worker/dist/cli.js status --run a19a67ba-8739-4361-833b-6887395556ad
+# expect status completed|partial, research created/active/retry = 0
+
+node apps/worker/dist/cli.js states --limit 100
+# expect ready / needs_review / failed counts; needs_review is operator work
+
+node apps/worker/dist/cli.js relations f10 --universe hsi
+# re-resolve cached F10 pages now that all HSI companies exist
+```
+
+Then verify `/v1/indices/:code` / `/indices/HSI` shows the members and spot-check
+the graph for the CK group (`00001` / `00006` / `01038`) and a few bank/insurer
+names. Report the final counts, not a claim that every company passed review.
+
+### 0.7 Commits from this round
+
+- `039a38c` HSI pipeline / NIM + Parallel / reviewer / F10 relations
+- `81260bd` standalone NIM gateway + shared-port health recheck
+- `76aa5c2` research prompt: verify cited URLs / strip process residue
+- `51caabf` handoff: HSI cross-holding edges and batch run
+- `5358580` jobs: reset research state counters on a new queued run
 
 ---
 
@@ -167,9 +287,9 @@ Verified this round (2026-10-31):
 - F10 shareholder parsing verified against the real `00006` page: 长江基建
   (`01038`) and 长江和记 (`00001`) resolve to `invests_in` edges at 36.01%.
   The live cross-holding pilot also wrote real `reported` edges:
-  **长江和记 owns 75.67% of 长江基建**, and **长江和记 / 长江基建 each
-  invest_in 電能實業 (36.01%)** — with evidence quotes, F10 URLs and review
-  items.
+  **长江和记 owns 75.67% of 长江基建**, **长江和记 / 长江基建 each
+  invest_in 電能實業 (36.01%)**, and **恒基兆业地产 invest_in 香港中华煤气
+  (41.53%)** — with evidence quotes, F10 URLs and review items.
 - Reviewer with the stricter prompt/content checklist now has only
   web search/fetch tools; file/shell/sub-agent tools are disabled.
 
