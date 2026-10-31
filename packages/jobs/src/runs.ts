@@ -434,10 +434,16 @@ export class JobStore {
        ON CONFLICT (company_id) DO UPDATE SET
          status = EXCLUDED.status,
          run_id = COALESCE(EXCLUDED.run_id, company_research_state.run_id),
-         attempts = GREATEST(company_research_state.attempts, EXCLUDED.attempts),
-         review_attempts = GREATEST(
-           company_research_state.review_attempts, EXCLUDED.review_attempts
-         ),
+         attempts = CASE
+           WHEN EXCLUDED.status = 'queued' THEN EXCLUDED.attempts
+           ELSE GREATEST(company_research_state.attempts, EXCLUDED.attempts)
+         END,
+         review_attempts = CASE
+           WHEN EXCLUDED.status = 'queued' THEN EXCLUDED.review_attempts
+           ELSE GREATEST(
+             company_research_state.review_attempts, EXCLUDED.review_attempts
+           )
+         END,
          last_error = EXCLUDED.last_error,
          review_result = COALESCE(
            EXCLUDED.review_result, company_research_state.review_result
