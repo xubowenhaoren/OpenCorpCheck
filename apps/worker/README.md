@@ -10,6 +10,7 @@ the Phase 0 pattern of running companies one at a time in one process.
 |---|---|---|
 | `research.company` | one company → one dsh headless turn | [jobs/research.ts](src/jobs/research.ts) |
 | `ingest.company` | one finished section → documents/chunks + Qdrant | [jobs/ingest.ts](src/jobs/ingest.ts) |
+| `review.company` | hidden reviewer (DeepSeek, reasoning on) + bounded revisions | [jobs/review.ts](src/jobs/review.ts) |
 | `news.company` | one company → Google News RSS → `doc_type='news'` documents | [jobs/news.ts](src/jobs/news.ts) |
 | `f10.page` | one company × one F10 page | [jobs/f10.ts](src/jobs/f10.ts) |
 | `*.dead` | exhausted jobs | marks the DB row `dead` |
@@ -20,14 +21,23 @@ the Phase 0 pattern of running companies one at a time in one process.
   cache hits). Use `--no-ingest` to disable it for a run.
 - **Extraction after ingest**: a successful ingest (including an unchanged
   `skipped` section) also runs deterministic financial/fact extraction from the
-  section markdown. Failures are logged as `extract_failed` and never fail the
+  section markdown and **structured F10 shareholder extraction** (A: `gdyj`,
+  HK: `MajorShareholder`, US: `gbgd`). F10 page JSON is cached under
+  `.occ/f10/<market>/<code>/<page>.json`. Failures are logged and never fail the
   ingest job. LLM relation extraction is opt-in with `OCC_EXTRACT_RELATIONS=llm`
-  (default `none`, so bulk backfills do not spend tokens silently).
+  (default `none`); set `OCC_F10_RELATIONS=none` to disable the F10 pass.
+- **Reviewer**: after ingest, `review.company` runs a second headless dsh turn on
+  the **official DeepSeek API with reasoning on**. `revise` re-runs research with
+  the feedback, capped at `OCC_REVIEW_MAX_CYCLES` (default 2), then
+  `needs_review`. `occ-backfill states` shows status + the last review result.
+  The reviewer child gets `DEEPSEEK_API_KEY` only; research gets `NVIDIA_API_KEY`
+  only.
 - **Concurrency**: pg-boss `localConcurrency` — research defaults to 4, ingest to
-  4, F10 to 4, news to 2 (`OCC_RESEARCH_CONCURRENCY`, `OCC_INGEST_CONCURRENCY`,
-  `OCC_F10_CONCURRENCY`, `OCC_NEWS_CONCURRENCY`). The sidecar still caps Playwright
-  at 2 pages globally and 5 req/s per domain, so F10 jobs queue behind that limit
-  instead of hammering Eastmoney. News makes one polite RSS request per company.
+  4, review to 2, F10 to 4, news to 2 (`OCC_RESEARCH_CONCURRENCY`,
+  `OCC_INGEST_CONCURRENCY`, `OCC_REVIEW_CONCURRENCY`, `OCC_F10_CONCURRENCY`,
+  `OCC_NEWS_CONCURRENCY`). The sidecar still caps Playwright at 2 pages globally
+  and 5 req/s per domain, so F10 jobs queue behind that limit instead of
+  hammering Eastmoney. News makes one polite RSS request per company.
 - **Retries**: research 2 retries (30s exponential backoff, 10m cap); F10 3
   retries (15s base, 5m cap). Exhausted jobs move to a dead-letter queue and the
   DB records `dead` + the last error.
@@ -73,11 +83,18 @@ Environment:
 | `OCC_RESEARCH_CONCURRENCY` | `4` |
 | `OCC_INGEST_CONCURRENCY` | `4` |
 | `OCC_F10_CONCURRENCY` | `4` |
+| `OCC_REVIEW_CONCURRENCY` | `2` |
 | `OCC_NEWS_CONCURRENCY` | `2` |
 | `OCC_FINANCE_ANALYST_URL` | `http://127.0.0.1:8090` |
 | `OCC_QDRANT_URL` | `http://127.0.0.1:6333` |
 | `OCC_EMBEDDING_URL` | `http://127.0.0.1:8080` |
 | `OCC_DSH_HOME` | `phase0/.dsh-home` |
+| `OCC_LLM_PROVIDER` | `nvidia` (worker research); `deepseek` rolls back |
+| `OCC_NIM_GATEWAY_PORT` / `OCC_NIM_RPM` | `4010` / `36` |
+| `OCC_REVIEW_MAX_CYCLES` | `2` |
+| `OCC_F10_RELATIONS` | `on` (`none` disables) |
+| `NVIDIA_API_KEY` / `_FILE` | required for live research on NIM |
+| `DEEPSEEK_API_KEY` / `_FILE` | required for ingest/extraction and the reviewer |
 | `OCC_RUNS_DIR` | `.occ/runs` |
 | `OCC_WORKER_SECTIONS_DIR` | `.occ/sections` (falls back to `OCC_SECTIONS_DIR`) |
 | `OCC_RESEARCH_MODEL` | `deepseek-flash` |
@@ -100,11 +117,15 @@ node apps/worker/dist/cli.js work --queues research --drain
 
 # research + ingest: NASDAQ-100 snapshot, 4 companies in parallel
 node apps/worker/dist/cli.js enqueue research --universe ndx --limit 5
-node apps/worker/dist/cli.js work --queues research,ingest --drain
+node apps/worker/dist/cli.js work --queues research,ingest,review --drain
+
+# Hang Seng Index batch (exclude the pilot already ingested)
+scripts/backfill-hsi.sh
+# it runs: enqueue --universe hsi --exclude 00700 → work --drain → relations f10
 
 # research: A/HK companies with the F10 data layer attached (sidecar must be up)
 node apps/worker/dist/cli.js enqueue research --tickers 600519:A,00700:HK --include-f10
-node apps/worker/dist/cli.js work --queues research,ingest --drain
+node apps/worker/dist/cli.js work --queues research,ingest,review --drain
 
 # research without an API key (fixture sections; exercises the queue)
 node apps/worker/dist/cli.js enqueue research --tickers AAPL,MSFT --mock
@@ -165,9 +186,9 @@ Research prompts are market-aware: MAG7-universe targets load the tuned
 loads `.dsh/skills/company-profile`, which carries per-market source
 hierarchies (CNINFO / HKEXnews as citation truth, F10 as the secondary data
 layer) and F10 cross-check discipline. The `research_cache` prompt hash includes
-the skill file, so switching skills invalidates cached sections. Pass
-`--include-f10` on A/HK runs to attach the F10 MCP tools to dsh (the sidecar
-must be running, or dsh startup fails).
+the skill file, so switching skills invalidates cached sections. A/HK targets
+attach the F10 MCP tools by default (the sidecar must be running, or dsh
+startup fails); US runs stay opt-in with `--include-f10`.
 
 ## Known limits
 

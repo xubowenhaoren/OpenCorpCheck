@@ -113,8 +113,10 @@ export function validate({ only = null, phaseDir = defaultPhaseDir } = {}) {
       }
     }
 
-    const searchCalls = counts.web_search || 0;
-    const fetchCalls = counts.web_fetch || 0;
+    const searchCalls =
+      (counts.web_search || 0) + (counts.mcp__psearch__web_search || 0);
+    const fetchCalls =
+      (counts.web_fetch || 0) + (counts.mcp__psearch__web_fetch || 0);
     if (searchCalls < 1) errors.push(`web_search 调用次数: ${searchCalls} < 1`);
     if (fetchCalls < 2) errors.push(`web_fetch 调用次数: ${fetchCalls} < 2`);
     if (!completed) errors.push("dsh turn 未正常完成（final.reason != completed）");

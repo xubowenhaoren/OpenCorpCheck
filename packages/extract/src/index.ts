@@ -4,6 +4,7 @@ export * from "./financials.js";
 export * from "./markdown-table.js";
 export * from "./periods.js";
 export * from "./relations/extract.js";
+export * from "./relations/f10.js";
 export * from "./relations/llm.js";
 export * from "./relations/prompt.js";
 export * from "./relations/validate.js";

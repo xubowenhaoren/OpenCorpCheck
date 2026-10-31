@@ -3,10 +3,12 @@ import { PgBoss } from "pg-boss";
 export const QUEUES = {
   RESEARCH: "research.company",
   INGEST: "ingest.company",
+  REVIEW: "review.company",
   NEWS: "news.company",
   F10: "f10.page",
   RESEARCH_DEAD: "research.company.dead",
   INGEST_DEAD: "ingest.company.dead",
+  REVIEW_DEAD: "review.company.dead",
   NEWS_DEAD: "news.company.dead",
   F10_DEAD: "f10.page.dead",
 } as const;
@@ -50,7 +52,13 @@ async function ensureQueue(
  *  - dead queues receive exhausted jobs; a worker marks them dead in our tables.
  */
 export async function ensureQueues(boss: PgBoss): Promise<void> {
-  for (const name of [QUEUES.RESEARCH_DEAD, QUEUES.INGEST_DEAD, QUEUES.NEWS_DEAD, QUEUES.F10_DEAD]) {
+  for (const name of [
+    QUEUES.RESEARCH_DEAD,
+    QUEUES.INGEST_DEAD,
+    QUEUES.REVIEW_DEAD,
+    QUEUES.NEWS_DEAD,
+    QUEUES.F10_DEAD,
+  ]) {
     await ensureQueue(boss, name, {
       retryLimit: 0,
       expireInSeconds: 300,
@@ -73,6 +81,15 @@ export async function ensureQueues(boss: PgBoss): Promise<void> {
     retryDelayMax: 300,
     expireInSeconds: 600,
     deadLetter: QUEUES.INGEST_DEAD,
+    deleteAfterSeconds: 604_800,
+  });
+  await ensureQueue(boss, QUEUES.REVIEW, {
+    retryLimit: 1,
+    retryDelay: 60,
+    retryBackoff: true,
+    retryDelayMax: 300,
+    expireInSeconds: 900,
+    deadLetter: QUEUES.REVIEW_DEAD,
     deleteAfterSeconds: 604_800,
   });
   await ensureQueue(boss, QUEUES.NEWS, {

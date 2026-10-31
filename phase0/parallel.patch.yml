@@ -1,0 +1,26 @@
+# Headless-only search/fetch: Parallel Search MCP (free, keyless).
+#
+# Mounted by apps/worker for research turns. The ACP sidebar does NOT load this
+# file and keeps deepseek-official search/fetch.
+#
+# Tool names become mcp__psearch__web_search / mcp__psearch__web_fetch, so the
+# research prompt, skills and phase0 URL validation accept those names.
+
+- insert:
+    - id: mcp-parallel
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: psearch
+        transport: streamable-http
+        url: https://search.parallel.ai/mcp
+        toolCallTimeoutMs: 90000
+        failOnStartupError: false
+
+# Disable the official DeepSeek search/fetch plugins in the headless profile.
+# The base `web` row stays, but the parallel MCP tools are what the model sees.
+- id: web-search-deepseek
+  disabled: true
+- id: web-deepseek-api
+  disabled: true
+- id: tool-web
+  disabled: true

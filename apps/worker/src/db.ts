@@ -21,9 +21,13 @@ export const markJobCompleted = store.markJobCompleted.bind(store);
 export const markJobFailed = store.markJobFailed.bind(store);
 export const markJobDead = store.markJobDead.bind(store);
 export const markJobDeadByKey = store.markJobDeadByKey.bind(store);
+export const resetJobForRetry = store.resetJobForRetry.bind(store);
 export const refreshRun = store.refreshRun.bind(store);
 export const getResearchCache = store.getResearchCache.bind(store);
 export const upsertResearchCache = store.upsertResearchCache.bind(store);
+export const upsertCompanyState = store.upsertCompanyState.bind(store);
+export const getCompanyState = store.getCompanyState.bind(store);
+export const listCompanyStates = store.listCompanyStates.bind(store);
 export const upsertF10Page = store.upsertF10Page.bind(store);
 export const getRunSummary = store.getRunSummary.bind(store);
 export const listRuns = store.listRuns.bind(store);
@@ -31,6 +35,8 @@ export const closePool = store.close.bind(store);
 
 export type {
   BackfillJobRow,
+  CompanyResearchStateRow,
+  CompanyResearchStatus,
   JobSpec,
   ResearchCacheRow,
   RunDetail,

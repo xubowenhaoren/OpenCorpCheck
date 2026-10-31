@@ -1,5 +1,6 @@
 # Secrets — never commit
 DEEPSEEK_API_KEY.txt
+NVIDIA_API_KEY.txt
 .env
 .env.*
 !.env.example

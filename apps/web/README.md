@@ -59,10 +59,11 @@ without CORS.
 
 - The current corpus has 102 real companies: 100 NDX + `600519` / `00700`.
   14 fixture-only companies (including CATL) stay hidden by default.
-- Relations are currently supply/partnership/other; there are no
-  `invests_in` / `owns` / `parent_of` edges yet, so investment counts are
-  usually 0. The UI shows an honest empty state. P4 (GLEIF / SEC 13F /
-  shareholder data) is needed to fill the investment graph.
+- Relations now include **structured F10 shareholder edges** (`owns` /
+  `invests_in`, status `reported`) when the shareholder is already in the
+  company universe, plus the LLM profile relations. Out-of-universe
+  shareholders are not shown as companies; the graph still has an honest empty
+  state. GLEIF / SEC 13F / HKEX DION remain the next coverage step.
 - A short-CJK relevance guard hides unrelated nearest-neighbour results when
   the query has no exact/alias match and the top dense score is below 0.35
   (for example `宁德时代`, which is not in the visible corpus).

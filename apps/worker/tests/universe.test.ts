@@ -65,6 +65,28 @@ describe("resolveTargets", () => {
     expect(targets.some((target) => target.ticker === "GOOG")).toBe(false);
     expect(targets.some((target) => target.ticker === "GOOGL")).toBe(true);
   });
+
+  it("loads the HSI snapshot with zero-padded HK codes", async () => {
+    const targets = await resolveTargets({ universe: "hsi" });
+    expect(targets).toHaveLength(85);
+    expect(targets.every((target) => target.market === "HK")).toBe(true);
+    expect(targets.every((target) => target.exchange === "HKEX")).toBe(true);
+    expect(targets.every((target) => target.indexCode === "HSI")).toBe(true);
+    expect(targets.every((target) => /^\d{5}$/.test(target.ticker))).toBe(true);
+    expect(targets.some((target) => target.key === "HK:00700")).toBe(true);
+    expect(targets.some((target) => target.key === "HK:00005")).toBe(true);
+  });
+
+  it("drops excluded tickers after universe expansion", async () => {
+    const targets = await resolveTargets({
+      universe: "hsi",
+      exclude: "00700,00005",
+      limit: 100,
+    });
+    expect(targets).toHaveLength(83);
+    expect(targets.some((target) => target.key === "HK:00700")).toBe(false);
+    expect(targets.some((target) => target.key === "HK:00005")).toBe(false);
+  });
 });
 
 describe("sharding", () => {

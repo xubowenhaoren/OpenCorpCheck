@@ -69,6 +69,11 @@ if (!mock && !process.env.DEEPSEEK_API_KEY) {
 }
 
 const patchPaths = [path.join(moduleDir, "dsh.patch.yml")];
+// Phase 0 predates the NIM cutover. Keep it on the official API unless the
+// operator explicitly selects NIM (and runs the worker gateway themselves).
+if (process.env.OCC_LLM_PROVIDER !== "nvidia") {
+  patchPaths.push(path.join(moduleDir, "dsh-deepseek.patch.yml"));
+}
 if (searchApi) patchPaths.push(path.join(moduleDir, "search-api.patch.yml"));
 if (f10) patchPaths.push(path.join(moduleDir, "f10-mcp.patch.yml"));
 

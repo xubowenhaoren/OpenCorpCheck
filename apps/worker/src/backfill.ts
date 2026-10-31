@@ -8,7 +8,7 @@ import {
 import type { PgBoss } from "pg-boss";
 
 import { config } from "./config.js";
-import { createRun, type JobSpec } from "./db.js";
+import { createRun, upsertCompanyState, type JobSpec } from "./db.js";
 import { QUEUES, sendJob } from "./queues.js";
 import { skillForTarget } from "./research/profiler.js";
 import { resolveTargets } from "./universe.js";
@@ -31,6 +31,7 @@ const PRIORITY_FALLBACK = 50;
 export interface EnqueueResearchOptions {
   universe?: string;
   tickers?: string;
+  exclude?: string;
   limit?: number;
   shard?: { index: number; count: number };
   force?: boolean;
@@ -40,6 +41,8 @@ export interface EnqueueResearchOptions {
   ingest?: boolean;
   /** Also ingest mock sections (default: false). */
   ingestMock?: boolean;
+  /** Run the hidden reviewer after ingest (default: true for live runs). */
+  review?: boolean;
 }
 
 export interface EnqueueResult {
@@ -53,14 +56,26 @@ export async function enqueueResearch(
   boss: PgBoss,
   options: EnqueueResearchOptions,
 ): Promise<EnqueueResult> {
-  if (!options.mock && !process.env.DEEPSEEK_API_KEY) {
+  const review = options.review ?? !options.mock;
+  if (!options.mock && config.llmProvider === "nvidia" && !config.nvidiaApiKey) {
     throw new Error(
-      "DEEPSEEK_API_KEY is required for live research; export it or pass --mock",
+      "NVIDIA_API_KEY is required for live research on NIM; export it, add NVIDIA_API_KEY.txt, or set OCC_LLM_PROVIDER=deepseek",
+    );
+  }
+  if (!options.mock && config.llmProvider === "deepseek" && !config.deepseekApiKey) {
+    throw new Error(
+      "DEEPSEEK_API_KEY is required for live research on the official API; export it or pass --mock",
+    );
+  }
+  if (review && !config.deepseekApiKey) {
+    throw new Error(
+      "DEEPSEEK_API_KEY is required for the reviewer; add DEEPSEEK_API_KEY.txt or enqueue with --no-review",
     );
   }
   const targets = await resolveTargets({
     universe: options.universe,
     tickers: options.tickers,
+    exclude: options.exclude,
     limit: options.limit,
     shard: options.shard,
   });
@@ -74,42 +89,60 @@ export async function enqueueResearch(
   const runOptions = {
     universe: options.universe ?? null,
     tickers: options.tickers ?? null,
+    exclude: options.exclude ?? null,
     limit: options.limit ?? null,
     shard: options.shard ?? null,
     force: Boolean(options.force),
     mock: Boolean(options.mock),
     includeF10: Boolean(options.includeF10),
     ingest: shouldIngest,
+    review,
     model: config.model,
+    llmProvider: config.llmProvider,
     concurrency: config.researchConcurrency,
     ingestConcurrency: config.ingestConcurrency,
   };
 
-  const specs: JobSpec[] = targets.map((target) => ({
-    queue: QUEUES.RESEARCH,
-    jobKey: target.key,
-    companyId: target.key,
-    payload: {
-      runId,
-      key: target.key,
-      ticker: target.ticker,
-      name: target.name,
-      ...(target.market ? { market: target.market } : {}),
-      ...(target.code ? { code: target.code } : {}),
-      ...(target.exchange ? { exchange: target.exchange } : {}),
-      skill: skillForTarget(target),
-      ...(target.focus ? { focus: target.focus } : {}),
-      force: Boolean(options.force),
-      mock: Boolean(options.mock),
-      includeF10: Boolean(options.includeF10),
-      ingest: shouldIngest,
-      ...(target.indexCode ? { indexCode: target.indexCode } : {}),
-      ...(target.indexAsOf ? { indexAsOf: target.indexAsOf } : {}),
-      ...(target.coverageTier ? { coverageTier: target.coverageTier } : {}),
-    },
-  }));
+  const specs: JobSpec[] = targets.map((target) => {
+    // A/HK profiles use F10 as their structured data layer; attach it by
+    // default. US stays opt-in (the generic skill treats F10 as a cross-check).
+    const includeF10 =
+      options.includeF10 ?? (target.market === "A" || target.market === "HK");
+    return {
+      queue: QUEUES.RESEARCH,
+      jobKey: target.key,
+      companyId: target.key,
+      payload: {
+        runId,
+        key: target.key,
+        ticker: target.ticker,
+        name: target.name,
+        ...(target.market ? { market: target.market } : {}),
+        ...(target.code ? { code: target.code } : {}),
+        ...(target.exchange ? { exchange: target.exchange } : {}),
+        skill: skillForTarget(target),
+        ...(target.focus ? { focus: target.focus } : {}),
+        force: Boolean(options.force),
+        mock: Boolean(options.mock),
+        includeF10,
+        ingest: shouldIngest,
+        review,
+        reviewAttempt: 0,
+        ...(target.indexCode ? { indexCode: target.indexCode } : {}),
+        ...(target.indexAsOf ? { indexAsOf: target.indexAsOf } : {}),
+        ...(target.coverageTier ? { coverageTier: target.coverageTier } : {}),
+      },
+    };
+  });
 
   await createRun("research", runOptions, specs, runId);
+  for (const spec of specs) {
+    await upsertCompanyState({
+      companyId: spec.companyId,
+      status: "queued",
+      runId,
+    });
+  }
   const priorityByKey = new Map(targets.map((target) => [target.key, target.priority]));
   for (const spec of specs) {
     await sendJob(boss, spec.queue, spec.payload, {

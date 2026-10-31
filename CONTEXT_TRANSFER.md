@@ -1,30 +1,41 @@
 # OpenCorpCheck — Context Transfer
 
-> Handoff: **2026-10-30** · compressed handoff (the old 1,394-line document is
-> preserved verbatim in [`context_transfer_history.md`](context_transfer_history.md)).
+> Handoff: **2026-10-31 (this round: HSI + reviewer + F10 relations + NIM/Parallel)**.
+> The old 1,394-line document is preserved verbatim in
+> [`context_transfer_history.md`](context_transfer_history.md).
 >
 > Current phase: Phase 0 + P1 + P2 + P2.5 + P3.1–P3.5 complete.
-> P3.4 agent trajectory / Markdown / tool-budget fix / UX v2 + **UX v3 complete**
-> (static work trace, expandable search/fetch rows, ACP content pass-through),
-> **35% agent sidebar done**, **session replay + history menu complete**
-> (2026-10-30: reads dsh's persisted `session.v4.jsonl.zstd`, replays tool
-> cards on reload, clock-button history popover), and **ACP `session/resume`
-> complete** (2026-10-30: API restart / idle dispose resumes the same dsh
-> session, log and model memory; failure falls back with a yellow notice).
-> **Next (in order, planned 2026-10-30)**: (1) **news auto-update** — stage 1
-> per-company “刷新新闻” button, stage 2 stale-timestamp sweep on page entry;
-> (2) **A500 + S&P 500 placeholder coverage + headless batch research
-> pipeline/worker pool** with a reviewer loop. Then P4 A/HK bulk backfill. See
-> §10. The P3.4 first-class sub-agent card is **deferred — not needed for this
-> project** (2026-10-30); `deep_research` stays a tool card.
+> **This round adds**:
+> **(a) headless NIM + Parallel cutover** — the local worker pool now runs
+> `deepseek-ai/deepseek-v4.1-flash` through the in-worker retry gateway
+> (`apps/worker/src/nim-gateway.ts`, `127.0.0.1:4010`) and mounts Parallel's
+> keyless Search MCP (`mcp__psearch__web_search` / `mcp__psearch__web_fetch`);
+> the ACP sidebar is unchanged and keeps official DeepSeek + official
+> search/fetch;
+> **(b) HSI** — `config/indices/hsi.yaml` (85 constituents, `as_of`
+> 2026-10-31), worker `--universe hsi`, F10 attached by default for A/HK;
+> **(c) hidden reviewer** — `review.company` queue, official DeepSeek with
+> reasoning on, structured `{verdict, issues, fix_instructions}`, bounded
+> revision (`OCC_REVIEW_MAX_CYCLES=2`) then `needs_review`;
+> **(d) structured F10 shareholder relations** — `gdyj` / `MajorShareholder` /
+> `gbgd` tables become `reported`-status `owns` / `invests_in` edges when the
+> shareholder is already in the universe.
 >
-> **Scope change (2026-10-30, planned)**: placeholder coverage expands to
-> **CSI A500 (中证A500, 000510) + S&P 500 (SPX)**. Every constituent not already
-> in the DB gets a stub company page storing only ticker + Chinese/English
-> name + index membership. The earlier “S&P 500 backfill cancelled” still
-> applies to **bulk backfill**: SP500 data is fetched **on demand** through the
-> batch research pipeline. P4 bulk backfill (STAR50 + ChiNext50 + HSI) is
-> unchanged.
+> **Next after the HSI pilot/batch**: the `HK:00700` pilot completed research +
+> ingest + 3 reviewer cycles and ended `needs_review` with 6 real issues (the
+> gate working as designed). A 3-company cross-holding pilot (`00001` / `00006`
+> / `01038`) validates F10 ownership edges; then run the capped HSI batch.
+> News auto-update and A500/SPX placeholders remain §10 Next 1/2. The P3.4
+> first-class sub-agent card is **deferred — not needed for this project**;
+> `deep_research` stays a tool card.
+>
+> **Scope change (2026-10-30, revised 2026-10-31)**: placeholder coverage
+> expands to **CSI A500 (中证A500, 000510) + S&P 500 (SPX)**. Every constituent
+> not already in the DB gets a stub company page storing only ticker +
+> Chinese/English name + index membership. **Neither index gets a bulk
+> backfill, and there is no in-app on-demand research**: data is filled only by
+> an explicit, capped **local operator batch** through the worker pool. P4 bulk
+> backfill (STAR50 + ChiNext50 + HSI) is unchanged.
 >
 > **Scope change (2026-10-29)**: A-share backfill = **STAR 50 (科创50, 000688) +
 > ChiNext 50 (创业板50, 399673)**. Hang Seng backfill unchanged. **S&P 500 (SPX)
@@ -51,18 +62,20 @@ plus an AI watchlist and on-demand private companies):
 
 | Index | Code | Market | Status |
 |---|---|---|---|
-| CSI A500 / 中证A500 | `000510` | A | **placeholder (planned)**: stub pages, on-demand research |
-| S&P 500 | `SPX` | US | **placeholder (planned)**: stub pages, on-demand research |
+| CSI A500 / 中证A500 | `000510` | A | **placeholder (planned)**: stub pages, filled only by operator batches |
+| S&P 500 | `SPX` | US | **placeholder (planned)**: stub pages, filled only by operator batches |
 | STAR 50 / 科创50 | `000688` | A (SSE) | planned bulk backfill (P4) |
 | ChiNext 50 / 创业板50 | `399673` | A (SZSE) | planned bulk backfill (P4) |
-| Hang Seng Index | `HSI` | HK | planned bulk backfill (P4), unchanged |
+| Hang Seng Index | `HSI` | HK | **snapshot added 2026-10-31**: 85 constituents in `config/indices/hsi.yaml`; pilot → full batch in progress |
 | NASDAQ-100 | `NDX` | US | **done**: 100 companies backfilled |
 
-- S&P 500 remains **cancelled for bulk backfill**; it is covered by placeholder
-  pages and user-triggered on-demand research only.
+- **A500 and S&P 500 have no bulk backfill and no in-app on-demand research.**
+  They are placeholder pages; an operator fills companies through an explicit,
+  capped local batch (decision 2026-10-31). Cost data:
+  [`docs/NVIDIA_NIM_MIGRATION.md`](docs/NVIDIA_NIM_MIGRATION.md) §2/§5.
 - Placeholder rows are intentionally minimal: ticker, Chinese/English name,
   market and index membership. No profile, documents, financials or embeddings
-  until the user requests research.
+  until an operator-run batch fills them.
 - AI watchlist (~24 names: OpenAI, Anthropic, DeepSeek, Moonshot/Kimi, Zhipu,
   MiniMax, ByteDance, Huawei, …) lives in [`config/universe.yaml`](config/universe.yaml).
 - The product is exposed through a web UI, CLI, MCP server and a DeepSeek
@@ -70,8 +83,18 @@ plus an AI watchlist and on-demand private companies):
 
 ---
 
-## 2. Current state (2026-10-29)
+## 2. Current state (2026-10-30)
 
+- **LLM/search providers — dual mode (decision 2026-10-31)**:
+  - **Interactive ACP sidebar** = paid **DeepSeek API** (`deepseek-flash`) +
+    `deepseek-official` search/fetch. Unchanged; the user's key stays.
+  - **Local headless backfill / worker pool** = **NVIDIA NIM**
+    (`deepseek-ai/deepseek-v4.1-flash`, free tier) + **Parallel Search MCP**
+    (`https://search.parallel.ai/mcp`, keyless).
+  - The repo keeps `DEEPSEEK_API_KEY.txt` for the sidebar and gains a
+    gitignored `NVIDIA_API_KEY.txt` for the worker. The assistant's coding
+    session key is outside the repo and must not be touched. Measured NIM
+    behaviour: [`docs/NVIDIA_NIM_MIGRATION.md`](docs/NVIDIA_NIM_MIGRATION.md).
 - **Phase 0**: 7 MAG7 profiles generated by dsh headless with
   **`deepseek-flash`** (not Pro). Validation PASS; deliverables under
   [`phase0/out/`](phase0/out/). Historical detail in the archive.
@@ -102,6 +125,21 @@ plus an AI watchlist and on-demand private companies):
   behind a yellow notice. See §6 below.
 - **P3.5**: React 19 + Vite 8 web UI (home / search / company 5 tabs / graph /
   NDX index / AI sidebar). See §5.
+- **P0 headless cutover (2026-10-31)**: worker research = NIM
+  `deepseek-ai/deepseek-v4.1-flash` via `apps/worker/src/nim-gateway.ts`
+  (retry + `reasoning_content` normalisation + 36 RPM bucket) and Parallel
+  Search MCP. ACP sidebar unchanged. Rollback:
+  `OCC_LLM_PROVIDER=deepseek`.
+- **HSI (2026-10-31)**: `config/indices/hsi.yaml` + worker `--universe hsi`;
+  A/HK research attaches F10 by default. Pilot on `HK:00700` exercises
+  research → ingest → reviewer → revise.
+- **Reviewer (2026-10-31)**: `review.company` queue + `company_research_state`;
+  official DeepSeek with reasoning on, structured JSON, max 2 revisions, then
+  `needs_review`. `occ-backfill states` exposes operator status.
+- **Structured F10 relations (2026-10-31)**: A `gdyj` / HK
+  `MajorShareholder` / US `gbgd` shareholder rows become `reported`-status
+  `owns`/`invests_in` edges when the shareholder is in the company universe;
+  page JSON cached under `.occ/f10/`.
 
 Verified numbers worth keeping:
 
@@ -114,6 +152,25 @@ Verified numbers worth keeping:
 - Search p95 (no rerank): companies 218–300 ms, documents 366–473 ms.
 - Build: web main JS 399 KB (gzip 123 KB), lazy Markdown chunk 163 KB
   (gzip 49 KB), CSS 42.8 KB (gzip 8.8 KB).
+
+Verified this round (2026-10-31):
+
+- NIM probe: dsh headless returns `OK`; Parallel search returns ranked URLs;
+  F10 `CompanyProfile` on HK `00700` works through `mcp__occ__f10_scrape`.
+- `HK:00700` pilot on NIM: research **289 s** / 99k input + 6k output tokens,
+  ingest **27 s** / 16 chunks, reviewer **73 s** per cycle. The reviewer found
+  6 real issues (OCF vs FCF reconciliation, a mismatched citation, source-count
+  mismatch, a meaningless sentence, wrong interest-coverage definition, mixed
+  single-quarter/cumulative columns); after 2 revisions it correctly ended
+  **`needs_review`** instead of pretending success. This is the intended
+  quality gate; the profile is still ingested and visible.
+- F10 shareholder parsing verified against the real `00006` page: 长江基建
+  (`01038`) and 长江和记 (`00001`) resolve to `invests_in` edges at 36.01%.
+  The live cross-holding pilot also wrote a real edge from `01038`'s page:
+  **长江和记 owns 75.67% of 长江基建** (`status='reported'`, evidence quote +
+  F10 URL + review item).
+- Reviewer with the stricter prompt/content checklist now has only
+  web search/fetch tools; file/shell/sub-agent tools are disabled.
 
 Tests (serial, because parallel vitest workers collide on
 `node_modules/.vitest-cache`): `corepack pnpm -r --workspace-concurrency=1 test`.
@@ -196,7 +253,12 @@ Key env:
 | `OCC_AGENT_MAX_TOOL_CALLS` | `80` |
 | `OCC_AGENT_MAX_REPEATED_TOOL_CALLS` | `4` (`0` disables) |
 | `OCC_AGENT_IDLE_TIMEOUT_MS` | `600000` (`0` disables) |
-| `DEEPSEEK_API_KEY` / `_FILE` | required for agent/extraction |
+| `DEEPSEEK_API_KEY` / `_FILE` | required by the **ACP sidebar** (official API), ingest/extraction and the **reviewer** |
+| `NVIDIA_API_KEY` / `_FILE` | required by the **headless research worker** (NIM); `NVIDIA_API_KEY.txt` is gitignored |
+| `OCC_LLM_PROVIDER` | `nvidia` (worker default); `deepseek` rolls back research |
+| `OCC_NIM_GATEWAY_PORT` / `OCC_NIM_RPM` | `4010` / `36` |
+| `OCC_REVIEW_MAX_CYCLES` | `2` (then `needs_review`) |
+| `OCC_F10_RELATIONS` | `on`; `none` disables structured shareholder extraction |
 
 `OCC_AGENT_DSH_PATCH` defaults to `.dsh/acp.patch.yml`; pass `none` to disable
 the ACP overlay. The overlay sets `reasoningEffort: low` on `llm-deepseek` (ACP
@@ -273,7 +335,7 @@ Known limitations:
 - Hot companies are a static front-end list; there is no admin backend.
 - News is a static DB snapshot: no refresh button and no automatic stale sweep
   yet; ingestion is CLI/worker-only (planned in §10 Next 1). The source is
-  Google News RSS, not agentic search, so a refresh costs 0 DeepSeek tokens.
+  Google News RSS, not agentic search, so a refresh costs 0 LLM tokens.
 - No web unit tests beyond trajectory helpers; acceptance is currently
   Playwright/manual.
 - Production static hosting (API/nginx same-origin) is still TODO.
@@ -495,7 +557,12 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 - **Extraction** (`packages/extract`): deterministic financials/facts/relations;
   relation type whitelist + quote/source validation; inferred relations carry
   evidence and review-queue rows. `OCC_EXTRACT_RELATIONS=llm` enables the LLM
-  relation pass (default `none`).
+  relation pass (default `none`). **F10 structured relations** run after every
+  ingest by default (`OCC_F10_RELATIONS=none` disables): A `gdyj`, HK
+  `MajorShareholder`, US `gbgd`; shareholder must already exist in the
+  universe; `owns` at ≥50%, else `invests_in`; status `reported` + evidence +
+  review queue. Page JSON is cached under `.occ/f10/` and never removes LLM or
+  human-reviewed edges.
 - **Snapshots** (`packages/storage`): optional S3/MinIO. Without `OCC_S3_*`
   nothing changes. Section markdown and F10 JSON upload as
   `sections/<slug>/<sha>.md` / `f10/<market>/<code>/<page>/<sha>.json`;
@@ -517,13 +584,22 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
    sidecar.
 2. **Qdrant** for hybrid retrieval; pgvector/ParadeDB are fallbacks. Do not turn
    Postgres into the search engine.
-3. **dsh headless** for batch profiles; **ACP** for the interactive sidebar.
-4. **`deepseek-flash` only**; never write `deepseek-v4-pro` back into config.
+3. **dsh headless** for company research (operator-invoked; a batch is explicit
+   and capped, never a full-index sweep); **ACP** for the interactive sidebar.
+4. **Dual-mode providers (revised 2026-10-31)**. Interactive ACP sidebar =
+   official **DeepSeek API + `deepseek-official` search/fetch** (fast, paid,
+   low volume, no migration). Local **headless backfill/worker pool** =
+   **NVIDIA NIM `deepseek-ai/deepseek-v4.1-flash`** + **Parallel free Search
+   MCP**; never write `deepseek-v4-pro` back into config. Slightly lower
+   Chinese news quality in backfilled data is accepted for a tech demo. The
+   DeepSeek key stays in the repo for the sidebar; the coding session keeps
+   its own copy.
 5. **No Docker on this machine**; use native services. Cross-platform support
    (macOS + WSL2/Linux) is still required; Electron/Docker stay in P5.
-6. **Universe scope (2026-10-29)**: STAR 50 + ChiNext 50 + HSI + NDX + AI
-   watchlist + on-demand private companies. **S&P 500 backfill is cancelled.**
-   NDX is done; A/HK are P4.
+6. **Universe scope (2026-10-29, updated 2026-10-31)**: STAR 50 + ChiNext 50 +
+   HSI + NDX + AI watchlist + on-demand private companies. **A500 and S&P 500
+   have no bulk backfill and no in-app research** — placeholders filled only by
+   explicit, capped operator batches. NDX is done; A/HK are P4.
 7. **F10 reuse** (Apache-2.0 attribution); do not bulk redistribute Eastmoney.
 8. No full port of `opportunity-radar`; keep the distilled BFS/DFS + citation
    discipline.
@@ -584,7 +660,7 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     child-session replay/resume, which is separately out of scope.
 28. **News refresh is RSS-only and LLM-free** (decision 2026-10-30): the
     refresh path reuses the Google News RSS adapter and local embeddings, so it
-    costs **0 DeepSeek tokens**. No summarization/review agent in this path;
+    costs **0 LLM tokens**. No summarization/review agent in this path;
     add AI summaries as a separate, explicitly opt-in feature later.
 29. **News refresh is idempotent and server-deduped**: one active news run per
     company; stage 2 stale sweeps run server-side and multiple browser tabs
@@ -597,15 +673,48 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     (decision 2026-10-30): pg-boss is the queue/retry/progress store and a
     worker pool runs one `dsh --profile headless` process per company. The DSH
     ecosystem has no production-grade batch pipeline; do not add one.
-32. **Reviewer is a second agent with a bounded loop**: a hidden headless
-    review checks evidence and completeness; `revise` re-runs research at most
-    twice, then `needs_review`. The UI shows aggregate progress only, never
-    reviewer internals or fake success.
-33. **One shared task dock for news and research** (decision 2026-10-30): both
-    workflows report into the same **top-nav** control (last item after `EN` /
-    `深色`), distinguished by a task-kind badge (`更新新闻` / `公司数据获取`).
-    Do not build separate progress widgets. A standalone prototype with mock
-    data must be approved before the production component and API wiring.
+32. **Reviewer is a second agent with a bounded loop** (decision 2026-10-31:
+    **official DeepSeek, reasoning on**): a hidden headless review checks
+    evidence and completeness; `revise` re-runs research at most twice, then
+    `needs_review`. It runs on the paid official API because (a) its whole
+    value is judgment, (b) NIM only returns reliable structured output with
+    `thinking:false`, which is the opposite of what a reviewer needs, and
+    (c) volume is 1–3 runs per company. A failed reviewer would block `ready`,
+    so reliability matters more than the marginal cost. Never show reviewer
+    internals or fake success in the UI.
+33. **One shared task dock, news-only** (decision 2026-10-31): the **top-nav**
+    control (last item after `EN` / `深色`) has exactly one producer,
+    `news_refresh` (badge “更新新闻”). No `company_research` rows, no filter
+    tabs. The prototype (commit `dd465fc`) is approved; only its news path is
+    wired.
+34. **No in-app on-demand stock research** (decision 2026-10-31): the
+    placeholder CTA and `POST /v1/companies/:ref/research` are cancelled.
+    Research is operator-initiated through the local worker pool (explicit,
+    capped batches). On-demand **news refresh** stays because it is LLM-free.
+35. **Step-level retry belongs to the NIM client, not the job queue**
+    (decision 2026-10-31): NIM throws episodic 500s and sometimes returns an
+    empty `content`; retry 3× with backoff and normalise
+    `reasoning_content → content` in one place (gateway or client). pg-boss
+    retries are the outer net only — a whole-run retry re-burns tokens.
+36. **LLM relation extraction stays on official DeepSeek with reasoning on**
+    (decision 2026-10-31): quality over cost for the fact/relation layer;
+    volume is low and it already works. Do not move it to NIM in this
+    migration.
+37. **Headless NIM retry lives in one local gateway** (decision 2026-10-31):
+    `apps/worker/src/nim-gateway.ts` is an OpenAI-compatible proxy that
+    retries 500/502/503/504 and empty-`content`, normalises
+    `reasoning_content → content`, and enforces `OCC_NIM_RPM`. `work
+    --queues research` starts it; no other process may need NIM details.
+38. **Reviewer is a hidden second headless run, not a UI feature** (decision
+    2026-10-31): official DeepSeek with reasoning on, structured JSON, max
+    `OCC_REVIEW_MAX_CYCLES` revisions then `needs_review`. It gets
+    `DEEPSEEK_API_KEY` only; research gets `NVIDIA_API_KEY` only. Operator
+    visibility is `occ-backfill states`, not the public UI.
+39. **F10 shareholder edges are additive and universe-bounded** (decision
+    2026-10-31): only shareholders already in `companies` become relations;
+    out-of-universe names are counted, never fabricated as companies. Status is
+    `reported` (not `inferred`) because the row is a direct table, but a human
+    decision is still the only path to `verified`.
 
 ---
 
@@ -638,6 +747,9 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 | Two tabs trigger two news refreshes | Server-side dedupe with one active run per company; the page-entry call is only a nudge, not the scheduler. |
 | Placeholder companies pollute search | Default search excludes `is_placeholder`; index pages/direct routes include them with a “未收录” badge. |
 | Reviewer/research loop never ends | Cap at 2 revise cycles, then `needs_review`; every attempt is logged. Never retry unbounded. |
+| Reviewer keeps rejecting a stable profile | `needs_review` is the honest outcome; fix the section manually (or improve the research prompt) and re-review. Do not silently flip it to `ready` or raise the cap in production. |
+| NIM request hangs | The gateway aborts at `OCC_NIM_REQUEST_TIMEOUT_MS` (default 600 s) and retries. The old no-timeout gateway could sit on one call for 10+ min; keep the timeout. |
+| Reviewer has no filesystem/shell | `phase0/reviewer.patch.yml` disables tool-bash/fs/jobs/subagent/skill on purpose; it should only read the supplied profile and cited URLs. |
 | Tempted to add a DSH batch plugin | Don’t. pg-boss + worker already provide durability, retries, concurrency and progress; DSH is only the per-company executor. |
 | `pnpm -r test` hits `ENOTEMPTY` on `.vitest-cache` | Run with `--workspace-concurrency=1`. |
 | API holds a pg-boss connection | Stop with SIGTERM; `kill -9` can leave jobs active until expiry. |
@@ -654,7 +766,77 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 
 ## 10. Next tasks
 
-### Next 1 — News auto-update (planned; implement first)
+### Next 0 — Headless-provider cutover only (P0, dual-mode)
+
+**Status 2026-10-31: implemented.** NIM provider + gateway + Parallel MCP are
+wired for the worker; the ACP sidebar is untouched. Acceptance probes:
+engine chat, Parallel `mcp__psearch__web_search`, F10 `mcp__occ__f10_scrape`,
+and a reviewer turn all succeeded. Remaining: finish the HSI pilot/batch
+measurement and record final latency/500 counts.
+
+**Decision (revised 2026-10-31): two provider routes, not one.**
+
+| Route | Inference | Search/fetch | Why |
+|---|---|---|---|
+| **ACP sidebar** (browser Q&A) | official DeepSeek API, `deepseek-flash` | `deepseek-official` | Latency + quality matter; volume is tiny; **no changes at all** |
+| **Headless worker pool** (local backfill) | NVIDIA NIM `deepseek-ai/deepseek-v4.1-flash` | Parallel Search MCP (keyless) | Batch, unattended; free tier is acceptable |
+
+The repo **keeps** `DEEPSEEK_API_KEY.txt` (sidebar) and gains a gitignored
+`NVIDIA_API_KEY.txt` (worker). The coding session's own key is outside the
+repo and untouchable. Plan, measured data, touchpoints and rollback:
+[`docs/NVIDIA_NIM_MIGRATION.md`](docs/NVIDIA_NIM_MIGRATION.md).
+
+Key facts to carry in:
+
+- NIM is OpenAI-compatible (`https://integrate.api.nvidia.com/v1`), ~40 RPM
+  free tier, no card, no SLA; `/v1/models` currently lists 85 models including
+  `z-ai/glm-5.3-flash`, `moonshotai/kimi-k2.6` and the two DeepSeek ones.
+- **Measured 2026-10-31 (same prompts, ~35 RPM):** DeepSeek v4.1-flash p50
+  8–17 s, p95 35–62 s, with **episodic 500s** (3/10 in one batch, 0/10 in the
+  next) and occasional empty `content`. GLM-5.3-flash is faster on trivial
+  calls but needs **67–118 s** for Chinese long-form and timed out at 120–150 s
+  repeatedly — **rejected** for the backfill path.
+- **NIM quirks that must be coded for:**
+  - `response_format: json_object` / `json_schema` returns 200 but puts the
+    JSON in `reasoning_content` and leaves `content` empty — unless
+    `thinking: false` is set (then it is correct and fast).
+  - Thinking tokens count against `max_tokens`; a small budget yields an empty
+    `content`. Use `max_tokens ≥ 512` for extraction, more for research.
+  - Unknown parameters are rejected with `400 Validation: Unsupported
+    parameter(s)`; `thinking`, `reasoning_effort: "none"` and
+    `chat_template_kwargs` are accepted.
+- **Step-level retry is mandatory.** A single 500 must not kill an 18-step
+  company run: 3 attempts with backoff (500s return in <3 s, so retries are
+  cheap), plus a `content`-empty fallback to `reasoning_content`. Prefer a
+  small local OpenAI-compatible gateway (~100 lines) in front of NIM so both
+  the dsh adapter and `packages/extract` get retry/normalisation in one place.
+- **Timeout headroom:** raise the headless research timeout (not
+  `OCC_AGENT_TURN_TIMEOUT_MS`, which stays 180 s for the sidebar); p95 per
+  call is ~60 s, so one company can take several minutes.
+- **Not migrated on purpose:** LLM relation extraction (`packages/extract`) and
+  the reviewer agent stay on **official DeepSeek with reasoning on** — quality
+  matters there and volume is low. The worker therefore carries **both** keys,
+  with a per-job env whitelist (research → NVIDIA only, reviewer/extraction →
+  DeepSeek only).
+- Parallel is keyless and free, no quota/SLA. It exposes `web_search` and
+  `web_fetch`; mount it with `@deepseek-ai/dsh-mcp-client`
+  (`transport: streamable-http`) **in the headless profile only**. Tools become
+  `mcp__psearch__web_search` / `mcp__psearch__web_fetch`; update the headless
+  prompt, skills, `phase0/lib/validate.mjs`, `phase0/lib/dsh.mjs` URL
+  extraction (fetch input is a `urls` array) and their tests. **Leave the ACP
+  patch, `apps/web/src/lib/agent-trace.ts` and the sidebar alone.**
+- Parallel quality trade-off (measured 2026-10-30): slower search (0.8–1.4 s
+  vs 0.55 s), much faster fetch (0.16 s typical), better US/English official
+  sources, weaker Chinese/HK freshness (Tencent top results included 2022
+  pages). Accepted for backfilled data.
+- **No paid fallback.** One retry + plain-HTTP fetch for non-JS pages; if
+  Parallel is down the batch fails loudly.
+
+Acceptance and rollback are in the migration doc §7–8. The sidebar path is
+explicitly out of scope: its DeepSeek key, model row, timeout and
+`reasoningEffort` must remain byte-for-byte unchanged.
+
+### Next 1 — News auto-update (after the NIM + Parallel migration)
 
 **Source facts (verified 2026-10-30).** The news tab is **Google News RSS**, not
 agentic search: [`packages/sources/news/src/google-news.ts`](packages/sources/news/src/google-news.ts)
@@ -663,7 +845,7 @@ days, link-only, no article bodies). [`packages/ingest/src/news.ts`](packages/in
 writes `documents(doc_type='news')` + one chunk + one source row and indexes
 the chunk; it is idempotent by title+snippet hash. The UI reads
 [`listEvents`](packages/db/src/repositories/insights.ts) from Postgres. **The
-refresh path must stay LLM-free: 0 DeepSeek tokens; only local BGE-M3 embedding,
+refresh path must stay LLM-free: 0 LLM tokens; only local BGE-M3 embedding,
 and unchanged items skip embedding.**
 
 Stage 1 — manual refresh (per company):
@@ -711,15 +893,28 @@ Acceptance:
 - Two clicks / two tabs produce one job.
 - Stage 2 enqueues stale companies once after TTL; a second page entry before
   TTL does nothing.
-- No DeepSeek API call anywhere in the refresh path; embeddings are local.
+- No LLM API call anywhere in the refresh path; embeddings are local.
 
-### Next 2 — A500 + S&P 500 placeholders + headless batch research pipeline (after Next 1)
+### Next 2 — A500 + S&P 500 placeholders + local research/reviewer worker pool
+
+**Status 2026-10-31**: the reviewer half is implemented (`review.company`,
+`company_research_state`, bounded revisions, `occ-backfill states`). The
+A500/SPX placeholder half (index snapshots, `occ indices sync`, placeholder
+pages) is still pending. HSI is the first end-to-end user of the research +
+reviewer pipeline.
 
 **Scope.** Add index snapshots `config/indices/a500.yaml` (CSI A500, `000510`)
 and `config/indices/sp500.yaml` (`SPX`), each with `as_of`, optional weights and
 license/source. `occ indices sync` (new command) inserts a **placeholder** row
 for every constituent not already resolvable by ticker+exchange/name. A real
 profile is never overwritten.
+
+**No in-app on-demand research (decision 2026-10-31).** The placeholder CTA,
+`POST /v1/companies/:ref/research` and the whole user-triggered research flow
+are **cancelled**. Placeholders are filled only when the operator runs a local
+batch through the worker pool (NIM + Parallel). There is still **no full
+constituent sweep**: A500/SPX batches are explicit, capped and operator-started.
+On-demand **news refresh** stays (Next 1, 0 LLM tokens).
 
 Placeholder row:
 
@@ -735,103 +930,111 @@ Placeholder row:
 Placeholder page:
 
 - `/c/:ref` resolves the ticker; render names, ticker, market, index/weight and
-  a “尚未收录” state with a **获取公司相关数据** CTA. Other tabs stay empty
-  (no fake data).
-- The CTA calls `POST /v1/companies/:ref/research`:
-  - if an active research job exists, return it (one job per company);
-  - otherwise enqueue `research.company`, write `company_research_state`
-    (`queued`), and return `{ runId, status }`.
-- Button states: `获取公司相关数据 → 排队中 → 研究中 → 已完成`; the page
-  auto-refreshes (query invalidation) when the state becomes `ready`.
+  a “尚未收录” state. **No CTA** — show a short neutral note that data is
+  filled by the operator (e.g. “数据由运营侧批量补充”), never a fake progress
+  bar. Other tabs stay empty (no fake data).
+- No new endpoint is added. The page is read-only.
 
-Pipeline and worker pool:
+Pipeline and worker pool (operator-invoked):
 
 - **Do not adopt a DSH batch plugin.** The durable queue and worker pool are
   already [`pg-boss`](packages/jobs/src/queues.ts) + [`apps/worker`](apps/worker);
   DSH is the executor only: one `dsh --profile headless` process per company via
-  [`runDshResearch`](apps/worker/src/research/dsh.ts).
+  [`runDshResearch`](apps/worker/src/research/dsh.ts). Headless runs use the
+  NIM + Parallel profile (Next 0); the ACP profile is untouched.
+- Entry point is the local CLI/worker (e.g. `occ-backfill enqueue research
+  --index A500 --limit N`), never a web route. Any batch must preview its count
+  and enforce `OCC_RESEARCH_BATCH_MAX` (default 20); no command accepts “all
+  constituents”.
 - State machine per company: `queued → running → reviewing → ready`, with
   terminal `failed` / `needs_review`. Store it in a small
   `company_research_state` table (company_id PK, status, run_id, attempts,
-  review_attempts, last_error, requested_at, updated_at); keep the detailed
-  run/checkpoint rows in the existing run store.
-- Retries/timeouts: pg-boss `retryLimit` + exponential backoff; the dsh turn
-  timeout; no unbounded loops. One active job per company (unique key).
-- Worker concurrency: configurable (start 2–4) to respect model/API rate limits;
-  queue backpressure rather than unbounded fan-out.
+  review_attempts, last_error, requested_at, updated_at) for operator
+  visibility; keep detailed run/checkpoint rows in the existing run store.
+- Retries/timeouts: **step-level retry (3 attempts, backoff) is mandatory** for
+  NIM's episodic 500s and empty `content`; pg-boss `retryLimit` is the outer
+  net, not the primary defence. Raise the headless research timeout (NIM p95
+  ≈ 60 s/call); one active job per company (unique key).
+- Worker concurrency: configurable (start 2–4, ≤ 36 RPM total) to respect the
+  NIM free tier; queue backpressure rather than unbounded fan-out.
 
-Reviewer agent (after research + ingest):
+Reviewer agent (after research + ingest) — **official DeepSeek, reasoning on**:
 
 - Enqueue `review.company` (new queue) or run it as a second phase of the same
   job. It is a second **headless dsh** run with a checklist prompt: numbers
   match cited sources, relations have evidence, no unsupported claims, required
   profile sections present.
+- **Provider (decision 2026-10-31):** the reviewer gets its own dsh profile on
+  the **official DeepSeek API** with reasoning enabled — not NIM. The review is
+  the quality gate; NIM's reliable structured-output mode requires
+  `thinking:false`, which defeats the purpose. Volume is 1–3 runs per company.
+  Spawn it with a DeepSeek-only env whitelist (research children get
+  `NVIDIA_API_KEY` only, reviewer children get `DEEPSEEK_API_KEY` only).
 - Structured output:
   `{ verdict: "pass" | "revise", issues: [{field, reason, evidence}], fix_instructions }`.
+  On NIM this requires `thinking:false` + a generous `max_tokens` (JSON lands
+  in `reasoning_content` otherwise).
 - `pass` → mark `ready`; `revise` → re-enqueue research with the feedback,
   **max 2 review cycles**, then `needs_review`; `needs_review` is visible to the
   operator (review queue/logs), not as a fake success.
 - The reviewer is **hidden in the UI**; only aggregate status, counts and token
   usage appear in the progress dock.
 
-Shared task dock (top nav, last control after `EN` / `深色`; used by **both** news refresh and company research):
+Shared task dock (top nav, last control after `EN` / `深色`):
 
 - One global `<TaskDock>` mounted in the **top navigation**, as the last control
-  after `EN` and `深色`, visible across routes. It is visually modeled on the
-  browser download bubble (Chrome/Chrono): the circular button sits inline in
-  the nav and opens a compact card anchored under it, right-aligned. It is
-  **not** a per-page widget and there is only one of it.
-- Every dock item carries a **task kind badge** so the two workflows share the
-  UI without ambiguity:
-  - `news_refresh` — badge “更新新闻”, newspaper icon. One group per sweep:
-    “更新新闻 · 42 家公司”, subtasks are companies; completion summary is
-    “已更新 128 条 · 3 家失败”.
-  - `company_research` — badge “公司数据获取” (single company) or “全量公司
-    数据获取” (batch), building icon. Subtasks are companies with stages
-    queued/running/reviewing; completion summary is “37 家已收录 · 1 家待复核”.
-- Collapsed button: ring shows aggregate progress; a small count badge appears
-  when tasks are active. Expanded card header: overall `12/37 · 32%`, filter
-  tabs “全部 / 新闻更新 / 公司数据”, and a “查看全部任务” footer.
-- Each row: kind badge, title (company name/ticker or “更新新闻 · 42 家”),
-  status line (`更新中 12/42 · 28%`, `已完成 — 128 条`, `2 家需要重试`),
-  a determinate or step-based progress bar, elapsed time, and a chevron to
-  expand per-company subtasks. A failed/needs-review row keeps its error reason
-  and a retry action; clicking a company row navigates to `/c/:ticker`.
+  after `EN` and `深色`, visible across routes; modeled on the browser download
+  bubble. It is **not** a per-page widget and there is only one of it.
+- **News is the only producer** (`news_refresh`, badge “更新新闻”): one group
+  per sweep, “更新新闻 · 42 家公司”, completion “已更新 128 条 · 3 家失败”.
+  There is **no `company_research` producer** (decision 2026-10-31): operator
+  batches are local-only and are not mirrored into the dock.
+- Collapsed button: ring shows aggregate progress; a count badge appears when
+  tasks are active. Expanded card header: overall `12/37 · 32%` and a
+  “查看全部任务” footer. With one task kind, no filter tabs.
+- Each row: badge, title, status line (`更新中 12/42 · 28%`, `已完成 — 128 条`,
+  `2 家需要重试`), determinate or step-based progress bar, elapsed time, and a
+  chevron for subtasks. A failed/needs-review row keeps its error reason;
+  clicking a company row navigates to `/c/:ticker`.
 - States: `queued`, `running`, `completed`, `partial`, `failed`,
   `needs_review`. Color encodes state (semantic, not accent-only); text always
   names the state too. Use `role="progressbar"` with `aria-valuenow` and a
   polite live region for completion; respect `prefers-reduced-motion`.
 - Data source: one polling manager per active run (`GET /v1/runs/:runId` every
-  1–2 s while the dock is open; slower when collapsed), optionally SSE later.
-  Polling is DB/API only — no LLM. Closing/minimizing the dock does not cancel.
-- When the company the user is viewing becomes `ready`, invalidate the company
-  query so the placeholder flips to the full profile without a manual reload.
+  1–2 s while the dock is open; slower when collapsed). Polling is DB/API only —
+  no LLM. Closing/minimizing the dock does not cancel.
 - Mobile: the card becomes a full-width sheet under the header; never causes
   horizontal scroll.
 
-**Prototype first (required).** Before wiring the API, build a standalone
-prototype of this dock with mock data for approval: nav button after `EN` /
-`深色`, popover, both task kinds, mixed running/completed/failed/needs-review
-states, expandable subtasks, filters, light/dark and phone width. Do not start
-the production component until the prototype is approved.
+**Prototype status.** The standalone dock prototype was approved and placed in
+the top nav on 2026-10-30 (commit `dd465fc`). It renders both task kinds, but
+the production component wires **only `news_refresh`**; the
+`company_research` kind is not built (decision 2026-10-31).
 
 Acceptance:
 
 - A500 + SPX seed: constituent count minus already-present companies; no
   duplicate slugs/tickers; existing real profiles untouched; placeholders have
   no documents/embeddings.
-- Placeholder page CTA → one job → dock row updates through
-  queued/running/reviewing; on pass the page becomes a full profile.
+- **No** route, endpoint or UI action can enqueue research; the placeholder page
+  is read-only with no CTA.
+- A local capped batch runs end-to-end through the worker pool on NIM/Parallel
+  and never appears in the dock.
 - Reviewer `revise` triggers exactly one bounded retry cycle; repeated failure
   ends in `needs_review` and is logged.
-- Two tabs/clicks on the same placeholder produce one job.
+- A single NIM 500 or empty response does not fail an 18-step company run
+  (step-level retry verified with injected failures).
+- Any batch is explicit, capped at `OCC_RESEARCH_BATCH_MAX`, and shows its count
+  before enqueueing.
 - No reviewer internals or raw JSON in the UI.
 
 Token discipline:
 
-- News refresh: **0 DeepSeek tokens**.
-- Research: one headless run per company, only on user request; reviewer adds
+- News refresh: **0 LLM tokens**.
+- Research: one headless run per company, operator-invoked only; reviewer adds
   one run per attempt; at most 2 revisions. **No bulk pre-research of A500/SPX.**
+- The only batch path is an explicit, capped operator command. No endpoint,
+  CLI command or scheduled job accepts “all constituents”.
 - Progress polling and page refreshes never call an LLM.
 
 ### Wider agent sidebar — done 2026-10-29
@@ -992,9 +1195,22 @@ tests.
 
 ### P4 — A/HK coverage (revised scope)
 
+**HSI status 2026-10-31**: `config/indices/hsi.yaml` has 85 constituents and
+`scripts/backfill-hsi.sh` runs the batch (enqueue `--universe hsi --exclude
+00700` → `work --queues research,ingest,review,f10 --drain` → `relations f10
+--universe hsi`). A/HK research attaches F10 by default. After ingest, the
+index page `/indices/HSI` reads the memberships with no API change. The
+post-batch `relations f10` pass re-resolves cached shareholder pages against the
+now-complete HSI universe (a 01038 shareholder of 00006 may not exist yet when
+00006 ingests). The full batch for the remaining **81 companies** was enqueued
+as run `a19a67ba-8739-4361-833b-6887395556ad` (excludes the 4 pilot names
+`00700,00001,00006,01038`); `occ-backfill status` / `states` track it. STAR 50 /
+ChiNext 50 snapshots remain to do.
+
 - Index snapshots: **STAR 50 (000688, SSE)**, **ChiNext 50 (399673, SZSE)**,
   **HSI**; store `as_of`, weights and license. **Do not add S&P 500.** NDX is
-  done (`config/indices/ndx.yaml`, 2026-10-28).
+  done (`config/indices/ndx.yaml`, 2026-10-28); HSI is done
+  (`config/indices/hsi.yaml`, 2026-10-31).
 - Backfill A/HK profiles: parallel pg-boss, F10 + official filings, per-company
   checkpoints. A-share path is already validated on 600519, HK on 00700.
 - Entity resolution: LEI / CIK / USCC / ISIN / ticker+exchange / Wikidata QID /
@@ -1022,7 +1238,45 @@ and a UI smoke suite.
 
 ## 11. Handoff checklist
 
+- [ ] HSI: `--universe hsi` resolves 85 HKEX targets; pilot research → ingest →
+  reviewer completes; `/indices/HSI` lists members after ingest.
+- [ ] Reviewer: `review.company` pass → `ready`; `revise` is capped at
+  `OCC_REVIEW_MAX_CYCLES`; repeated failure ends in `needs_review`; `states`
+  shows the last review result.
+- [ ] NIM: worker research resolves `deepseek-ai/deepseek-v4.1-flash` through
+  `127.0.0.1:4010`; Parallel tools are `mcp__psearch__web_search` /
+  `mcp__psearch__web_fetch`; a 500/empty-content response is retried.
+- [ ] F10 relations: A/HK/US ownership page JSON is cached under `.occ/f10/`;
+  in-universe shareholders become `owns`/`invests_in` with evidence; refresh
+  does not delete LLM or verified edges; `relations f10 --universe hsi`
+  re-resolves cached pages after the batch.
+- [ ] ACP sidebar unchanged: same model row, `reasoningEffort`, timeout,
+  `deepseek-official` tools and `agent-trace.ts`.
 - [ ] Repo is private; no key/token/cookie/`.env` tracked.
+- [ ] Migration (dual-mode): provider `nvidia` is registered in the **headless**
+      profile only; the headless `agent-default-model` points at
+      `deepseek-ai/deepseek-v4.1-flash`; `NVIDIA_API_KEY.txt` is gitignored.
+- [ ] Migration: **the ACP `acp` row, `reasoningEffort`, `OCC_AGENT_TURN_TIMEOUT_MS`
+      and `agent-trace.ts` are unchanged**; the sidebar still uses
+      `deepseek-flash` + `deepseek-official`.
+- [ ] Migration: Parallel Search MCP mounted in the **headless profile only**
+      (`streamable-http`, `https://search.parallel.ai/mcp`); headless
+      prompt/skills/`validate.mjs`/URL extraction use
+      `mcp__psearch__web_search` / `mcp__psearch__web_fetch`.
+- [ ] Migration: `DEEPSEEK_API_KEY.txt` **stays** (sidebar + ingest/extraction
+      + reviewer) and is still gitignored; per-job env whitelist keeps it out
+      of the research child.
+- [ ] Migration: step-level retry (3 attempts + backoff) on NIM 500 / empty
+      `content`, plus `reasoning_content → content`; a single 500 never fails
+      an 18-step company run.
+- [ ] Migration: reviewer spawns a **DeepSeek** headless profile with reasoning
+      on and a DeepSeek-only env; relation extraction is unchanged.
+- [ ] Migration: no paid fallback for Parallel; one retry + plain-HTTP fetch
+      fallback only; failure mode documented.
+- [ ] Migration: global 36 RPM limiter across worker shards; a 10-minute
+      sustained run leaves no dead jobs.
+- [ ] Migration: the coding session still runs with the user's own key;
+      nothing under `~/.claude*` or shell profiles changed.
 - [ ] `scripts/dev-db.sh status` and `node apps/worker/dist/cli.js status` work.
 - [ ] `corepack pnpm -r --workspace-concurrency=1 test` is green.
 - [ ] `node scripts/e2e-search.mjs` passes against the live corpus.
@@ -1040,18 +1294,22 @@ and a UI smoke suite.
 - [ ] Resume failure shows the yellow `agent.resume.failed` notice between the
       question and the answer, then answers normally (do not fail the prompt).
 - [ ] News stage 1: “刷新新闻” updates the tab without a reload; unchanged run
-      says “已是最新”; two clicks/tabs produce one job; no DeepSeek tokens.
+      says “已是最新”; two clicks/tabs produce one job; no LLM tokens.
 - [ ] News stage 2: entering a page after the TTL enqueues each stale company
       once; before the TTL it does nothing.
 - [ ] A500 + SPX placeholders: constituent counts match minus existing
       companies; no documents/embeddings; default search excludes them; index
       pages and direct `/c/:ticker` show the 未收录 state.
-- [ ] Placeholder CTA: one job per company, dock shows progress, reviewer pass
-      flips the page to the full profile, `revise` is capped at 2 cycles.
-- [ ] Shared task dock prototype approved (both task kinds, mixed states,
-      light/dark, phone width) before building the production component.
-- [ ] A/HK **bulk backfill** plan is STAR 50 + ChiNext 50 + HSI; SPX stays
-      on-demand only (placeholder + user-triggered research), not bulk.
+- [ ] Placeholder page is **read-only**: no CTA, no `/research` endpoint, no
+      route or UI action can enqueue research.
+- [ ] Local capped research batch (operator CLI) runs through the worker pool on
+      NIM/Parallel; reviewer pass flips the page to the full profile,
+      `revise` is capped at 2 cycles.
+- [ ] Shared task dock prototype approved (commit `dd465fc`); production dock
+      wires **only** `news_refresh` — no `company_research` rows, no filter tabs.
+- [ ] A/HK **bulk backfill** plan is STAR 50 + ChiNext 50 + HSI; **A500 and
+      SPX stay placeholder-only** (filled by explicit, capped operator batches),
+      never a full sweep.
 - [ ] Do not write `deepseek-v4-pro` back into any config.
 - [ ] Do not commit keys, tokens, cookies, or `.env`.
 
@@ -1071,6 +1329,9 @@ Active docs:
 - [`docs/NEWS.md`](docs/NEWS.md)
 - [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)
 - [`docs/PRIOR_ART.md`](docs/PRIOR_ART.md)
+- [`docs/NVIDIA_NIM_MIGRATION.md`](docs/NVIDIA_NIM_MIGRATION.md) — P0
+  **headless-only** cutover: NIM inference + Parallel search/fetch for the
+  worker pool, measured comparison, touchpoints, cost, rollback
 - [`config/universe.yaml`](config/universe.yaml)
 - [`config/indices/ndx.yaml`](config/indices/ndx.yaml)
 - [`phase0/README.md`](phase0/README.md)

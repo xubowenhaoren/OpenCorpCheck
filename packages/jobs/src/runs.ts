@@ -57,6 +57,27 @@ CREATE TABLE IF NOT EXISTS research_cache (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Operator-facing state machine for one company. Detailed job/checkpoint rows
+-- stay in backfill_jobs; this table answers "where is this company now?".
+CREATE TABLE IF NOT EXISTS company_research_state (
+  company_id text PRIMARY KEY,
+  status text NOT NULL DEFAULT 'queued'
+    CHECK (status IN ('queued', 'running', 'reviewing', 'ready', 'failed', 'needs_review')),
+  run_id uuid,
+  attempts integer NOT NULL DEFAULT 0,
+  review_attempts integer NOT NULL DEFAULT 0,
+  last_error text,
+  review_result jsonb,
+  requested_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE company_research_state
+  ADD COLUMN IF NOT EXISTS review_result jsonb;
+
+CREATE INDEX IF NOT EXISTS company_research_state_status_idx
+  ON company_research_state (status, updated_at);
+
 CREATE TABLE IF NOT EXISTS f10_pages (
   market text NOT NULL,
   code text NOT NULL,
@@ -101,6 +122,26 @@ export interface ResearchCacheRow {
   model: string;
   tokens_input: number;
   tokens_output: number;
+}
+
+export type CompanyResearchStatus =
+  | "queued"
+  | "running"
+  | "reviewing"
+  | "ready"
+  | "failed"
+  | "needs_review";
+
+export interface CompanyResearchStateRow {
+  company_id: string;
+  status: CompanyResearchStatus;
+  run_id: string | null;
+  attempts: number;
+  review_attempts: number;
+  last_error: string | null;
+  review_result: unknown;
+  requested_at: string;
+  updated_at: string;
 }
 
 export interface RunSummary {
@@ -265,6 +306,7 @@ export class JobStore {
          AND status <> 'completed'`,
       [runId, queue, jobKey],
     );
+    await this.refreshRun(runId);
   }
 
   async markJobCompleted(
@@ -280,6 +322,22 @@ export class JobStore {
              ELSE (EXTRACT(EPOCH FROM (now() - started_at)) * 1000)::int
            END,
            last_error = NULL
+       WHERE run_id = $1 AND queue = $2 AND job_key = $3`,
+      [runId, queue, jobKey],
+    );
+    await this.refreshRun(runId);
+  }
+
+  /** Reopen a completed/failed row for a bounded reviewer-driven retry. */
+  async resetJobForRetry(
+    runId: string,
+    queue: string,
+    jobKey: string,
+  ): Promise<void> {
+    await this.query(
+      `UPDATE backfill_jobs
+       SET status = 'queued', started_at = NULL, finished_at = NULL,
+           last_error = NULL, updated_at = now()
        WHERE run_id = $1 AND queue = $2 AND job_key = $3`,
       [runId, queue, jobKey],
     );
@@ -356,6 +414,70 @@ export class JobStore {
        ) c
        WHERE r.id = $1`,
       [runId],
+    );
+  }
+
+  async upsertCompanyState(input: {
+    companyId: string;
+    status: CompanyResearchStatus;
+    runId?: string | null;
+    attempts?: number;
+    reviewAttempts?: number;
+    lastError?: string | null;
+    reviewResult?: unknown;
+  }): Promise<void> {
+    await this.query(
+      `INSERT INTO company_research_state (
+         company_id, status, run_id, attempts, review_attempts, last_error,
+         review_result, requested_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, now(), now())
+       ON CONFLICT (company_id) DO UPDATE SET
+         status = EXCLUDED.status,
+         run_id = COALESCE(EXCLUDED.run_id, company_research_state.run_id),
+         attempts = GREATEST(company_research_state.attempts, EXCLUDED.attempts),
+         review_attempts = GREATEST(
+           company_research_state.review_attempts, EXCLUDED.review_attempts
+         ),
+         last_error = EXCLUDED.last_error,
+         review_result = COALESCE(
+           EXCLUDED.review_result, company_research_state.review_result
+         ),
+         requested_at = CASE
+           WHEN EXCLUDED.status = 'queued' THEN now()
+           ELSE company_research_state.requested_at
+         END,
+         updated_at = now()`,
+      [
+        input.companyId,
+        input.status,
+        input.runId ?? null,
+        input.attempts ?? 0,
+        input.reviewAttempts ?? 0,
+        input.lastError ?? null,
+        input.reviewResult === undefined
+          ? null
+          : JSON.stringify(input.reviewResult),
+      ],
+    );
+  }
+
+  async getCompanyState(companyId: string): Promise<CompanyResearchStateRow | null> {
+    const rows = await this.query<CompanyResearchStateRow>(
+      `SELECT company_id, status, run_id, attempts, review_attempts, last_error,
+              review_result, requested_at, updated_at
+       FROM company_research_state WHERE company_id = $1`,
+      [companyId],
+    );
+    return rows[0] ?? null;
+  }
+
+  async listCompanyStates(limit = 100): Promise<CompanyResearchStateRow[]> {
+    return this.query<CompanyResearchStateRow>(
+      `SELECT company_id, status, run_id, attempts, review_attempts, last_error,
+              review_result, requested_at, updated_at
+       FROM company_research_state
+       ORDER BY updated_at DESC LIMIT $1`,
+      [limit],
     );
   }
 

@@ -39,9 +39,182 @@ export interface InferredRelationInput {
   extractorVersion?: string;
 }
 
+export interface ReportRelationInput {
+  id: string;
+  srcCompanyId: string;
+  dstCompanyId: string;
+  type: string;
+  quote: string;
+  sourceUrl: string;
+  sourceTitle?: string;
+  confidence: number;
+  validFrom?: string;
+}
+
+/**
+ * Upsert directly reported (F10 table) relations without deleting anything.
+ *
+ * Unlike `replaceInferredRelations`, this is additive: a page refresh must not
+ * remove LLM-extracted or human-reviewed edges. Existing `verified`/`rejected`
+ * rows keep their status; `inferred` rows with the same identity are upgraded
+ * to `reported`, which is still unreviewed.
+ */
+export async function upsertReportedRelations(
+  db: Db,
+  rows: ReportRelationInput[],
+  options: { dstCompanyId?: string } = {},
+): Promise<{ relations: number; evidence: number; reviews: number }> {
+  let evidenceCount = 0;
+  let reviewCount = 0;
+  const sourceIds = new Map<string, string>();
+  const nextIds = new Set(rows.map((row) => row.id));
+  const destinations = [
+    ...new Set([
+      ...rows.map((row) => row.dstCompanyId),
+      ...(options.dstCompanyId ? [options.dstCompanyId] : []),
+    ]),
+  ];
+
+  // Refresh semantics: replace *unreviewed F10 edges into this company* so a
+  // changed percentage/quote does not leave a stale duplicate. Verified and
+  // rejected rows, and every LLM-inferred edge, are never touched.
+  for (const dstCompanyId of destinations) {
+    const previous = await db
+      .select({ id: relations.id })
+      .from(relations)
+      .where(
+        and(
+          eq(relations.dstCompanyId, dstCompanyId),
+          eq(relations.status, "reported"),
+          eq(relations.extractorVersion, "f10-table-v1"),
+        ),
+      );
+    const stale = previous
+      .map((row) => row.id)
+      .filter((id) => !nextIds.has(id));
+    if (stale.length === 0) continue;
+    await db.delete(relations).where(inArray(relations.id, stale));
+    await db.delete(reviewQueue).where(
+      and(
+        eq(reviewQueue.kind, "relation"),
+        eq(reviewQueue.status, "pending"),
+        inArray(
+          reviewQueue.dedupeKey,
+          stale.map((id) => `relation:${id}`),
+        ),
+      ),
+    );
+  }
+
+  for (const row of rows) {
+    let sourceId = sourceIds.get(row.sourceUrl);
+    if (!sourceId) {
+      sourceId = `src_f10_${sha1(row.sourceUrl).slice(0, 24)}`;
+      await db
+        .insert(sources)
+        .values({
+          id: sourceId,
+          url: row.sourceUrl,
+          canonicalUrl: canonicalizeUrl(row.sourceUrl),
+          domain: (() => {
+            try {
+              return new URL(row.sourceUrl).hostname;
+            } catch {
+              return undefined;
+            }
+          })(),
+          title: row.sourceTitle,
+          trustTier: "secondary",
+          robotsOk: true,
+        })
+        .onConflictDoUpdate({
+          target: sources.id,
+          set: { url: row.sourceUrl, title: row.sourceTitle },
+        });
+      sourceIds.set(row.sourceUrl, sourceId);
+    }
+
+    const dedupeKey = `relation:${row.id}`;
+    let review = (
+      await db
+        .select({ id: reviewQueue.id })
+        .from(reviewQueue)
+        .where(eq(reviewQueue.dedupeKey, dedupeKey))
+        .limit(1)
+    )[0];
+    if (!review) {
+      const reviewId = reviewItemId(dedupeKey);
+      await db
+        .insert(reviewQueue)
+        .values({
+          id: reviewId,
+          kind: "relation",
+          payload: {
+            relationId: row.id,
+            srcCompanyId: row.srcCompanyId,
+            dstCompanyId: row.dstCompanyId,
+            type: row.type,
+            confidence: row.confidence,
+            origin: "f10_table",
+          },
+          evidence: {
+            quote: row.quote,
+            sourceId,
+            sourceUrl: row.sourceUrl,
+          },
+          dedupeKey,
+        })
+        .onConflictDoNothing({ target: reviewQueue.id });
+      review = { id: reviewId };
+      reviewCount += 1;
+    }
+
+    await db
+      .insert(relations)
+      .values({
+        id: row.id,
+        srcCompanyId: row.srcCompanyId,
+        dstCompanyId: row.dstCompanyId,
+        type: row.type,
+        status: "reported",
+        confidence: row.confidence,
+        validFrom: row.validFrom,
+        extractorVersion: "f10-table-v1",
+        reviewId: review.id,
+      })
+      .onConflictDoUpdate({
+        target: relations.id,
+        set: {
+          type: row.type,
+          confidence: row.confidence,
+          validFrom: row.validFrom,
+          reviewId: review.id,
+          status: sql`CASE
+            WHEN ${relations.status} = 'inferred' THEN 'reported'
+            ELSE ${relations.status}
+          END`,
+        },
+      });
+
+    await db
+      .insert(relationEvidence)
+      .values({
+        relationId: row.id,
+        sourceId,
+        quote: row.quote,
+      })
+      .onConflictDoNothing();
+    evidenceCount += 1;
+  }
+
+  return { relations: rows.length, evidence: evidenceCount, reviews: reviewCount };
+}
+
+export type ExtractionStage = "deterministic" | "relations" | "f10_relations";
+
 export interface ExtractionCacheInput {
   companyId: string;
-  stage: "deterministic" | "relations";
+  stage: ExtractionStage;
   inputSha256: string;
   promptHash?: string;
   model?: string;
@@ -404,7 +577,7 @@ export async function replaceInferredRelations(
 export async function getExtractionCache(
   db: Db,
   companyId: string,
-  stage: "deterministic" | "relations",
+  stage: ExtractionStage,
 ): Promise<typeof extractionCache.$inferSelect | null> {
   const [row] = await db
     .select()

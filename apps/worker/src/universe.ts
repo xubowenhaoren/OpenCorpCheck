@@ -99,22 +99,62 @@ export async function loadAiWatchlistTargets(): Promise<CompanyTarget[]> {
   return targets;
 }
 
-/** Primary listings from an index snapshot (`config/indices/ndx.yaml`). */
-export async function loadIndexTargets(): Promise<CompanyTarget[]> {
-  const snapshot = loadIndexSnapshot(config.ndxFile);
-  return primaryConstituents(snapshot).map((entry) => ({
-    key: `US:${entry.ticker}`,
-    ticker: entry.ticker,
-    name: entry.name,
-    market: "US" as Market,
-    code: entry.ticker,
-    exchange: entry.exchange,
-    priority: PRIORITY.index,
-    source: "index" as const,
-    coverageTier: "index_member" as CoverageTier,
-    indexCode: snapshot.index.code,
-    indexAsOf: snapshot.index.as_of,
-  }));
+/** Index universes map to a validated snapshot under `config/indices`. */
+const INDEX_UNIVERSES: Record<
+  string,
+  { file: string; market: Market; exchange: string; coverage: CoverageTier }
+> = {
+  ndx: {
+    file: "ndx.yaml",
+    market: "US",
+    exchange: "NASDAQ",
+    coverage: "index_member",
+  },
+  nasdaq100: {
+    file: "ndx.yaml",
+    market: "US",
+    exchange: "NASDAQ",
+    coverage: "index_member",
+  },
+  hsi: {
+    file: "hsi.yaml",
+    market: "HK",
+    exchange: "HKEX",
+    coverage: "index_member",
+  },
+  hangsen: {
+    file: "hsi.yaml",
+    market: "HK",
+    exchange: "HKEX",
+    coverage: "index_member",
+  },
+};
+
+/** Primary listings from an index snapshot (`config/indices/<universe>.yaml`). */
+export async function loadIndexTargets(universe: string): Promise<CompanyTarget[]> {
+  const spec = INDEX_UNIVERSES[universe];
+  if (!spec) {
+    throw new Error(
+      `unknown index universe ${universe}; use ${Object.keys(INDEX_UNIVERSES).join(", ")}`,
+    );
+  }
+  const snapshot = loadIndexSnapshot(path.join(config.indicesDir, spec.file));
+  return primaryConstituents(snapshot).map((entry) => {
+    const code = normalizeCodeForMarket(spec.market, entry.ticker);
+    return {
+      key: `${spec.market}:${code}`,
+      ticker: code,
+      name: entry.name,
+      market: spec.market,
+      code,
+      exchange: entry.exchange || spec.exchange,
+      priority: PRIORITY.index,
+      source: "index" as const,
+      coverageTier: spec.coverage,
+      indexCode: snapshot.index.code,
+      indexAsOf: snapshot.index.as_of,
+    };
+  });
 }
 
 export interface ParsedTicker {
@@ -203,6 +243,8 @@ function slug(value: string): string {
 export interface ResolveOptions {
   universe?: string;
   tickers?: string;
+  /** Comma-separated keys/tickers to drop after universe expansion. */
+  exclude?: string;
   limit?: number;
   shard?: { index: number; count: number };
   requireF10?: boolean;
@@ -219,11 +261,13 @@ export async function resolveTargets(
       for (const target of await loadMag7Targets()) known.set(target.key, target);
     } else if (universe === "ai" || universe === "ai-watchlist") {
       for (const target of await loadAiWatchlistTargets()) known.set(target.key, target);
-    } else if (universe === "ndx" || universe === "nasdaq100") {
-      for (const target of await loadIndexTargets()) known.set(target.key, target);
+    } else if (universe in INDEX_UNIVERSES) {
+      for (const target of await loadIndexTargets(universe)) {
+        known.set(target.key, target);
+      }
     } else {
       throw new Error(
-        `unknown universe ${options.universe}; use mag7, ai-watchlist or ndx`,
+        `unknown universe ${options.universe}; use mag7, ai-watchlist, ndx or hsi`,
       );
     }
   }
@@ -252,6 +296,22 @@ export async function resolveTargets(
   }
 
   let targets = [...known.values()];
+  const excluded = new Set<string>();
+  for (const raw of (options.exclude ?? "").split(",")) {
+    const value = raw.trim();
+    if (!value) continue;
+    const parsed = parseTicker(value);
+    if (parsed) excluded.add(parsed.key);
+    excluded.add(value);
+  }
+  if (excluded.size > 0) {
+    targets = targets.filter(
+      (target) =>
+        !excluded.has(target.key) &&
+        !excluded.has(target.ticker) &&
+        !excluded.has(target.code ?? ""),
+    );
+  }
   if (options.requireF10) {
     targets = targets.filter((target) => target.market && target.code);
   }

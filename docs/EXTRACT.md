@@ -14,6 +14,7 @@ Two pipelines, deliberately separated:
 |---|---|---|---|
 | Deterministic | Markdown tables, regex, alias matching | No | `financial_facts`, `facts` |
 | Relations | `deepseek-flash` constrained to known companies | Yes, one call per company | `relations`, `relation_evidence`, `review_queue` |
+| F10 relations | Structured F10 shareholder tables + universe matching | No | `relations` (`reported`), evidence, review queue |
 
 ## Commands
 
@@ -109,6 +110,63 @@ evidence quote/URL. Only a human can move an edge to `verified`.
 LLM failures never fail ingest: deterministic data is kept, the error is
 recorded in `extraction_cache` (`stage='relations'`, `status='partial'`), and the
 batch reports it per company.
+
+## Structured F10 shareholder relations (2026-10-31)
+
+The profile's `关键关系` chapter is not the only source of ownership edges. After
+ingest, the worker also reads the company's structured F10 ownership page:
+
+| Market | Page | Table |
+|---|---|---|
+| A | `gdyj` | 十大股东 / 十大流通股东 |
+| HK | `MajorShareholder` | 直接/间接持股方 |
+| US | `gbgd` | 最新持股 / 董事及股东权益 |
+
+The page JSON is saved under `.occ/f10/<market>/<code>/<page>.json`; extraction
+(`packages/extract/src/relations/f10.ts`) turns each row into a candidate edge
+**only when the shareholder already exists in our company universe**. Out-of-
+universe shareholders are counted and logged, never invented as companies.
+
+- Direction is always shareholder → profiled company.
+- `owns` when the stake is ≥ 50%, otherwise `invests_in`.
+- Rows are written as `relations.status='reported'` with an evidence quote and
+  the F10 URL, plus a `review_queue` item. The UI labels them 媒体报道; only a
+  human decision moves them to `verified`.
+- Extraction is **additive**: refreshing a page never deletes LLM-inferred or
+  human-reviewed edges. Unreviewed F10 edges into the same company are replaced
+  when the page changes, so stale percentages do not accumulate.
+  `OCC_F10_RELATIONS=none` disables the pass.
+- After a batch, re-run against cached pages so a shareholder that was not yet
+  ingested at first pass becomes an edge:
+  `node apps/worker/dist/cli.js relations f10 --universe hsi`.
+
+HK HSI holdings are a useful example: Power Assets (00006) reports 长江基建
+(01038) and 长江和记 (00001) as shareholders, so the graph gets real investment
+edges once those companies are ingested.
+
+## Reviewer (hidden quality gate)
+
+Research + ingest can enqueue `review.company`. The reviewer is a second
+headless dsh run on the **official DeepSeek API with reasoning on** (not NIM),
+with a checklist prompt and only web search/fetch tools. It returns:
+
+```json
+{"verdict":"pass|revise","issues":[{"field":"5. 财务表现","reason":"...","evidence":"..."}],"fix_instructions":"..."}
+```
+
+`pass` → `ready`. `revise` → the first `review.company` job that pass is not met
+re-enqueues research with the feedback, capped at `OCC_REVIEW_MAX_CYCLES`
+(default 2), then `needs_review`. The reviewer is not exposed in the public UI;
+`occ-backfill states` shows operator status and the last review result.
+
+The 2026-10-31 `HK:00700` pilot is the reference: research 289 s, ingest 27 s,
+three reviewer turns (~73 s each), final verdict `revise` → `needs_review`
+after the cap. The issues were real (OCF/FCF reconciliation, a mismatched
+citation, source-count mismatch, wrong interest-coverage definition, mixed
+single-quarter/cumulative columns), so the profile stayed ingested but was not
+marked ready. That is the intended behaviour: never fake a pass.
+
+
 
 ## Reviewing the queue
 

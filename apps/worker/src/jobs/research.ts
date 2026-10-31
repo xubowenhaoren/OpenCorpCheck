@@ -12,10 +12,12 @@ import {
   markJobActive,
   markJobCompleted,
   markJobFailed,
+  upsertCompanyState,
   upsertResearchCache,
 } from "../db.js";
 import { QUEUES } from "../queues.js";
 import { runDshResearch } from "../research/dsh.js";
+import { formatRevisionPrompt } from "./review.js";
 import {
   promptHash,
   renderPrompt,
@@ -42,6 +44,12 @@ export interface ResearchJobData {
   indexCode?: string;
   indexAsOf?: string;
   coverageTier?: CoverageTier;
+  /** Run the hidden reviewer after ingest (default true for live runs). */
+  review?: boolean;
+  /** Reviewer cycle (0 = first review). */
+  reviewAttempt?: number;
+  /** Reviewer fix_instructions fed back into a bounded re-run. */
+  feedback?: string;
 }
 
 export interface ResearchJobContext {
@@ -83,10 +91,15 @@ async function processResearchJob(
     source: "explicit",
   };
   const skill = data.skill ?? skillForTarget(target);
-  const prompt = renderPrompt(target, today(), skill);
-  const patches = data.includeF10
-    ? [config.basePatch, config.f10Patch]
-    : [config.basePatch];
+  const basePrompt = renderPrompt(target, today(), skill);
+  const prompt = data.feedback
+    ? `${basePrompt}\n${formatRevisionPrompt(data.feedback)}\n`
+    : basePrompt;
+  const patches = [
+    config.basePatch,
+    config.llmProvider === "nvidia" ? config.parallelPatch : config.deepseekPatch,
+    ...(data.includeF10 ? [config.f10Patch] : []),
+  ];
   const hash = promptHash(prompt, patches, skill);
 
   // Resume fast-path: same prompt/model/skill/patch hash and an intact section.
@@ -110,6 +123,13 @@ async function processResearchJob(
   }
 
   await markJobActive(data.runId, queue, data.key);
+  await upsertCompanyState({
+    companyId: data.key,
+    status: "running",
+    runId: data.runId,
+    attempts: job.retryCount + 1,
+    reviewAttempts: data.reviewAttempt ?? 0,
+  });
   const startedAt = Date.now();
   let sectionText = "";
   let inputTokens = 0;
@@ -128,7 +148,7 @@ async function processResearchJob(
       if (!result.ok) {
         throw new Error(result.error ?? "dsh research failed");
       }
-      sectionText = `${result.finalText.trim()}\n`;
+      sectionText = `${stripPreamble(result.finalText)}` + "\n";
       inputTokens = result.usage.inputTokens;
       outputTokens = result.usage.outputTokens;
     }
@@ -160,6 +180,13 @@ async function processResearchJob(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await markJobFailed(data.runId, queue, data.key, message);
+    await upsertCompanyState({
+      companyId: data.key,
+      status: "failed",
+      runId: data.runId,
+      reviewAttempts: data.reviewAttempt ?? 0,
+      lastError: message.slice(0, 4_000),
+    });
     log({
       event: "research_job_failed",
       run: data.runId,
@@ -172,8 +199,24 @@ async function processResearchJob(
   }
 }
 
-function sectionMatches(filePath: string, expectedSha: string): boolean {
-  try {
+/**
+ * Models sometimes prepend "I have enough evidence" or correction notes.
+ * The profile itself starts at the first `## ` heading; drop anything before it
+ * so the stored section is exactly the artifact the reviewer sees.
+ */
+export function stripPreamble(text: string): string {
+  let body = text.trim();
+  const heading = body.indexOf("\n## ");
+  if (heading >= 0) body = body.slice(heading + 1).trim();
+  // Trailing self-checks / correction notes are not part of the profile.
+  const trailing = body.search(
+    /\n-{3,}\s*\n\s*(?:\*\*)?(?:校验|自检|核对|correction|verification)/i,
+  );
+  if (trailing > 0) body = body.slice(0, trailing).trim();
+  return body;
+}
+
+function sectionMatches(filePath: string, expectedSha: string): boolean {  try {
     return sha256Text(fs.readFileSync(filePath, "utf8")) === expectedSha;
   } catch {
     return false;
@@ -201,6 +244,9 @@ async function enqueueIngest(
     ...(data.indexCode ? { indexCode: data.indexCode } : {}),
     ...(data.indexAsOf ? { indexAsOf: data.indexAsOf } : {}),
     ...(data.coverageTier ? { coverageTier: data.coverageTier } : {}),
+    review: data.review !== false,
+    reviewAttempt: data.reviewAttempt ?? 0,
+    researchPayload: data,
     force: Boolean(data.force),
   });
 }

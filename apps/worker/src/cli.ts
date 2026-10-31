@@ -7,9 +7,12 @@ import { publicConfig } from "./config.js";
 import {
   closePool,
   getRunSummary,
+  listCompanyStates,
   listRuns,
   migrate,
 } from "./db.js";
+import { runF10RelationsCommand } from "./f10-relations-command.js";
+import { startNimGateway } from "./nim-gateway.js";
 import { queueCounts, startBoss } from "./queues.js";
 import { resolveTargets } from "./universe.js";
 import { runWorkers, type QueueKind } from "./worker.js";
@@ -21,18 +24,22 @@ Usage:
   occ-backfill enqueue research [options]
   occ-backfill enqueue f10 [options]
   occ-backfill enqueue news [options]
-  occ-backfill work [--queues research,ingest,news,f10] [--drain]
+  occ-backfill work [--queues research,ingest,review,news,f10] [--drain]
   occ-backfill status [--run <uuid>] [--json]
+  occ-backfill states [--limit N] [--json]
+  occ-backfill relations f10 [--universe hsi|ndx|... | --tickers ...] [--force]
   occ-backfill config
 
 Enqueue options:
-  --universe mag7|ai-watchlist|ndx
+  --universe mag7|ai-watchlist|ndx|hsi
   --tickers AAPL,600519:A,00700:HK
+  --exclude 00700,AAPL         Drop targets after universe expansion
   --limit N                      Cap targets after priority sort
   --shard I/N                    Only targets where hash(key) % N === I
   --force                        Ignore completed checkpoints / cache
   --mock                         Research only: write fixture sections, no LLM
   --include-f10                  Research only: attach the F10 MCP tools
+  --no-review                    Research only: skip the hidden reviewer
   --no-ingest                    Research only: skip section ingestion
   --ingest-mock                  Research only: ingest mock sections too
   --preset default|minimal       F10 only (default: default)
@@ -49,7 +56,11 @@ Environment:
   OCC_QDRANT_URL (default http://127.0.0.1:6333)
   OCC_EMBEDDING_URL (default http://127.0.0.1:8080)
   OCC_FINANCE_ANALYST_URL (default http://127.0.0.1:8090)
-  DEEPSEEK_API_KEY (required for live research)
+  OCC_LLM_PROVIDER (nvidia default; deepseek rollback)
+  OCC_NIM_RPM (default 36)
+  OCC_REVIEW_MAX_CYCLES (default 2)
+  NVIDIA_API_KEY (required for live research on NIM)
+  DEEPSEEK_API_KEY (required for ingest/extraction and the reviewer)
 `;
 
 async function main(): Promise<void> {
@@ -73,6 +84,12 @@ async function main(): Promise<void> {
     case "status":
       await statusCommand(rest);
       return;
+    case "states":
+      await statesCommand(rest);
+      return;
+    case "relations":
+      await relationsCommand(rest);
+      return;
     case "config":
       console.log(JSON.stringify(publicConfig(), null, 2));
       return;
@@ -82,6 +99,7 @@ async function main(): Promise<void> {
         options: {
           universe: { type: "string" },
           tickers: { type: "string" },
+          exclude: { type: "string" },
           limit: { type: "string" },
           shard: { type: "string" },
         },
@@ -89,6 +107,7 @@ async function main(): Promise<void> {
       const targets = await resolveTargets({
         universe: values.universe,
         tickers: values.tickers,
+        exclude: values.exclude,
         limit: values.limit ? Number(values.limit) : undefined,
         shard: parseShard(values.shard),
       });
@@ -117,11 +136,13 @@ async function enqueueCommand(
     options: {
       universe: { type: "string" },
       tickers: { type: "string" },
+      exclude: { type: "string" },
       limit: { type: "string" },
       shard: { type: "string" },
       force: { type: "boolean" },
       mock: { type: "boolean" },
       "include-f10": { type: "boolean" },
+      "no-review": { type: "boolean" },
       "no-ingest": { type: "boolean" },
       "ingest-mock": { type: "boolean" },
       preset: { type: "string" },
@@ -146,6 +167,7 @@ async function enqueueCommand(
       result = await enqueueResearch(boss, {
         universe: values.universe,
         tickers: values.tickers,
+        exclude: values.exclude,
         limit,
         shard,
         force: values.force,
@@ -153,6 +175,7 @@ async function enqueueCommand(
         includeF10: values["include-f10"],
         ingest: values["no-ingest"] ? false : undefined,
         ingestMock: values["ingest-mock"],
+        review: values["no-review"] ? false : undefined,
       });
     } else if (kind === "news") {
       result = await enqueueNews(boss, {
@@ -191,7 +214,7 @@ async function workCommand(args: string[]): Promise<void> {
       drain: { type: "boolean" },
     },
   });
-  const queues = (values.queues ?? "research,ingest,news,f10")
+  const queues = (values.queues ?? "research,ingest,review,news,f10")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean) as QueueKind[];
@@ -199,15 +222,19 @@ async function workCommand(args: string[]): Promise<void> {
     if (
       queue !== "research" &&
       queue !== "ingest" &&
+      queue !== "review" &&
       queue !== "news" &&
       queue !== "f10"
     ) {
       throw new Error(
-        `unknown queue ${queue}; use research, ingest, news or f10`,
+        `unknown queue ${queue}; use research, ingest, review, news or f10`,
       );
     }
   }
   await migrate();
+  if (queues.includes("research")) {
+    await startNimGateway();
+  }
   await runWorkers({ queues, drain: values.drain });
 }
 
@@ -290,6 +317,63 @@ async function statusCommand(args: string[]): Promise<void> {
   } finally {
     await boss.stop({ graceful: false });
   }
+}
+
+async function statesCommand(args: string[]): Promise<void> {
+  const { values } = parseArgs({
+    args,
+    options: { json: { type: "boolean" }, limit: { type: "string" } },
+  });
+  await migrate();
+  const states = await listCompanyStates(
+    values.limit ? Number(values.limit) : 100,
+  );
+  if (values.json) {
+    console.log(JSON.stringify(states, null, 2));
+    return;
+  }
+  if (states.length === 0) {
+    console.log("no company research state rows");
+    return;
+  }
+  for (const state of states) {
+    const review = state.review_result as
+      | { verdict?: string; issues?: unknown[] }
+      | null
+      | undefined;
+    const issues = Array.isArray(review?.issues) ? review.issues.length : 0;
+    console.log(
+      `${state.company_id.padEnd(14)} ${state.status.padEnd(13)} ` +
+        `attempts=${state.attempts} review=${state.review_attempts} ` +
+        `verdict=${review?.verdict ?? "-"} issues=${issues} ` +
+        `${state.last_error ? `error=${state.last_error.slice(0, 160)}` : ""}`,
+    );
+  }
+}
+
+async function relationsCommand(args: string[]): Promise<void> {
+  const [kind, ...rest] = args;
+  if (kind !== "f10") {
+    throw new Error("relations requires `f10` (structured shareholder pass)");
+  }
+  const { values } = parseArgs({
+    args: rest,
+    options: {
+      universe: { type: "string" },
+      tickers: { type: "string" },
+      exclude: { type: "string" },
+      limit: { type: "string" },
+      force: { type: "boolean" },
+    },
+  });
+  await migrate();
+  const result = await runF10RelationsCommand({
+    ...(values.universe ? { universe: values.universe } : {}),
+    ...(values.tickers ? { tickers: values.tickers } : {}),
+    ...(values.limit ? { limit: Number(values.limit) } : {}),
+    force: Boolean(values.force),
+  });
+  console.log(JSON.stringify(result, null, 2));
 }
 
 function parseShard(

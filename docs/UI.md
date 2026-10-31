@@ -637,10 +637,10 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 - `GET /v1/entities/resolve?q=`（低优先级；`/c/:ref` 已能解析 ticker/slug/ULID）。
 - 公司短摘要字段：当前 `description` 已覆盖，暂不需要单独字段。
 
-**数据缺口（不是 UI 问题）**：投资/股权关系目前很稀疏（relations 只有
-partners/supplies/other/buys_from/licenses/joint_venture，没有
-invests_in/owns/parent_of）。图谱需要 P4 的 GLEIF / SEC 13F / 股东数据补强；
-在数据到位前，空状态和"让助手去查"必须做好。
+**数据缺口（不是 UI 问题）**：投资/股权关系已开始由结构化 F10 股东表补强
+（`owns` / `invests_in`，status `reported`，仅当股东已在公司库内），但覆盖仍
+有限。GLEIF / SEC 13F / HKEX DION 是下一步；在数据到位前，空状态和"让助手去查"
+必须做好。
 
 ---
 

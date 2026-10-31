@@ -39,8 +39,11 @@ first-class sub-agent card is still reserved.
 
 - **Universe**: ~280 index members (STAR 50, ChiNext 50, Hang Seng, NASDAQ-100),
   deduplicated across markets, plus a curated AI watchlist (OpenAI, Anthropic, DeepSeek,
-  Kimi/Moonshot, ...) and on-demand private companies. NASDAQ-100 is backfilled; A/HK are
-  the next backfill target. S&P 500 was removed from the v1 plan.
+  Kimi/Moonshot, ...) and on-demand private companies. NASDAQ-100 is backfilled; HSI
+  (85 constituents) is the next backfill target. S&P 500 was removed from the v1 plan.
+- **Dual-mode providers**: the interactive sidebar uses the official DeepSeek API; the
+  headless backfill worker uses NVIDIA NIM + Parallel Search MCP (free tiers), with a
+  local retry gateway. `OCC_LLM_PROVIDER=deepseek` rolls the worker back.
 - **BFS coverage**: discover and refresh company basics, products, IR hubs, and news.
 - **DFS diligence**: follow annual reports, filings, earnings calls, and product docs to
   extract cited financials and relationships.

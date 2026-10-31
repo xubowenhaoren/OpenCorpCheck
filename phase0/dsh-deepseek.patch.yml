@@ -1,0 +1,10 @@
+# Official-API rollback for the headless worker (OCC_LLM_PROVIDER=deepseek).
+# Applied after phase0/dsh.patch.yml. The ACP sidebar never uses this file.
+
+- id: agent-default-model
+  config:
+    provider: deepseek-official
+    model: deepseek-flash
+
+- id: llm-pi-ai
+  config: {}

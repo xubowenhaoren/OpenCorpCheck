@@ -23,9 +23,12 @@ import {
   markJobActive,
   markJobCompleted,
   markJobFailed,
+  upsertCompanyState,
 } from "../db.js";
 import { getIngestContext } from "../ingest-runtime.js";
 import { QUEUES } from "../queues.js";
+import { extractF10Relations } from "../research/f10-relations.js";
+import type { ReviewJobData } from "./review.js";
 
 export interface IngestJobData {
   runId: string;
@@ -42,17 +45,30 @@ export interface IngestJobData {
   force?: boolean;
   /** Run deterministic extraction after ingest (default true). */
   extract?: boolean;
+  /** Enqueue the hidden reviewer after ingest (default true). */
+  review?: boolean;
+  reviewAttempt?: number;
+  /** Original research job data, used to enqueue a bounded revision. */
+  researchPayload?: import("./research.js").ResearchJobData;
+}
+
+export interface IngestJobContext {
+  enqueueReview?: (data: ReviewJobData) => Promise<void>;
 }
 
 export async function handleIngestJobs(
   jobs: Job<IngestJobData>[],
+  context: IngestJobContext = {},
 ): Promise<void> {
   for (const job of jobs) {
-    await processIngestJob(job);
+    await processIngestJob(job, context);
   }
 }
 
-async function processIngestJob(job: Job<IngestJobData>): Promise<void> {
+async function processIngestJob(
+  job: Job<IngestJobData>,
+  context: IngestJobContext,
+): Promise<void> {
   const data = job.data;
   const queue = QUEUES.INGEST;
   const row = await getJobRow(data.runId, queue, data.key);
@@ -107,7 +123,35 @@ async function processIngestJob(job: Job<IngestJobData>): Promise<void> {
           runId: data.runId,
           key: data.key,
         });
+    const f10Relations = await extractF10Relations({
+      db: ctx.db,
+      companyId: result.companyId,
+      ticker: data.ticker,
+      code,
+      market,
+      ...(job.signal ? { signal: job.signal } : {}),
+    });
     await markJobCompleted(data.runId, queue, data.key);
+    if (data.review !== false && context.enqueueReview) {
+      await context.enqueueReview({
+        runId: data.runId,
+        key: data.key,
+        ticker: data.ticker,
+        name: data.name,
+        ...(data.market ? { market: data.market } : {}),
+        sectionPath,
+        reviewAttempt: data.reviewAttempt ?? 0,
+        ...(data.researchPayload
+          ? { researchPayload: data.researchPayload }
+          : {}),
+      });
+      await upsertCompanyState({
+        companyId: data.key,
+        status: "reviewing",
+        runId: data.runId,
+        reviewAttempts: data.reviewAttempt ?? 0,
+      });
+    }
     log({
       event: "ingest_job_completed",
       run: data.runId,
@@ -118,10 +162,18 @@ async function processIngestJob(job: Job<IngestJobData>): Promise<void> {
       indexedChunks: result.indexedChunks,
       durationMs: Date.now() - startedAt,
       extraction,
+      f10Relations,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await markJobFailed(data.runId, queue, data.key, message);
+    await upsertCompanyState({
+      companyId: data.key,
+      status: "failed",
+      runId: data.runId,
+      reviewAttempts: data.reviewAttempt ?? 0,
+      lastError: message.slice(0, 4_000),
+    });
     log({
       event: "ingest_job_failed",
       run: data.runId,

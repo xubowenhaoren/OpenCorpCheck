@@ -48,6 +48,22 @@ function pathEnvAny(names: string[], fallback: string): string {
   return pathEnv(name ?? names[0]!, fallback);
 }
 
+/** Secret from env, or from a file named by `<NAME>_FILE`. */
+function secretEnv(name: string, fallbackFile?: string): string | undefined {
+  const direct = process.env[name]?.trim();
+  if (direct) return direct;
+  const file = process.env[`${name}_FILE`];
+  const candidate = file
+    ? path.isAbsolute(file)
+      ? file
+      : path.join(repoRoot, file)
+    : fallbackFile
+      ? path.join(repoRoot, fallbackFile)
+      : undefined;
+  if (!candidate || !fs.existsSync(candidate)) return undefined;
+  return fs.readFileSync(candidate, "utf8").trim() || undefined;
+}
+
 export const config = {
   repoRoot,
   databaseUrl:
@@ -68,6 +84,7 @@ export const config = {
   researchConcurrency: intEnv("OCC_RESEARCH_CONCURRENCY", 4),
   f10Concurrency: intEnv("OCC_F10_CONCURRENCY", 4),
   ingestConcurrency: intEnv("OCC_INGEST_CONCURRENCY", 4),
+  reviewConcurrency: intEnv("OCC_REVIEW_CONCURRENCY", 2),
   newsConcurrency: intEnv("OCC_NEWS_CONCURRENCY", 2),
   dshHome: pathEnv("OCC_DSH_HOME", "phase0/.dsh-home"),
   runsDir: pathEnv("OCC_RUNS_DIR", ".occ/runs"),
@@ -77,18 +94,55 @@ export const config = {
   ),
   npmCache: process.env.OCC_NPM_CACHE ?? path.join(os.tmpdir(), "occ-npm-cache"),
   dshVersion: "0.2.1-rc.3",
-  model: process.env.OCC_RESEARCH_MODEL ?? "deepseek-flash",
+  /**
+   * Headless inference route. The worker uses NIM through the local retry
+   * gateway by default; `OCC_LLM_PROVIDER=deepseek` rolls back to the official
+   * DeepSeek API (the ACP sidebar is never affected by this switch).
+   */
+  llmProvider:
+    process.env.OCC_LLM_PROVIDER === "deepseek"
+      ? ("deepseek" as const)
+      : ("nvidia" as const),
+  model:
+    process.env.OCC_RESEARCH_MODEL ??
+    (process.env.OCC_LLM_PROVIDER === "deepseek"
+      ? "deepseek-flash"
+      : "deepseek-ai/deepseek-v4.1-flash"),
   extractModel: process.env.OCC_EXTRACT_MODEL ?? "deepseek-flash",
+  /** Reviewer runs on the official API with reasoning on (paid, bounded). */
+  reviewModel: process.env.OCC_REVIEW_MODEL ?? "deepseek-flash",
   extractRelations:
     process.env.OCC_EXTRACT_RELATIONS === "llm" ? ("llm" as const) : ("none" as const),
-  deepseekApiKey: process.env.DEEPSEEK_API_KEY,
+  /** Additive F10 shareholder/investment relations after ingest. */
+  f10Relations:
+    process.env.OCC_F10_RELATIONS === "none" ? ("none" as const) : ("on" as const),
+  deepseekApiKey: secretEnv("DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY.txt"),
+  nvidiaApiKey: secretEnv("NVIDIA_API_KEY", "NVIDIA_API_KEY.txt"),
+  nimBaseUrl:
+    process.env.OCC_NIM_BASE_URL ?? "https://integrate.api.nvidia.com/v1",
+  nimGatewayPort: intEnv("OCC_NIM_GATEWAY_PORT", 4010),
+  nimGatewayUrl:
+    process.env.OCC_NIM_GATEWAY_URL ??
+    `http://127.0.0.1:${intEnv("OCC_NIM_GATEWAY_PORT", 4010)}/v1`,
+  nimRpm: intEnv("OCC_NIM_RPM", 36),
+  nimRetries: intEnv("OCC_NIM_RETRIES", 3),
+  nimRequestTimeoutMs: intEnv("OCC_NIM_REQUEST_TIMEOUT_MS", 600_000),
+  researchTimeoutMs: intEnv("OCC_RESEARCH_TIMEOUT_MS", 1_800_000),
+  reviewTimeoutMs: intEnv("OCC_REVIEW_TIMEOUT_MS", 480_000),
+  reviewMaxCycles: intEnv("OCC_REVIEW_MAX_CYCLES", 2),
   permissionMode: "read-only",
   promptTemplate: path.join(repoRoot, "phase0", "prompts", "company.md"),
   mockSection: path.join(repoRoot, "phase0", "fixtures", "mock-section.md"),
   basePatch: path.join(repoRoot, "phase0", "dsh.patch.yml"),
+  deepseekPatch: path.join(repoRoot, "phase0", "dsh-deepseek.patch.yml"),
+  parallelPatch: path.join(repoRoot, "phase0", "parallel.patch.yml"),
+  reviewerPatch: path.join(repoRoot, "phase0", "reviewer.patch.yml"),
   f10Patch: path.join(repoRoot, "phase0", "f10-mcp.patch.yml"),
   universeFile: path.join(repoRoot, "config", "universe.yaml"),
+  indicesDir: path.join(repoRoot, "config", "indices"),
   ndxFile: path.join(repoRoot, "config", "indices", "ndx.yaml"),
+  /** Local F10 page JSON snapshots (structured relation extraction). */
+  f10Dir: pathEnv("OCC_F10_DIR", ".occ/f10"),
 };
 
 export function ensureDir(dir: string): void {
@@ -102,11 +156,17 @@ export function publicConfig(): Record<string, unknown> {
     researchConcurrency: config.researchConcurrency,
     f10Concurrency: config.f10Concurrency,
     ingestConcurrency: config.ingestConcurrency,
+    reviewConcurrency: config.reviewConcurrency,
     newsConcurrency: config.newsConcurrency,
     dshHome: config.dshHome,
     runsDir: config.runsDir,
     sectionsDir: config.sectionsDir,
     model: config.model,
+    llmProvider: config.llmProvider,
+    reviewModel: config.reviewModel,
+    nimGatewayUrl: config.nimGatewayUrl,
+    nimRpm: config.nimRpm,
+    f10Dir: config.f10Dir,
     qdrantUrl: config.qdrantUrl,
     embeddingUrl: config.embeddingUrl,
   };
