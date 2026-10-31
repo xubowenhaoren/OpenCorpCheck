@@ -123,6 +123,14 @@ The two-worker fan-out (6 research turns) hit NIM **HTTP 429**. Three outcomes:
 
 **Required remediation (do this before letting the batch continue):**
 
+Preferred order: wait until `research.company.active` is `0` (poll
+`status --json`), then restart. Killing workers mid-turn makes in-flight
+research fail and retry (not fatal, but it burns tokens). If 429 keeps the
+cycle alive and active never reaches 0, kill **only the gateway owner
+`86264`**: the waiter `89118` then binds the new gateway on :4010, worker
+`88701` keeps running and retries its failed turns. Cross-pilot jobs owned by
+`86264` may need a single-ticker requeue.
+
 ```bash
 # 1) stop both workers (pg-boss keeps queued/retry jobs)
 kill 86264 88701
