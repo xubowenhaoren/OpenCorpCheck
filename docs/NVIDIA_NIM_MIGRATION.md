@@ -253,8 +253,11 @@ only needed if worker shards run in separate processes.
   Fastify service) in front of NIM that enforces a token bucket
   (`OCC_NIM_RPM`, default 36), **retries 500/502/503** with backoff, normalises
   `reasoning_content → content`, and logs tokens. Point headless dsh and the
-  extract client at `http://127.0.0.1:4000/v1`. This is the only place retry
+  extract client at `http://127.0.0.1:4010/v1`. This is the only place retry
   logic needs to live, and it fixes the measured 500 rate in one shot.
+  **Implemented:** `apps/worker/src/nim-gateway.ts`;
+  `node apps/worker/dist/nim-gateway-server.js` runs it standalone so it can
+  outlive any single worker process.
 - **Minimum:** step-level retry in the dsh adapter plus a shared bucket.
 - Timeouts: NIM p95 is ~60 s per call, so one company can take several minutes.
   Raise the headless research timeout; do **not** change
