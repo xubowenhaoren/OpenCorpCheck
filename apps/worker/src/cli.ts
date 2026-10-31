@@ -57,7 +57,7 @@ Environment:
   OCC_EMBEDDING_URL (default http://127.0.0.1:8080)
   OCC_FINANCE_ANALYST_URL (default http://127.0.0.1:8090)
   OCC_LLM_PROVIDER (nvidia default; deepseek rollback)
-  OCC_NIM_RPM (default 36)
+  OCC_NIM_RPM (default 20; 36 caused 429s)
   OCC_REVIEW_MAX_CYCLES (default 2)
   NVIDIA_API_KEY (required for live research on NIM)
   DEEPSEEK_API_KEY (required for ingest/extraction and the reviewer)

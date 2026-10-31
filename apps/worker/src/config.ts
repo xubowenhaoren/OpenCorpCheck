@@ -124,7 +124,8 @@ export const config = {
   nimGatewayUrl:
     process.env.OCC_NIM_GATEWAY_URL ??
     `http://127.0.0.1:${intEnv("OCC_NIM_GATEWAY_PORT", 4010)}/v1`,
-  nimRpm: intEnv("OCC_NIM_RPM", 36),
+  /** Free-tier 429s were observed at 36 RPM under a 6-company fan-out. */
+  nimRpm: intEnv("OCC_NIM_RPM", 20),
   nimRetries: intEnv("OCC_NIM_RETRIES", 3),
   nimRequestTimeoutMs: intEnv("OCC_NIM_REQUEST_TIMEOUT_MS", 600_000),
   researchTimeoutMs: intEnv("OCC_RESEARCH_TIMEOUT_MS", 1_800_000),

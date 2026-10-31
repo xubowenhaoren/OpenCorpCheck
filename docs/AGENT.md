@@ -36,7 +36,7 @@ reviewer gets `DEEPSEEK_API_KEY`, and neither leaks into the other.
 The retry/normalisation gateway lives in `apps/worker/src/nim-gateway.ts` and
 listens on `127.0.0.1:4010` by default. It retries 500/502/503/504 and
 empty-`content` responses, normalises `reasoning_content → content`, and
-enforces `OCC_NIM_RPM` (default 36). `occ-backfill work --queues research,...`
+enforces `OCC_NIM_RPM` (default 20; 36 caused 429s). `occ-backfill work --queues research,...`
 starts it automatically. The reviewer never uses the gateway.
 
 ## What exists
@@ -133,7 +133,7 @@ reduces them to human summaries and links.
 | `DEEPSEEK_API_KEY` / `_FILE` | required (sidebar, ingest/extraction, reviewer) |
 | `NVIDIA_API_KEY` / `_FILE` | required for worker research (NIM) |
 | `OCC_LLM_PROVIDER` | worker research: `nvidia` default, `deepseek` rollback |
-| `OCC_NIM_GATEWAY_PORT` / `OCC_NIM_RPM` | `4010` / `36` |
+| `OCC_NIM_GATEWAY_PORT` / `OCC_NIM_RPM` | `4010` / `20` |
 | `OCC_REVIEW_MAX_CYCLES` | `2` |
 
 ### Turn budget and the ACP patch

@@ -251,7 +251,7 @@ only needed if worker shards run in separate processes.
 
 - **Preferred:** a small local OpenAI-compatible gateway (LiteLLM or a ~100-line
   Fastify service) in front of NIM that enforces a token bucket
-  (`OCC_NIM_RPM`, default 36), **retries 500/502/503** with backoff, normalises
+  (`OCC_NIM_RPM`, default 20; 36 caused 429s), **retries 500/502/503** with backoff, normalises
   `reasoning_content → content`, and logs tokens. Point headless dsh and the
   extract client at `http://127.0.0.1:4010/v1`. This is the only place retry
   logic needs to live, and it fixes the measured 500 rate in one shot.

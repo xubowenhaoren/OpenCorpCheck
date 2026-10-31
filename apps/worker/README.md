@@ -90,7 +90,7 @@ Environment:
 | `OCC_EMBEDDING_URL` | `http://127.0.0.1:8080` |
 | `OCC_DSH_HOME` | `phase0/.dsh-home` |
 | `OCC_LLM_PROVIDER` | `nvidia` (worker research); `deepseek` rolls back |
-| `OCC_NIM_GATEWAY_PORT` / `OCC_NIM_RPM` | `4010` / `36` |
+| `OCC_NIM_GATEWAY_PORT` / `OCC_NIM_RPM` | `4010` / `20` |
 | `OCC_REVIEW_MAX_CYCLES` | `2` |
 | `OCC_F10_RELATIONS` | `on` (`none` disables) |
 | `NVIDIA_API_KEY` / `_FILE` | required for live research on NIM |

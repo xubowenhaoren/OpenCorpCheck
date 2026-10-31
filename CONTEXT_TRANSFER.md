@@ -55,7 +55,7 @@
 
 ## 0. LIVE STATE — HSI backfill in progress (read first)
 
-> Snapshot: **2026-10-31 13:47 PT**. This section is authoritative for the
+> Snapshot: **2026-10-31 13:57 PT**. This section is authoritative for the
 > in-flight batch; later numbers will change. The next agent's job is to
 > **supervise, not re-enqueue**.
 
@@ -69,8 +69,9 @@
 
 Do **not** start a third worker without checking :4010. If the cross worker
 exits first, the waiter binds the standalone gateway within ~2 s; the batch
-worker keeps using `127.0.0.1:4010`. If all workers/waiter are gone, resume
-with:
+worker keeps using `127.0.0.1:4010`. **The running gateway still has the old
+36 RPM / short-429-retry build — see §0.3.1 and restart it.** If all
+workers/waiter are gone, resume with:
 
 ```bash
 cd /Users/bowenxu/Downloads/Projects/OpenCorpCheck
@@ -98,20 +99,58 @@ node apps/worker/dist/nim-gateway-server.js
 
 ### 0.3 Counts at snapshot
 
-- research queue (all runs): `created=77 retry=0 active=6 completed=128`
-- ingest queue: `completed=120`, no active
-- review queue: `completed=15 active=1`
-- `company_research_state`: `running=16 queued=68 needs_review=1`
-- `HK:00101` hit an episodic NIM 500 (`PI_AI_ERROR`) and was **retried
-  successfully**: job attempts=2 and state is now `running`. A failed row with
-  a pending pg-boss retry is not terminal; do not re-enqueue the universe.
+- run `a19a67ba-…` research: `active=6 dead=1 failed=2 queued=72`; ingest
+  `completed=8`; review `completed=8`.
+- `company_research_state`: `running=17 queued=64 needs_review=1 failed=3`
 - `relations.status='reported'`: **4** (CK group + 恒基兆业地产→香港中华煤气;
   see §2 verified list).
-- `index_memberships` HSI `as_of=2026-10-31`: **8** (grows as batch completes).
-- The `research.company` retry count can rise from NIM 500s; only dead-lettered
-  jobs (`*.dead`) or a run with `failed_jobs > 0` need operator action.
-- The cross-pilot revisions (`5e7da4c4-…`) are **queued at priority 30** behind
-  the full batch. They are not stuck; they will run when batch slots free.
+- `index_memberships` HSI `as_of=2026-10-31`: **9** (grows as batch completes).
+
+### 0.3.1 URGENT — NIM 429 rate-limit incident (2026-10-31 13:57)
+
+The two-worker fan-out (6 research turns) hit NIM **HTTP 429**. Three outcomes:
+
+- `HK:00101` dead-lettered after 3 attempts (`RATE_LIMIT: 429`).
+- `HK:00300` / `HK:00316` failed once with the same 429; pg-boss will retry.
+- The running gateway was started with the old **36 RPM** bucket and the old
+  short retry (0.5–2 s), so it forwards 429 to dsh after 3 quick attempts.
+
+**Code fix is committed/built but NOT active in the running processes**
+(`openCorpCheck` commit for `nim-gateway.ts`):
+- 429 now honours `Retry-After` and otherwise waits **15 s / 30 s** before
+  retry; other 5xx keep fast backoff.
+- `OCC_NIM_RPM` default lowered to **20**.
+
+**Required remediation (do this before letting the batch continue):**
+
+```bash
+# 1) stop both workers (pg-boss keeps queued/retry jobs)
+kill 86264 88701
+# stop the old waiter too; it would bind the old gateway
+kill 89118 2>/dev/null || true
+
+# 2) make sure nothing owns :4010
+lsof -nP -iTCP:4010 -sTCP:LISTEN
+
+# 3) start the standalone gateway with the lower bucket
+OCC_NIM_RPM=20 node apps/worker/dist/nim-gateway-server.js &
+
+# 4) resume ONE worker with reduced concurrency (no re-enqueue)
+OCC_RESEARCH_CONCURRENCY=2 OCC_INGEST_CONCURRENCY=2 OCC_REVIEW_CONCURRENCY=1 \
+  node apps/worker/dist/cli.js work --queues research,ingest,review,f10 --drain
+```
+
+Then requeue only the dead company (not the universe):
+
+```bash
+node apps/worker/dist/cli.js enqueue research --tickers 00101:HK --force
+```
+
+`00300` / `00316` are still `failed` with a pg-boss retry pending; they should
+recover on their own after the 429 window. If they dead-letter, requeue those
+two tickers the same way.
+
+Do **not** restart with 6 concurrent research turns; that is what triggered 429.
 
 ### 0.4 Monitor commands
 
@@ -147,6 +186,8 @@ psql postgres://occ@127.0.0.1:5432/occdb -c \
   research/ingest/review cycle. Use `status`/`states`, not the original 81.
 - The full batch was started with two concurrent workers; running a single
   worker with the default `OCC_RESEARCH_CONCURRENCY=4` on resume is fine.
+- The cross-pilot revisions (`5e7da4c4-…`, priority 30) are queued behind the
+  full batch; they are not stuck — they run when batch slots free.
 - F10 page JSON under `.occ/f10/` is the source for the post-batch relations
   pass; do not delete it.
 
@@ -254,7 +295,7 @@ plus an AI watchlist and on-demand private companies):
   NDX index / AI sidebar). See §5.
 - **P0 headless cutover (2026-10-31)**: worker research = NIM
   `deepseek-ai/deepseek-v4.1-flash` via `apps/worker/src/nim-gateway.ts`
-  (retry + `reasoning_content` normalisation + 36 RPM bucket) and Parallel
+  (retry + `reasoning_content` normalisation + 20 RPM bucket) and Parallel
   Search MCP. ACP sidebar unchanged. Rollback:
   `OCC_LLM_PROVIDER=deepseek`.
 - **HSI (2026-10-31)**: `config/indices/hsi.yaml` + worker `--universe hsi`;
@@ -384,7 +425,7 @@ Key env:
 | `DEEPSEEK_API_KEY` / `_FILE` | required by the **ACP sidebar** (official API), ingest/extraction and the **reviewer** |
 | `NVIDIA_API_KEY` / `_FILE` | required by the **headless research worker** (NIM); `NVIDIA_API_KEY.txt` is gitignored |
 | `OCC_LLM_PROVIDER` | `nvidia` (worker default); `deepseek` rolls back research |
-| `OCC_NIM_GATEWAY_PORT` / `OCC_NIM_RPM` | `4010` / `36` |
+| `OCC_NIM_GATEWAY_PORT` / `OCC_NIM_RPM` | `4010` / `20` |
 | `OCC_REVIEW_MAX_CYCLES` | `2` (then `needs_review`) |
 | `OCC_F10_RELATIONS` | `on`; `none` disables structured shareholder extraction |
 

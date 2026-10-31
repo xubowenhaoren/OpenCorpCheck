@@ -184,7 +184,11 @@ async function handle(
       if (!upstream.ok) {
         lastBody = await upstream.text();
         if (isRetryableStatus(upstream.status) && attempt < ctx.retries) {
-          await backoff(attempt);
+          await backoff(
+            attempt,
+            upstream.status,
+            upstream.headers.get("retry-after"),
+          );
           continue;
         }
         res.writeHead(upstream.status, {
@@ -293,7 +297,22 @@ function isRetryableStatus(status: number): boolean {
   return status === 500 || status === 502 || status === 503 || status === 504 || status === 429;
 }
 
-function backoff(attempt: number): Promise<void> {
+function backoff(
+  attempt: number,
+  status?: number,
+  retryAfter?: string | null,
+): Promise<void> {
+  // 429 is the free tier's real limit; a 0.5–2 s retry is useless because the
+  // window is minutes. Honour Retry-After, otherwise wait 15 s / 30 s.
+  if (status === 429) {
+    const header = retryAfter ? Number(retryAfter) : NaN;
+    const wait = Number.isFinite(header) && header > 0
+      ? header * 1_000
+      : 15_000 * attempt;
+    return new Promise((resolve) =>
+      setTimeout(resolve, Math.min(60_000, wait) + Math.random() * 500),
+    );
+  }
   const base = Math.min(8_000, 500 * 2 ** (attempt - 1));
   return new Promise((resolve) => setTimeout(resolve, base + Math.random() * 250));
 }
