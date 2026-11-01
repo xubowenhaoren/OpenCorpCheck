@@ -62,6 +62,9 @@
 > memberships**, **21 reported relations** (7 `owns` + 14 `invests_in`).
 > No worker is running and all queues are empty. Do **not** re-enqueue the
 > universe; the 26 `needs_review` rows are operator work.
+>
+> **Next action: ChiNext 50 backfill** (`399673`, internal code `CYB50`) —
+> plan in §10 Next 3.
 
 > **14:16 provider switch (historical).** The 13:49 NIM incident (see §0.3.1)
 > was resolved by switching the research default to the official route. The
@@ -300,10 +303,9 @@ names. Report the final counts, not a claim that every company passed review.
 - `95395a0` handoff: live HSI batch supervision state
 - `d982e73` worker: NIM 429 long backoff + lower default RPM to 20
 - `cc224b8` / `e9dfafb` / `fef736f` handoff: 429 incident + paused state
-- *(uncommitted)* default reversal to official DeepSeek
-  (`config.ts`, `profiler.ts`, `cli.ts`, `dsh.patch.yml`), `reasoningEffort:
-  low` for research, reviewer JSON repair + bounded re-run
-  (`reviewer.ts`, `review.ts`, tests), and this handoff
+- `69c2a3a` worker: official DeepSeek default, low research reasoning,
+  reviewer JSON repair, review concurrency 4; HSI final handoff (pushed to
+  `origin/main`)
 
 ---
 
@@ -1030,6 +1032,46 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 ---
 
 ## 10. Next tasks
+
+### Next 3 — ChiNext 50 backfill (next action, 2026-10-31)
+
+**Goal**: backfill the 50 **ChiNext 50 (创业板50, SZSE 399673)** constituents
+on the pipeline that just finished HSI.
+
+1. **Snapshot** `config/indices/cyb50.yaml`:
+   - `index.code: "CYB50"` (the web/API index code; `config/universe.yaml`
+     still lists the vendor code `399673`), `name: "ChiNext 50 (创业板50)"`,
+     `market: A`, `as_of`, `fetched_at`, `securities: 50`, `companies: 50`,
+     and a `source` with `url` + `license`.
+   - `constituents`: 6-digit SZSE tickers (`300750`, `300059`, …), Chinese
+     names, `exchange: SZSE`, `primary: true`. Verify against the SZSE
+     constituent list and record `as_of`; this is an internal snapshot.
+2. **Worker mapping** [`apps/worker/src/universe.ts`](apps/worker/src/universe.ts):
+   add
+   `cyb50: { file: "cyb50.yaml", market: "A", exchange: "SZSE", coverage: "index_member" }`,
+   update the `unknown index universe` message, and add `cyb50` to the
+   `--universe` usage in [`apps/worker/src/cli.ts`](apps/worker/src/cli.ts).
+3. **Pilot**: `enqueue research --universe cyb50 --limit 3`. The index spec
+   carries `exchange: SZSE` and A-share F10 (`gdyj`); verify research → ingest
+   → review on official DeepSeek with `reasoningEffort: low`, and check that
+   the A-share shareholder edges resolve.
+4. **Batch**: after the pilot,
+   `node apps/worker/dist/cli.js enqueue research --universe cyb50`, then
+   `OCC_LLM_PROVIDER=deepseek node apps/worker/dist/cli.js work --queues research,ingest,review,f10 --drain`
+   with the current pool (research 4 / ingest 2 / review 4). Supervise exactly
+   as in §0.4; never re-enqueue the universe on retries.
+5. **Finish**: `relations f10 --universe cyb50`; verify `/indices/CYB50` shows
+   50 members and spot-check the graph. Report ready/needs_review counts;
+   `needs_review` is operator work, not a failure.
+
+**Gotchas**
+- The internal index code must be **`CYB50`** (the web filter list is
+  `NDX, STAR50, CYB50, HSI`). Using `399673` as `index_code` leaves
+  `/indices/CYB50` empty.
+- A-share profiles are Chinese; the reviewer applies the same strict
+  numeric/citation checklist (expect a meaningful `needs_review` share).
+- Do not raise `OCC_REVIEW_MAX_CYCLES`; do not move the reviewer off
+  official DeepSeek + `reasoningEffort: high`.
 
 ### Next 0 — Headless-provider cutover only (P0)
 
