@@ -88,6 +88,7 @@ export function buildReviewPrompt(input: ReviewPromptInput): string {
     '{"verdict":"pass"|"revise","issues":[{"field":"章节或字段","reason":"问题","evidence":"原文或URL"}],"fix_instructions":"给研究 agent 的具体修改指令"}',
     "",
     "verdict 只能是 pass 或 revise（不要输出 fail、reject、approved 等其他值）。issues 必须是对象数组，不能是字符串数组。",
+    'JSON 字符串内部需要强调时，双引号必须转义为 \\"，或直接改用中文引号「」/“”；字符串必须闭合，对象必须完整。',
     "如果 profile 完整且没有会误导读者的事实错误，判 pass，issues 返回 []。",
     "不要因为“无法逐条核对所有数字”就判 revise；只针对你实际发现的问题。",
     "不要调用 bash、读写文件或浏览本地仓库；只需要看下面的 profile，必要时打开其中引用的 URL。",
@@ -191,6 +192,51 @@ function firstString(...values: unknown[]): string | undefined {
   return undefined;
 }
 
+/**
+ * Models occasionally put raw double quotes inside a JSON string value, e.g.
+ * `"资本开支上行是主因"不成立`. `JSON.parse` rejects that. A quote inside a
+ * string is a closing quote only when the next non-space character is a
+ * structural delimiter; otherwise it is content and must be escaped.
+ */
+function repairUnescapedQuotes(json: string): string {
+  let out = "";
+  let inString = false;
+  for (let i = 0; i < json.length; i += 1) {
+    const ch = json[i];
+    if (!inString) {
+      out += ch;
+      if (ch === '"') inString = true;
+      continue;
+    }
+    if (ch === "\\") {
+      out += ch;
+      if (i + 1 < json.length) out += json[i + 1];
+      i += 1;
+      continue;
+    }
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < json.length && /\s/.test(json[j] ?? "")) j += 1;
+      const next = json[j];
+      if (
+        next === undefined ||
+        next === "," ||
+        next === ":" ||
+        next === "}" ||
+        next === "]"
+      ) {
+        out += ch;
+        inString = false;
+      } else {
+        out += '\\"';
+      }
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
 /** Tolerant JSON extraction: reasoning models sometimes wrap output in prose. */
 export function parseReviewOutput(
   text: string,
@@ -201,22 +247,30 @@ export function parseReviewOutput(
   if (start === -1 || end <= start) {
     return { ok: false, error: "reviewer returned no JSON object", raw: text };
   }
+  const jsonText = stripped.slice(start, end + 1);
+  const parse = (candidate: string) =>
+    normalizeReview(JSON.parse(candidate) as Record<string, unknown>);
   try {
-    const parsed = JSON.parse(stripped.slice(start, end + 1)) as Record<
-      string,
-      unknown
-    >;
-    const normalized = normalizeReview(parsed);
+    const normalized = parse(jsonText);
     if (!normalized) {
       return { ok: false, error: "reviewer JSON has no verdict", raw: text };
     }
     return { ok: true, result: normalized };
-  } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-      raw: text,
-    };
+  } catch (firstError) {
+    // Retry once after escaping raw quotes inside string values. A genuinely
+    // truncated object still fails here and the job retries the reviewer.
+    try {
+      const normalized = parse(repairUnescapedQuotes(jsonText));
+      if (normalized) return { ok: true, result: normalized };
+      return { ok: false, error: "reviewer JSON has no verdict", raw: text };
+    } catch {
+      return {
+        ok: false,
+        error:
+          firstError instanceof Error ? firstError.message : String(firstError),
+        raw: text,
+      };
+    }
   }
 }
 

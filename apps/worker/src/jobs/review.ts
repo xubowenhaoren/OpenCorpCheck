@@ -88,20 +88,45 @@ async function processReviewJob(
       market: data.market,
       markdown,
     });
-    const run = await runDshReview({
-      ticker: data.ticker,
-      prompt,
-      signal: job.signal,
-    });
-    if (!run.ok) {
-      throw new Error(run.error ?? "reviewer dsh run failed");
+    let parsed: ReturnType<typeof parseReviewOutput> | undefined;
+    let parseError = "unknown";
+    let toolCallCount = 0;
+    let inputTokens = 0;
+    let outputTokens = 0;
+    for (
+      let reviewRun = 1;
+      reviewRun <= config.reviewParseAttempts;
+      reviewRun += 1
+    ) {
+      const run = await runDshReview({
+        ticker: data.ticker,
+        prompt,
+        signal: job.signal,
+      });
+      if (!run.ok) {
+        throw new Error(run.error ?? "reviewer dsh run failed");
+      }
+      toolCallCount = Object.values(run.toolCounts).reduce((a, b) => a + b, 0);
+      inputTokens += run.usage.inputTokens;
+      outputTokens += run.usage.outputTokens;
+      parsed = parseReviewOutput(run.finalText);
+      if (parsed.ok) break;
+      parseError = parsed.error;
+      log({
+        event: "review_output_invalid",
+        run: data.runId,
+        key: data.key,
+        reviewRun,
+        willRetry: reviewRun < config.reviewParseAttempts,
+        error: parsed.error,
+        rawTail: parsed.raw.slice(-800),
+        durationMs: Date.now() - startedAt,
+      });
     }
-
-    const parsed = parseReviewOutput(run.finalText);
-    if (!parsed.ok) {
+    if (!parsed || !parsed.ok) {
       // A malformed reviewer is an operator problem, not a research problem.
-      // Do not loop; surface it as needs_review.
-      const message = `reviewer output invalid (${REVIEW_PROMPT_VERSION}): ${parsed.error}`;
+      // Retry the reviewer a bounded number of times, never the research job.
+      const message = `reviewer output invalid (${REVIEW_PROMPT_VERSION}) after ${config.reviewParseAttempts} run(s): ${parseError}`;
       await markJobDead(data.runId, queue, data.key);
       await upsertCompanyState({
         companyId: data.key,
@@ -109,14 +134,6 @@ async function processReviewJob(
         runId: data.runId,
         reviewAttempts: attempt,
         lastError: message,
-      });
-      log({
-        event: "review_output_invalid",
-        run: data.runId,
-        key: data.key,
-        error: parsed.error,
-        rawTail: parsed.raw.slice(-800),
-        durationMs: Date.now() - startedAt,
       });
       return;
     }
@@ -152,7 +169,9 @@ async function processReviewJob(
         run: data.runId,
         key: data.key,
         attempt,
-        toolCalls: Object.values(run.toolCounts).reduce((a, b) => a + b, 0),
+        toolCalls: toolCallCount,
+        inputTokens,
+        outputTokens,
         durationMs: Date.now() - startedAt,
       });
       return;
@@ -180,6 +199,8 @@ async function processReviewJob(
         attempt,
         message,
         issues: issues.length,
+        inputTokens,
+        outputTokens,
         durationMs: Date.now() - startedAt,
       });
       return;
@@ -201,6 +222,8 @@ async function processReviewJob(
       attempt: attempt + 1,
       issues: issues.length,
       feedback: feedback.slice(0, 1_500),
+      inputTokens,
+      outputTokens,
       durationMs: Date.now() - startedAt,
     });
   } catch (error) {

@@ -43,11 +43,15 @@ export function renderPrompt(
     .replaceAll("{{DATE}}", date)
     .replaceAll("{{FOCUS}}", target.focus ?? DEFAULT_FOCUS)
     .replaceAll("{{SKILL}}", skill);
+  const webTools =
+    config.llmProvider === "nvidia"
+      ? "mcp__psearch__web_search / mcp__psearch__web_fetch" +
+        "（若不可用，回退到 web_search / web_fetch）"
+      : "web_search / web_fetch（官方 DeepSeek 联网工具）";
   return (
     `${prompt}\n\n` +
     `重要：请先调用 skill 工具加载 ${skill}，再开始研究。\n` +
-    `本会话的联网工具是 mcp__psearch__web_search / mcp__psearch__web_fetch ` +
-    `（若不可用，回退到 web_search / web_fetch）。F10 工具是 mcp__occ__f10_scrape。\n` +
+    `本会话的联网工具是 ${webTools}。F10 工具是 mcp__occ__f10_scrape。\n` +
     `只返回最终 markdown profile。\n`
   );
 }

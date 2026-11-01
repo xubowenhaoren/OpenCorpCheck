@@ -65,6 +65,23 @@ describe("review output", () => {
     }
   });
 
+  it("repairs raw double quotes inside JSON string values", () => {
+    const raw = `{"verdict":"revise","issues":[{"field":"6. 质量快照","reason":"按 profile 口径，"资本开支上行是主因"不成立，会误导读者。","evidence":"原文：“FCF 趋势”"}],"fix_instructions":"改正"}`;
+    const result = parseReviewOutput(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.verdict).toBe("revise");
+    expect(result.result.issues).toHaveLength(1);
+    expect(result.result.issues[0]?.reason).toContain("资本开支上行是主因");
+  });
+
+  it("still rejects a genuinely truncated object", () => {
+    const result = parseReviewOutput(
+      '{"verdict":"revise","issues":[{"field":"x","reason":"未闭合',
+    );
+    expect(result.ok).toBe(false);
+  });
+
   it("returns an error when there is no verdict", () => {
     const result = parseReviewOutput('{"issues":["x"]}');
     expect(result.ok).toBe(false);

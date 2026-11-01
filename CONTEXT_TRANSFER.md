@@ -6,12 +6,14 @@
 >
 > Current phase: Phase 0 + P1 + P2 + P2.5 + P3.1–P3.5 complete.
 > **This round adds**:
-> **(a) headless NIM + Parallel cutover** — the local worker pool now runs
-> `deepseek-ai/deepseek-v4.1-flash` through the in-worker retry gateway
-> (`apps/worker/src/nim-gateway.ts`, `127.0.0.1:4010`) and mounts Parallel's
-> keyless Search MCP (`mcp__psearch__web_search` / `mcp__psearch__web_fetch`);
-> the ACP sidebar is unchanged and keeps official DeepSeek + official
-> search/fetch;
+> **(a) headless provider route — official DeepSeek by default (revised
+> 14:16)** — the local worker pool now runs **official `deepseek-flash` +
+> official `web_search`/`web_fetch`**. The NIM route
+> (`deepseek-ai/deepseek-v4.1-flash` through
+> `apps/worker/src/nim-gateway.ts`, `127.0.0.1:4010`, plus Parallel Search MCP)
+> remains available with `OCC_LLM_PROVIDER=nvidia` but is no longer the
+> default: it hit sustained per-model 429s during the HSI batch. The ACP
+> sidebar is unchanged and uses the same official DeepSeek + search/fetch;
 > **(b) HSI** — `config/indices/hsi.yaml` (85 constituents, `as_of`
 > 2026-10-31), worker `--universe hsi`, F10 attached by default for A/HK;
 > **(c) hidden reviewer** — `review.company` queue, official DeepSeek with
@@ -53,88 +55,81 @@
 
 ---
 
-## 0. LIVE STATE — HSI backfill in progress (read first)
+## 0. LIVE STATE — HSI backfill COMPLETE (17:25, read first)
 
-> Snapshot: **2026-10-31 13:57 PT**. This section is authoritative for the
-> in-flight batch; later numbers will change. The next agent's job is to
-> **supervise, not re-enqueue**.
+> Snapshot: **2026-10-31 17:25 PT**. The HSI batch finished as `partial`:
+> **59 ready / 26 needs_review** across all 85 constituents, **85/85 HSI
+> memberships**, **21 reported relations** (7 `owns` + 14 `invests_in`).
+> No worker is running and all queues are empty. Do **not** re-enqueue the
+> universe; the 26 `needs_review` rows are operator work.
 
-> **14:13 update — batch is PAUSED, not finished.** Both background workers
-> (`86264`, `88701`) and the gateway exited cleanly; **no process is listening
-> on :4010**. The work is durable in pg-boss: research `created=74 retry=9
-> active=0 failed=1`, run `a19a67ba-…` shows `running` with 16 completed / 1
-> dead; `states` still lists `running=17 queued=63 failed=4 needs_review=1`
-> because the last active rows were not reconciled on exit. Those `running`
-> rows are stale; a new worker will pick the queued/retry jobs and overwrite
-> them.
+> **14:16 provider switch (historical).** The 13:49 NIM incident (see §0.3.1)
+> was resolved by switching the research default to the official route. The
+> batch ran on one worker with `OCC_LLM_PROVIDER=deepseek`; there was **no NIM
+> gateway**. Verified on `HK:00669`: 171 s, 51k input / 22k output, 13
+> `web_search` + 16 `web_fetch` calls. Research now defaults to official
+> DeepSeek (`deepseek-flash`) + official search/fetch; the NIM + Parallel route
+> remains opt-in with `OCC_LLM_PROVIDER=nvidia`.
 >
-> **Resume after the provider switch:** the working tree has uncommitted
-> changes in `apps/worker/src/cli.ts`, `config.ts`, `research/profiler.ts` and
-> `phase0/dsh.patch.yml` that switch the default back to official DeepSeek
-> (no gateway). Do not revert or commit them on the next agent's behalf.
-> Rebuild, then:
->
-> ```bash
-> corepack pnpm --filter @occ/worker build
-> node apps/worker/dist/cli.js work --queues research,ingest,review,f10 --drain
-> ```
->
-> If the default is still NIM, start `node apps/worker/dist/nim-gateway-server.js`
-> first and use `OCC_NIM_RPM=20` / `OCC_RESEARCH_CONCURRENCY=2`. Requeue the dead
-> `HK:00101` separately with `enqueue research --tickers 00101:HK --force`.
+> The working tree still has uncommitted changes in `apps/worker/src/cli.ts`,
+> `config.ts`, `research/profiler.ts`, `research/reviewer.ts`,
+> `jobs/review.ts`, `tests/reviewer.test.ts` and `phase0/dsh.patch.yml`
+> (provider default, low reasoning, reviewer JSON repair, review concurrency
+> 4). They are built and were live; commit only when the user asks.
 
 ### 0.1 Running processes
 
-| PID | Started | What |
-|---|---|---|
-| `86264` | 13:16 | cross-holding pilot worker (`work --queues research,ingest,review,f10 --drain`); **owns the NIM gateway on :4010** |
-| `88701` | 13:26 | full HSI batch worker; `OCC_RESEARCH_CONCURRENCY=2`, `OCC_INGEST_CONCURRENCY=2`, `OCC_REVIEW_CONCURRENCY=1` |
-| `89118` | 13:28 | shell waiter: polls :4010, then `exec node apps/worker/dist/nim-gateway-server.js` — **exited 14:13 (code 144); no standalone gateway is running** |
-
-Do **not** start a third worker without checking :4010. If the cross worker
-exits first, the waiter binds the standalone gateway within ~2 s; the batch
-worker keeps using `127.0.0.1:4010`. **The running gateway still has the old
-36 RPM / short-429-retry build — see §0.3.1 and restart it.** If all
-workers/waiter are gone, resume with:
+**None.** The drain worker exited at ~17:22 after the queues emptied; no NIM
+gateway is running. To process new work, resume with:
 
 ```bash
 cd /Users/bowenxu/Downloads/Projects/OpenCorpCheck
+OCC_LLM_PROVIDER=deepseek \
 node apps/worker/dist/cli.js work --queues research,ingest,review,f10 --drain
 ```
 
-This picks up queued/retry jobs from pg-boss. **Never re-run `enqueue research
---universe hsi`** for the same targets — that creates a second run and duplicate
-LLM work. The batch is durable in `pgboss` + `backfill_jobs`.
-
-If the gateway is down (worker reports connection refused / `PI_AI_ERROR`
-without retries), start it manually:
-
-```bash
-node apps/worker/dist/nim-gateway-server.js
-```
-
-If you switch the worker default to official DeepSeek
-(`OCC_LLM_PROVIDER=deepseek`), no gateway is needed: rebuild, restart the
-worker once, and it applies `phase0/dsh-deepseek.patch.yml`.
+The last pool was research 4 / ingest 2 / review 4 (review was raised from 1
+to 4 at 16:42 to clear the backlog). No gateway is needed on the default path.
+`OCC_LLM_PROVIDER=nvidia` restores the NIM + Parallel route (and then you need
+the gateway on `:4010`), but it is only a fallback: `deepseek-v4.1-flash` hit
+sustained per-model 429s at 13:49.
 
 ### 0.2 Runs
 
-| Run id | What | Status at snapshot |
+| Run id | What | Final status |
 |---|---|---|
-| `a19a67ba-8739-4361-833b-6887395556ad` | **full HSI batch**, 81 targets; excludes pilots `00700,00001,00006,01038` | running |
-| `5e7da4c4-4aa8-4c28-aa41-7f8604cabc60` | cross-holding pilot `00001` / `00006` / `01038` | running (reviewer revisions) |
-| `b9d9b644-58c9-4ee1-b58a-f0401eecbc75` | `HK:00700` pilot | partial; `needs_review` after 2 revisions |
+| `a19a67ba-8739-4361-833b-6887395556ad` | **full HSI batch**, 81 targets; excludes pilots `00700,00001,00006,01038` | `partial` — 217/241, 24 dead (all revision cap) |
+| `5e7da4c4-4aa8-4c28-aa41-7f8604cabc60` | cross-holding pilot `00001` / `00006` / `01038` | `partial` — 7/9, 2 dead |
+| `b9d9b644-58c9-4ee1-b58a-f0401eecbc75` | `HK:00700` pilot | `partial` — `needs_review` after 2 revisions |
+| `cf9fcd03-afa1-4f95-8220-357141796bb2` | `HK:00101` dead-letter retry (1 target) | `completed` — 3/3, now `ready` |
+| `4e989c34-d38a-4820-96ac-559ff57c297a` | `HK:01088` / `HK:00939` parse-failure rerun | `partial` — 4/6, both revision cap |
 
-### 0.3 Counts at snapshot
+### 0.3 Final counts (17:25)
 
-- run `a19a67ba-…` research: `active=6 dead=1 failed=2 queued=72`; ingest
-  `completed=8`; review `completed=8`.
-- `company_research_state`: `running=17 queued=64 needs_review=1 failed=3`
-- `relations.status='reported'`: **4** (CK group + 恒基兆业地产→香港中华煤气;
-  see §2 verified list).
-- `index_memberships` HSI `as_of=2026-10-31`: **9** (grows as batch completes).
+- research queue: `completed=299`, `failed=1` (historical `HK:00101` row);
+  no active/created/retry. ingest `completed=291`; review `completed=187`.
+- `company_research_state`: **`ready=59`**, **`needs_review=26`** (85 total,
+  all HSI constituents). No `running`/`queued`/`failed` rows.
+- All 26 `needs_review` are **revision cap** (`reviewer requested revisions 3
+  time(s)`), not parse failures:
+  `00001, 00003, 00005, 00016, 00066, 00175, 00241, 00285, 00700, 00939,
+  00981, 00992, 01038, 01088, 01093, 01113, 01299, 01378, 01398, 01810,
+  01876, 02319, 02382, 02899, 06618, 09633`.
+- `relations`: **`reported=21`** (7 `owns` + 14 `invests_in`),
+  `inferred=64`. The post-batch `relations f10 --universe hsi` pass read 640
+  shareholder rows; 560 names were outside the universe (not fabricated).
+  One F10 error: `HK:00823` SPA rendered empty (not fatal).
+- `index_memberships` HSI `as_of=2026-10-31`: **85/85**. The last four
+  (`00001`, `00006`, `01038`, `00101`) were inserted directly because their
+  pilot/retry jobs were enqueued with `--tickers`, which carries no index
+  metadata.
 
-### 0.3.1 URGENT — NIM 429 rate-limit incident (2026-10-31 13:57)
+### 0.3.1 RESOLVED — NIM 429 incident (2026-10-31 13:49–14:16, historical)
+
+> **Resolved 14:16** by switching the research default to official DeepSeek
+> (see the snapshot). The 429 long-backoff / RPM-20 fix below is committed
+> (`d982e73`) and still applies if the NIM route is re-enabled with
+> `OCC_LLM_PROVIDER=nvidia`.
 
 The two-worker fan-out (6 research turns) hit NIM **HTTP 429**. Three outcomes:
 
@@ -188,6 +183,48 @@ two tickers the same way.
 
 Do **not** restart with 6 concurrent research turns; that is what triggered 429.
 
+### 0.3.2 Reviewer JSON parse failures (fixed 15:20, activate on restart)
+
+`HK:01088` and `HK:00939` were routed to `needs_review` with
+`reviewer output invalid`, not a content verdict:
+
+- `01088`: raw ASCII quotes inside a JSON string (`"资本开支上行是主因"`).
+- `00939`: unterminated string at EOF (missing closing quote/brace).
+
+Fix (built, worker tests 40 green):
+
+- `parseReviewOutput` escapes raw quotes inside string values before parsing
+  (`repairUnescapedQuotes`), then retries `JSON.parse`.
+- `review.company` re-runs the reviewer up to
+  `OCC_REVIEW_PARSE_ATTEMPTS` (default 2) on invalid output, then
+  `needs_review`. It never re-runs research for a malformed review.
+- `review_passed` / `review_revise_enqueued` / `review_needs_review` now log
+  `inputTokens` / `outputTokens`.
+- The review prompt explicitly requires escaped quotes and a complete object.
+
+`01088` / `00939` were requeued at 15:28 as run
+`4e989c34-d38a-4820-96ac-559ff57c297a` (2 targets) on the fixed parser:
+
+```bash
+node apps/worker/dist/cli.js enqueue research --tickers 01088:HK,00939:HK --force
+```
+
+### 0.3.3 Operator follow-up
+
+1. The 26 `needs_review` rows are genuine quality-gate outcomes. Each
+   `last_error` carries the reviewer's fix instructions; fix the section and
+   re-review, or leave it as an honest gap. Do not raise
+   `OCC_REVIEW_MAX_CYCLES` in production.
+2. `/indices/HSI` now lists **85 members**; the graph has **21 reported**
+   ownership/investment edges (CK group: `00001` owns 75.67% of `01038`,
+   `00001`/`01038` each invest in `00006`; 恒基兆业地产→香港中华煤气).
+   Spot-check a few banks/insurers in the UI.
+3. The batch is `partial` only because of the 26 revision-cap dead jobs; no
+   transport/provider errors remain. The old `research.company` `failed` row
+   for `HK:00101` is historical (its rerun is `ready`).
+4. The provider-switch / low-reasoning / reviewer-repair changes are built but
+   **uncommitted**. Commit only on the user's instruction.
+
 ### 0.4 Monitor commands
 
 ```bash
@@ -199,9 +236,8 @@ node apps/worker/dist/cli.js states --limit 100
 # queue depth / pending jobs
 node apps/worker/dist/cli.js status --json | jq '.counts'
 
-# are the workers and gateway still alive?
-ps aux | grep 'apps/worker/dist/cli.js work' | grep -v grep
-lsof -nP -iTCP:4010 -sTCP:LISTEN
+# is the worker still alive? (expect exactly one node process)
+ps -axo pid,command | grep '^ *[0-9]* node apps/worker/dist/cli.js work' | grep -v grep
 
 # HSI members and reported edges
 psql postgres://occ@127.0.0.1:5432/occdb -c \
@@ -212,16 +248,26 @@ psql postgres://occ@127.0.0.1:5432/occdb -c \
 
 ### 0.5 What “normal” looks like
 
-- **NIM 500s are episodic.** The gateway retries 3×; dsh can still surface
-  `PI_AI_ERROR`, which pg-boss retries. One failed company is not a reason to
-  stop the batch.
+- **Official DeepSeek is the default.** `deepseek-flash` research calls take
+  ~30–180 s; one company takes a few minutes. Transient API errors are retried
+  by dsh and by pg-boss.
+- **Research reasoning effort is `low`**, set explicitly in
+  `phase0/dsh-deepseek.patch.yml` (`llm-deepseek.reasoningEffort: low`); the
+  shipped headless default was `high` and produced ~22k output tokens per
+  company. The reviewer keeps `high` in `reviewer.patch.yml`. Verified with
+  `dsh --dump-config`. Jobs already running when the patch changed keep the
+  old effort; new jobs pick up `low` without a worker restart.
+- **NIM per-model 429 is not normal.** At 13:49 `deepseek-v4.1-flash` stayed
+  429 while `glm-5.3-flash` returned 200. Do not switch back to
+  `OCC_LLM_PROVIDER=nvidia` without checking the NIM quota.
 - **`needs_review` is success of the gate**, not a bug. The reviewer is strict
   and finds real numeric/citation issues. Do not flip `needs_review` to
   `ready`, and do not raise `OCC_REVIEW_MAX_CYCLES` in production.
 - **`backfill_runs.total_jobs` grows** when the reviewer enqueues another
   research/ingest/review cycle. Use `status`/`states`, not the original 81.
-- The full batch was started with two concurrent workers; running a single
-  worker with the default `OCC_RESEARCH_CONCURRENCY=4` on resume is fine.
+- A single worker with research 4 / review 4 is the current shape. Do **not**
+  fan out research to 6 concurrent turns (that triggered the NIM 429); review
+  was raised from 1 to 4 on 2026-10-31 16:42 to clear the reviewer backlog.
 - The cross-pilot revisions (`5e7da4c4-…`, priority 30) are queued behind the
   full batch; they are not stuck — they run when batch slots free.
 - F10 page JSON under `.occ/f10/` is the source for the post-batch relations
@@ -252,6 +298,12 @@ names. Report the final counts, not a claim that every company passed review.
 - `51caabf` handoff: HSI cross-holding edges and batch run
 - `5358580` jobs: reset research state counters on a new queued run
 - `95395a0` handoff: live HSI batch supervision state
+- `d982e73` worker: NIM 429 long backoff + lower default RPM to 20
+- `cc224b8` / `e9dfafb` / `fef736f` handoff: 429 incident + paused state
+- *(uncommitted)* default reversal to official DeepSeek
+  (`config.ts`, `profiler.ts`, `cli.ts`, `dsh.patch.yml`), `reasoningEffort:
+  low` for research, reviewer JSON repair + bounded re-run
+  (`reviewer.ts`, `review.ts`, tests), and this handoff
 
 ---
 
@@ -289,16 +341,21 @@ plus an AI watchlist and on-demand private companies):
 
 ## 2. Current state (2026-10-30)
 
-- **LLM/search providers — dual mode (decision 2026-10-31)**:
+- **LLM/search providers — official DeepSeek by default (revised 2026-10-31
+  14:16)**:
   - **Interactive ACP sidebar** = paid **DeepSeek API** (`deepseek-flash`) +
     `deepseek-official` search/fetch. Unchanged; the user's key stays.
-  - **Local headless backfill / worker pool** = **NVIDIA NIM**
-    (`deepseek-ai/deepseek-v4.1-flash`, free tier) + **Parallel Search MCP**
-    (`https://search.parallel.ai/mcp`, keyless).
-  - The repo keeps `DEEPSEEK_API_KEY.txt` for the sidebar and gains a
-    gitignored `NVIDIA_API_KEY.txt` for the worker. The assistant's coding
-    session key is outside the repo and must not be touched. Measured NIM
-    behaviour: [`docs/NVIDIA_NIM_MIGRATION.md`](docs/NVIDIA_NIM_MIGRATION.md).
+  - **Local headless backfill / worker pool** = **official DeepSeek API**
+    (`deepseek-flash`) + official `web_search` / `web_fetch`, with
+    `reasoningEffort: low`. The NIM route
+    (`deepseek-ai/deepseek-v4.1-flash` + Parallel Search MCP) remains opt-in
+    with `OCC_LLM_PROVIDER=nvidia`; it hit sustained per-model 429s during the
+    HSI batch.
+  - `DEEPSEEK_API_KEY.txt` is required for research, ingest/extraction and the
+    reviewer. `NVIDIA_API_KEY.txt` is only needed for the opt-in NIM route. The
+    assistant's coding session key is outside the repo and must not be touched.
+    Measured NIM behaviour:
+    [`docs/NVIDIA_NIM_MIGRATION.md`](docs/NVIDIA_NIM_MIGRATION.md).
 - **Phase 0**: 7 MAG7 profiles generated by dsh headless with
   **`deepseek-flash`** (not Pro). Validation PASS; deliverables under
   [`phase0/out/`](phase0/out/). Historical detail in the archive.
@@ -329,11 +386,12 @@ plus an AI watchlist and on-demand private companies):
   behind a yellow notice. See §6 below.
 - **P3.5**: React 19 + Vite 8 web UI (home / search / company 5 tabs / graph /
   NDX index / AI sidebar). See §5.
-- **P0 headless cutover (2026-10-31)**: worker research = NIM
-  `deepseek-ai/deepseek-v4.1-flash` via `apps/worker/src/nim-gateway.ts`
-  (retry + `reasoning_content` normalisation + 20 RPM bucket) and Parallel
-  Search MCP. ACP sidebar unchanged. Rollback:
-  `OCC_LLM_PROVIDER=deepseek`.
+- **P0 headless cutover (2026-10-31, reversed 14:16)**: worker research now
+  defaults to official **DeepSeek `deepseek-flash` + official
+  `web_search`/`web_fetch`**. The NIM route
+  (`deepseek-ai/deepseek-v4.1-flash` via `apps/worker/src/nim-gateway.ts` +
+  Parallel Search MCP) is opt-in with `OCC_LLM_PROVIDER=nvidia`. ACP sidebar
+  unchanged.
 - **HSI (2026-10-31)**: `config/indices/hsi.yaml` + worker `--universe hsi`;
   A/HK research attaches F10 by default. Pilot on `HK:00700` exercises
   research → ingest → reviewer → revise.
@@ -458,8 +516,8 @@ Key env:
 | `OCC_AGENT_MAX_TOOL_CALLS` | `80` |
 | `OCC_AGENT_MAX_REPEATED_TOOL_CALLS` | `4` (`0` disables) |
 | `OCC_AGENT_IDLE_TIMEOUT_MS` | `600000` (`0` disables) |
-| `DEEPSEEK_API_KEY` / `_FILE` | required by the **ACP sidebar** (official API), ingest/extraction and the **reviewer** |
-| `NVIDIA_API_KEY` / `_FILE` | required by the **headless research worker** (NIM); `NVIDIA_API_KEY.txt` is gitignored |
+| `DEEPSEEK_API_KEY` / `_FILE` | required by the **headless research worker**, the ACP sidebar, ingest/extraction and the **reviewer** |
+| `NVIDIA_API_KEY` / `_FILE` | only for the opt-in NIM route (`OCC_LLM_PROVIDER=nvidia`); `NVIDIA_API_KEY.txt` is gitignored |
 | `OCC_LLM_PROVIDER` | `nvidia` (worker default); `deepseek` rolls back research |
 | `OCC_NIM_GATEWAY_PORT` / `OCC_NIM_RPM` | `4010` / `20` |
 | `OCC_REVIEW_MAX_CYCLES` | `2` (then `needs_review`) |
@@ -791,14 +849,15 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
    Postgres into the search engine.
 3. **dsh headless** for company research (operator-invoked; a batch is explicit
    and capped, never a full-index sweep); **ACP** for the interactive sidebar.
-4. **Dual-mode providers (revised 2026-10-31)**. Interactive ACP sidebar =
-   official **DeepSeek API + `deepseek-official` search/fetch** (fast, paid,
-   low volume, no migration). Local **headless backfill/worker pool** =
-   **NVIDIA NIM `deepseek-ai/deepseek-v4.1-flash`** + **Parallel free Search
-   MCP**; never write `deepseek-v4-pro` back into config. Slightly lower
-   Chinese news quality in backfilled data is accepted for a tech demo. The
-   DeepSeek key stays in the repo for the sidebar; the coding session keeps
-   its own copy.
+4. **Official DeepSeek everywhere by default (revised 2026-10-31 14:16)**.
+   Interactive ACP sidebar = official **DeepSeek API + `deepseek-official`
+   search/fetch**. Local **headless backfill/worker pool** = official
+   **DeepSeek API + official `web_search`/`web_fetch`**. NIM
+   (`deepseek-ai/deepseek-v4.1-flash` + Parallel Search MCP) is opt-in via
+   `OCC_LLM_PROVIDER=nvidia`; it hit sustained per-model 429s during the HSI
+   batch and is not the default. Never write `deepseek-v4-pro` back into
+   config. The DeepSeek key stays in the repo; the coding session keeps its
+   own copy.
 5. **No Docker on this machine**; use native services. Cross-platform support
    (macOS + WSL2/Linux) is still required; Electron/Docker stay in P5.
 6. **Universe scope (2026-10-29, updated 2026-10-31)**: STAR 50 + ChiNext 50 +
@@ -972,24 +1031,30 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 
 ## 10. Next tasks
 
-### Next 0 — Headless-provider cutover only (P0, dual-mode)
+### Next 0 — Headless-provider cutover only (P0)
 
-**Status 2026-10-31: implemented.** NIM provider + gateway + Parallel MCP are
-wired for the worker; the ACP sidebar is untouched. Acceptance probes:
-engine chat, Parallel `mcp__psearch__web_search`, F10 `mcp__occ__f10_scrape`,
-and a reviewer turn all succeeded. Remaining: finish the HSI pilot/batch
-measurement and record final latency/500 counts.
+**Status 2026-10-31 14:16: reverted to official DeepSeek by default.** NIM
+provider + gateway + Parallel MCP remain implemented and selectable with
+`OCC_LLM_PROVIDER=nvidia`. The default is now official DeepSeek +
+official `web_search`/`web_fetch`: NIM `deepseek-v4.1-flash` hit sustained
+per-model 429s at 13:49 and stalled the HSI batch. Verified on `HK:00669`
+(13 `web_search` + 16 `web_fetch`). The earlier NIM acceptance probes
+(engine chat, Parallel tools, F10 scrape, reviewer turn) remain valid for the
+opt-in route; the ACP sidebar is unchanged either way.
 
-**Decision (revised 2026-10-31): two provider routes, not one.**
+**Decision (revised 2026-10-31 14:16): official DeepSeek is the default; NIM
+is opt-in.**
 
 | Route | Inference | Search/fetch | Why |
 |---|---|---|---|
 | **ACP sidebar** (browser Q&A) | official DeepSeek API, `deepseek-flash` | `deepseek-official` | Latency + quality matter; volume is tiny; **no changes at all** |
-| **Headless worker pool** (local backfill) | NVIDIA NIM `deepseek-ai/deepseek-v4.1-flash` | Parallel Search MCP (keyless) | Batch, unattended; free tier is acceptable |
+| **Headless worker pool** (local backfill) | official DeepSeek API, `deepseek-flash` | official `web_search` / `web_fetch` | Reliable; NIM's per-model 429s stalled the HSI batch |
+| **NIM opt-in** (`OCC_LLM_PROVIDER=nvidia`) | NVIDIA NIM `deepseek-ai/deepseek-v4.1-flash` | Parallel Search MCP (keyless) | Free tier, but only when the quota is healthy |
 
-The repo **keeps** `DEEPSEEK_API_KEY.txt` (sidebar) and gains a gitignored
-`NVIDIA_API_KEY.txt` (worker). The coding session's own key is outside the
-repo and untouchable. Plan, measured data, touchpoints and rollback:
+The repo **keeps** `DEEPSEEK_API_KEY.txt` (research + sidebar + review) and a
+gitignored `NVIDIA_API_KEY.txt` (only for the opt-in route). The coding
+session's own key is outside the repo and untouchable. Plan, measured data,
+touchpoints and rollback:
 [`docs/NVIDIA_NIM_MIGRATION.md`](docs/NVIDIA_NIM_MIGRATION.md).
 
 Key facts to carry in:

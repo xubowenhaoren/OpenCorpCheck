@@ -84,7 +84,7 @@ export const config = {
   researchConcurrency: intEnv("OCC_RESEARCH_CONCURRENCY", 4),
   f10Concurrency: intEnv("OCC_F10_CONCURRENCY", 4),
   ingestConcurrency: intEnv("OCC_INGEST_CONCURRENCY", 4),
-  reviewConcurrency: intEnv("OCC_REVIEW_CONCURRENCY", 2),
+  reviewConcurrency: intEnv("OCC_REVIEW_CONCURRENCY", 4),
   newsConcurrency: intEnv("OCC_NEWS_CONCURRENCY", 2),
   dshHome: pathEnv("OCC_DSH_HOME", "phase0/.dsh-home"),
   runsDir: pathEnv("OCC_RUNS_DIR", ".occ/runs"),
@@ -95,19 +95,20 @@ export const config = {
   npmCache: process.env.OCC_NPM_CACHE ?? path.join(os.tmpdir(), "occ-npm-cache"),
   dshVersion: "0.2.1-rc.3",
   /**
-   * Headless inference route. The worker uses NIM through the local retry
-   * gateway by default; `OCC_LLM_PROVIDER=deepseek` rolls back to the official
-   * DeepSeek API (the ACP sidebar is never affected by this switch).
+   * Headless inference route. Official DeepSeek API + its own search/fetch is
+   * the default (2026-10-31: NIM's per-model 429s stalled the HSI batch);
+   * `OCC_LLM_PROVIDER=nvidia` opts into the NIM + Parallel free tier through the
+   * local retry gateway. The ACP sidebar is never affected by this switch.
    */
   llmProvider:
-    process.env.OCC_LLM_PROVIDER === "deepseek"
-      ? ("deepseek" as const)
-      : ("nvidia" as const),
+    process.env.OCC_LLM_PROVIDER === "nvidia"
+      ? ("nvidia" as const)
+      : ("deepseek" as const),
   model:
     process.env.OCC_RESEARCH_MODEL ??
-    (process.env.OCC_LLM_PROVIDER === "deepseek"
-      ? "deepseek-flash"
-      : "deepseek-ai/deepseek-v4.1-flash"),
+    (process.env.OCC_LLM_PROVIDER === "nvidia"
+      ? "deepseek-ai/deepseek-v4.1-flash"
+      : "deepseek-flash"),
   extractModel: process.env.OCC_EXTRACT_MODEL ?? "deepseek-flash",
   /** Reviewer runs on the official API with reasoning on (paid, bounded). */
   reviewModel: process.env.OCC_REVIEW_MODEL ?? "deepseek-flash",
@@ -131,6 +132,8 @@ export const config = {
   researchTimeoutMs: intEnv("OCC_RESEARCH_TIMEOUT_MS", 1_800_000),
   reviewTimeoutMs: intEnv("OCC_REVIEW_TIMEOUT_MS", 480_000),
   reviewMaxCycles: intEnv("OCC_REVIEW_MAX_CYCLES", 2),
+  /** Malformed reviewer JSON is re-run this many times before needs_review. */
+  reviewParseAttempts: intEnv("OCC_REVIEW_PARSE_ATTEMPTS", 2),
   permissionMode: "read-only",
   promptTemplate: path.join(repoRoot, "phase0", "prompts", "company.md"),
   mockSection: path.join(repoRoot, "phase0", "fixtures", "mock-section.md"),

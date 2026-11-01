@@ -6,5 +6,13 @@
     provider: deepseek-official
     model: deepseek-flash
 
+# Research runs at low reasoning. The shipped headless default is high, which
+# produced ~22k output tokens per company on the first DeepSeek run. The
+# reviewer overrides this to `high` in reviewer.patch.yml; the ACP sidebar has
+# its own low setting in .dsh/acp.patch.yml. Schema: off | low | high | max.
+- id: llm-deepseek
+  config:
+    reasoningEffort: low
+
 - id: llm-pi-ai
   config: {}
