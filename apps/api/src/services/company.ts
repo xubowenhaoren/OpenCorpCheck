@@ -78,7 +78,12 @@ export class CompanyService {
     const counts = await getCompanyCounts(this.db, companyId);
     const [financials, facts, relations, events] = await Promise.all([
       include.has("financials")
-        ? listFinancialFacts(this.db, companyId, { limit: query.financial_limit })
+        ? listFinancialFacts(this.db, companyId, {
+            limit: query.financial_limit,
+            ...(query.financial_period_kind
+              ? { periodKind: query.financial_period_kind }
+              : {}),
+          })
         : Promise.resolve(undefined),
       include.has("facts")
         ? listFacts(this.db, companyId, { limit: query.fact_limit })

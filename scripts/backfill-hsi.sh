@@ -22,7 +22,7 @@ EXCLUDE="${EXCLUDE:-00700}"
 
 "${CLI[@]}" migrate
 "${CLI[@]}" enqueue research --universe hsi --exclude "$EXCLUDE"
-"${CLI[@]}" work --queues research,ingest,review,f10 --drain
+"${CLI[@]}" work --queues research,ingest,review,f10,financials --drain
 
 # Second pass: later companies may name an earlier company as a shareholder;
 # re-resolve cached F10 pages now that the whole HSI universe exists.

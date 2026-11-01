@@ -29,7 +29,7 @@ if [[ -n "$EXCLUDE" ]]; then
 else
   "${CLI[@]}" enqueue research --universe cyb50
 fi
-OCC_LLM_PROVIDER=deepseek "${CLI[@]}" work --queues research,ingest,review,f10 --drain
+OCC_LLM_PROVIDER=deepseek "${CLI[@]}" work --queues research,ingest,review,f10,financials --drain
 
 # Second pass: later companies may name an earlier company as a shareholder;
 # re-resolve cached F10 pages now that the whole ChiNext 50 universe exists.

@@ -23,7 +23,7 @@ must change before it becomes a database source, and the licensing constraints.
 
 | Market | Primary (citation truth) | Fast coverage | Notes |
 |---|---|---|---|
-| US | SEC EDGAR XBRL + filings | Eastmoney F10 US pages, company IR | XBRL is structured and authoritative; F10 is supplementary |
+| US | SEC EDGAR XBRL + filings | Company IR; Eastmoney F10 US pages | Structured financials are **EDGAR-only** (decision 2026-11-01): the pipeline does not fetch or write F10 US |
 | A-share | CNINFO / SSE / SZSE announcements | Eastmoney F10 A pages (via `finance_analyst`) | F10 gives 6–9 period statements, peer comparison, events |
 | HK | HKEXnews announcements + HKEX DION | Eastmoney F10 HK pages (via `finance_analyst`) | F10 is strong for Chinese-format financials + analyst ratings |
 | Private / AI watchlist | Company site, blog, press releases | DeepSeek Harness `web_search`, credible news | Lower confidence; label `reported` until primary source |
@@ -46,8 +46,20 @@ must change before it becomes a database source, and the licensing constraints.
   snapshotted from Wikipedia's HSI components table as a documented fallback:
   the official hsi.com.hk list sits behind an SPA with no stable public JSON
   endpoint. Cross-check against HKEX before treating it as a licensed feed.
-- STAR 50 (`000688`, SSE) and ChiNext 50 (`399673`, SZSE) snapshots are still P4.
-  S&P 500 is not planned (2026-10-29 scope change).
+- STAR 50 (`000688`, SSE) is deferred to P2 priority. ChiNext 50
+  (`config/indices/cyb50.yaml`, `399673`, SZSE, `as_of` 2026-06-15) was added
+  2026-10-31. S&P 500 is not planned (2026-10-29 scope change).
+- **Structured financial statements (implemented 2026-11-01, US cleanup done
+  2026-11-01).** **US = SEC EDGAR XBRL only** (`companyfacts` + 10-K/10-Q
+  filing URLs, `method='xbrl'`, `trust_tier='filing'`); the US pipeline does
+  not fetch or write F10 and the former US `f10` rows were deleted (2,053).
+  EDGAR parses `us-gaap` and `ifrs-full`, so 20-F/40-F issuers are covered, and
+  it derives `total_liabilities` / `gross_profit` (quote `计算：`) where the
+  taxonomy omits the subtotal. A/HK use the F10 `cwfx` /
+  `NewFinancialAnalysis` pages as the structured layer (`method='f10'`,
+  `secondary`). See
+  [EXTRACT.md](EXTRACT.md#structured-financial-statements-2026-11-01) and
+  [CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §10.
 
 ## 3. Reused assets from `finance_analyst`
 
@@ -57,7 +69,7 @@ interface instead of rewriting the hard-won URL/scroll logic.
 
 | Asset | What it gives | Reuse in v1 | Changes needed |
 |---|---|---|---|
-| `scripts/aif10_scraper.py` | Eastmoney F10 (A/HK/US): 16/12/5 pages — financial analysis, operating analysis, company profile, shareholders, events, research reports, peer comparison, dividends, capital operations, management | **Yes — primary A/HK/US coverage** | JSON output, table extraction, remove 8k truncation for financial pages, retries, snapshots, page presets |
+| `scripts/aif10_scraper.py` | Eastmoney F10 (A/HK/US): 16/12/5 pages — financial analysis, operating analysis, company profile, shareholders, events, research reports, peer comparison, dividends, capital operations, management | **Yes — primary A/HK coverage**; US pages remain available but are not used for structured financials after 2026-11-01 | JSON output, table extraction, remove 8k truncation for financial pages, retries, snapshots, page presets |
 | `scripts/edgar_scraper.py` | SEC full-text search + submissions + filing text | Yes — wrap in the same sidecar; later port to TS | Structured `companyfacts` XBRL fetch (the current script only fetches filing text), retries, 10 req/s limiter |
 | `scripts/hkex_di_scraper.py` | HKEX DION substantial-shareholder notices (buy/sell, shares, avg price, holdings) | Yes — relation/ownership evidence | JSON output, cache off in production, retries |
 | `scripts/hkex_news_scraper.py` | HKEXnews announcement titles + PDF links | Yes — announcement discovery | Follow PDF links, download + parse, dedupe |

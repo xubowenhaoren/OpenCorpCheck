@@ -244,6 +244,10 @@ server.registerTool(
         .optional()
         .describe("Sections to include; omit for all"),
       financial_limit: z.number().int().min(1).max(200).optional(),
+      financial_period_kind: z
+        .enum(["annual", "quarter", "half", "ttm"])
+        .optional()
+        .describe("Filter financial facts to one statement period kind"),
       fact_limit: z.number().int().min(1).max(200).optional(),
       relation_limit: z.number().int().min(1).max(200).optional(),
       event_limit: z.number().int().min(1).max(100).optional(),
@@ -257,6 +261,7 @@ server.registerTool(
     company,
     include,
     financial_limit,
+    financial_period_kind,
     fact_limit,
     relation_limit,
     event_limit,
@@ -270,6 +275,9 @@ server.registerTool(
       if (include) url.searchParams.set("include", include.join(","));
       if (financial_limit) {
         url.searchParams.set("financial_limit", String(financial_limit));
+      }
+      if (financial_period_kind) {
+        url.searchParams.set("financial_period_kind", financial_period_kind);
       }
       if (fact_limit) url.searchParams.set("fact_limit", String(fact_limit));
       if (relation_limit) {

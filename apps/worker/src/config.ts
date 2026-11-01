@@ -117,6 +117,19 @@ export const config = {
   /** Additive F10 shareholder/investment relations after ingest. */
   f10Relations:
     process.env.OCC_F10_RELATIONS === "none" ? ("none" as const) : ("on" as const),
+  /**
+   * Structured financial statements (F10 cwfx + SEC EDGAR XBRL). Enabled by
+   * default; `none` stops ingest from enqueuing the follow-up stage (the
+   * explicit `enqueue financials` command still works).
+   */
+  financials:
+    process.env.OCC_FINANCIALS === "none" ? ("none" as const) : ("on" as const),
+  financialsConcurrency: intEnv("OCC_FINANCIALS_CONCURRENCY", 2),
+  edgarDir: pathEnv("OCC_EDGAR_DIR", ".occ/edgar"),
+  edgarCacheTtlMs: intEnv("OCC_EDGAR_CACHE_TTL_MS", 86_400_000),
+  edgarUserAgent:
+    process.env.OCC_EDGAR_USER_AGENT?.trim() ||
+    "OpenCorpCheck/0.1 (Bowen Xu; xubowenhaoren@gmail.com)",
   deepseekApiKey: secretEnv("DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY.txt"),
   nvidiaApiKey: secretEnv("NVIDIA_API_KEY", "NVIDIA_API_KEY.txt"),
   nimBaseUrl:
@@ -171,6 +184,8 @@ export function publicConfig(): Record<string, unknown> {
     nimGatewayUrl: config.nimGatewayUrl,
     nimRpm: config.nimRpm,
     f10Dir: config.f10Dir,
+    edgarDir: config.edgarDir,
+    financials: config.financials,
     qdrantUrl: config.qdrantUrl,
     embeddingUrl: config.embeddingUrl,
   };

@@ -2,13 +2,13 @@ import type { Market, PeriodKind } from "@occ/core";
 import { financialFactId } from "@occ/db";
 import type { SectionChapter } from "@occ/ingest";
 
-import { citationRefs, parseMarkdownTables, stripCitations } from "./markdown-table.js";
+import { citationRefs, parseMarkdownTables, stripCitations } from "../markdown-table.js";
 import {
   parseFiscalYearEnd,
   parsePeriodLabel,
   type FiscalYearEnd,
-} from "./periods.js";
-import { parseNumericCell, parseUnitContext } from "./units.js";
+} from "../periods.js";
+import { parseNumericCell, parseUnitContext } from "../units.js";
 
 export interface FinancialDraft {
   id: string;

@@ -2,7 +2,13 @@
 import fs from "node:fs";
 import { parseArgs } from "node:util";
 
-import { enqueueF10, enqueueNews, enqueueResearch, type EnqueueResult } from "./backfill.js";
+import {
+  enqueueF10,
+  enqueueFinancials,
+  enqueueNews,
+  enqueueResearch,
+  type EnqueueResult,
+} from "./backfill.js";
 import { publicConfig } from "./config.js";
 import {
   closePool,
@@ -24,7 +30,8 @@ Usage:
   occ-backfill enqueue research [options]
   occ-backfill enqueue f10 [options]
   occ-backfill enqueue news [options]
-  occ-backfill work [--queues research,ingest,review,news,f10] [--drain]
+  occ-backfill enqueue financials [options]
+  occ-backfill work [--queues research,ingest,review,news,f10,financials] [--drain]
   occ-backfill status [--run <uuid>] [--json]
   occ-backfill states [--limit N] [--json]
   occ-backfill relations f10 [--universe hsi|ndx|cyb50|... | --tickers ...] [--force]
@@ -54,6 +61,10 @@ Environment:
   OCC_INGEST_CONCURRENCY (default 4)
   OCC_REVIEW_CONCURRENCY (default 4)
   OCC_F10_CONCURRENCY (default 4)
+  OCC_FINANCIALS_CONCURRENCY (default 2)
+  OCC_FINANCIALS (on default; none stops auto-enqueue after ingest)
+  OCC_EDGAR_USER_AGENT (SEC requires a contact, e.g. Name/1.0 (you@example.com))
+  OCC_EDGAR_DIR (default .occ/edgar)
   OCC_QDRANT_URL (default http://127.0.0.1:6333)
   OCC_EMBEDDING_URL (default http://127.0.0.1:8080)
   OCC_FINANCE_ANALYST_URL (default http://127.0.0.1:8090)
@@ -73,8 +84,13 @@ async function main(): Promise<void> {
       return;
     case "enqueue": {
       const [kind, ...args] = rest;
-      if (kind !== "research" && kind !== "f10" && kind !== "news") {
-        throw new Error("enqueue requires research, f10 or news");
+      if (
+        kind !== "research" &&
+        kind !== "f10" &&
+        kind !== "news" &&
+        kind !== "financials"
+      ) {
+        throw new Error("enqueue requires research, f10, news or financials");
       }
       await enqueueCommand(kind, args);
       return;
@@ -129,7 +145,7 @@ async function main(): Promise<void> {
 }
 
 async function enqueueCommand(
-  kind: "research" | "f10" | "news",
+  kind: "research" | "f10" | "news" | "financials",
   args: string[],
 ): Promise<void> {
   const { values } = parseArgs({
@@ -189,6 +205,15 @@ async function enqueueCommand(
         maxItems: parsePositive(values["max-items"], "--max-items"),
         sinceDays: parsePositive(values["since-days"], "--since-days"),
       });
+    } else if (kind === "financials") {
+      result = await enqueueFinancials(boss, {
+        universe: values.universe,
+        tickers: values.tickers,
+        exclude: values.exclude,
+        limit,
+        shard,
+        force: values.force,
+      });
     } else {
       result = await enqueueF10(boss, {
         universe: values.universe,
@@ -215,7 +240,7 @@ async function workCommand(args: string[]): Promise<void> {
       drain: { type: "boolean" },
     },
   });
-  const queues = (values.queues ?? "research,ingest,review,news,f10")
+  const queues = (values.queues ?? "research,ingest,review,news,f10,financials")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean) as QueueKind[];
@@ -225,10 +250,11 @@ async function workCommand(args: string[]): Promise<void> {
       queue !== "ingest" &&
       queue !== "review" &&
       queue !== "news" &&
-      queue !== "f10"
+      queue !== "f10" &&
+      queue !== "financials"
     ) {
       throw new Error(
-        `unknown queue ${queue}; use research, ingest, review, news or f10`,
+        `unknown queue ${queue}; use research, ingest, review, news, f10 or financials`,
       );
     }
   }

@@ -20,26 +20,53 @@ const CURRENCY_LABEL: Record<string, { zh: string; en: string }> = {
 
 const FIN_ITEM_LABEL: Record<string, { zh: string; en: string }> = {
   revenue: { zh: "营业收入", en: "Revenue" },
+  cost_of_revenue: { zh: "营业成本", en: "Cost of revenue" },
+  gross_profit: { zh: "毛利润", en: "Gross profit" },
+  gross_margin: { zh: "毛利率", en: "Gross margin" },
+  research_and_development: { zh: "研发费用", en: "R&D" },
+  selling_general_admin: { zh: "销售及管理费用", en: "SG&A" },
+  operating_income: { zh: "营业利润", en: "Operating income" },
   net_income: { zh: "净利润", en: "Net income" },
   net_income_attributable: { zh: "归母净利润", en: "Net income attributable" },
-  operating_income: { zh: "营业利润", en: "Operating income" },
-  gross_margin: { zh: "毛利率", en: "Gross margin" },
+  eps: { zh: "每股收益", en: "EPS" },
+  eps_diluted: { zh: "稀释每股收益", en: "Diluted EPS" },
+  cash_and_equivalents: { zh: "货币资金", en: "Cash & equivalents" },
+  total_assets: { zh: "总资产", en: "Total assets" },
+  total_liabilities: { zh: "总负债", en: "Total liabilities" },
+  total_equity: { zh: "股东权益", en: "Total equity" },
+  total_debt: { zh: "总债务", en: "Total debt" },
   operating_cash_flow: { zh: "经营现金流", en: "Operating cash flow" },
   capex: { zh: "资本开支", en: "Capex" },
   free_cash_flow: { zh: "自由现金流", en: "Free cash flow" },
-  eps: { zh: "每股收益", en: "EPS" },
+  investing_cash_flow: { zh: "投资现金流", en: "Investing cash flow" },
+  financing_cash_flow: { zh: "筹资现金流", en: "Financing cash flow" },
 };
 
 export const FIN_ITEM_ORDER = [
+  // Income statement
   "revenue",
+  "cost_of_revenue",
+  "gross_profit",
   "gross_margin",
+  "research_and_development",
+  "selling_general_admin",
   "operating_income",
   "net_income",
   "net_income_attributable",
+  "eps_diluted",
   "eps",
+  // Balance sheet
+  "cash_and_equivalents",
+  "total_assets",
+  "total_liabilities",
+  "total_equity",
+  "total_debt",
+  // Cash flow
   "operating_cash_flow",
   "capex",
   "free_cash_flow",
+  "investing_cash_flow",
+  "financing_cash_flow",
 ];
 
 const STATEMENT_LABEL: Record<string, { zh: string; en: string }> = {
@@ -113,6 +140,64 @@ export function financialItemLabel(item: string, lang: Lang = "zh"): string {
   const known = FIN_ITEM_LABEL[item];
   if (known) return known[lang];
   return item.replace(/_/g, " ");
+}
+
+export type FinancialSourceKind = "sec" | "f10" | "profile" | "other";
+
+const SEC_FORM = /\b(10-K|10-Q|20-F|40-F|8-K)\b/;
+
+/**
+ * A cell the parser calculated (e.g. `gross_profit = revenue - cost`) is
+ * marked with a `计算：` quote. It must never be shown as a reported line.
+ */
+export function isDerivedFact(fact: FinancialFactView): boolean {
+  return (fact.quote ?? "").replace(/^\s+/, "").startsWith("计算：");
+}
+
+export function financialSourceKind(
+  fact: FinancialFactView,
+): FinancialSourceKind {
+  if (fact.method === "xbrl") return "sec";
+  if (fact.method === "f10") return "f10";
+  if (fact.method === "deterministic_table_v1" || fact.method === "llm_web") {
+    return "profile";
+  }
+  return "other";
+}
+
+/** Filing form from the EDGAR source title (`SEC 10-K filed 2025-10-31`). */
+export function financialSourceForm(fact: FinancialFactView): string | undefined {
+  return SEC_FORM.exec(fact.source?.title ?? "")?.[1];
+}
+
+export function financialSourceLabel(
+  fact: FinancialFactView,
+  lang: Lang = "zh",
+): string {
+  switch (financialSourceKind(fact)) {
+    case "sec": {
+      const form = financialSourceForm(fact);
+      return form ? `SEC ${form}` : "SEC EDGAR";
+    }
+    case "f10":
+      return lang === "zh" ? "东方财富 F10" : "Eastmoney F10";
+    case "profile":
+      return lang === "zh" ? "研究资料" : "Research profile";
+    default:
+      return trustLabel(fact.source?.trustTier, lang);
+  }
+}
+
+/**
+ * A/HK 三季报 columns are year-to-date, not single quarters; US 10-Q facts are
+ * true quarters. Any "quarter" spanning more than four months is cumulative.
+ */
+export function isCumulativePeriod(fact: FinancialFactView): boolean {
+  if (fact.periodKind !== "quarter" || !fact.periodStart) return false;
+  const start = Date.parse(`${fact.periodStart}T00:00:00Z`);
+  const end = Date.parse(`${fact.periodEnd}T00:00:00Z`);
+  if (Number.isNaN(start) || Number.isNaN(end)) return false;
+  return Math.round((end - start) / 86_400_000) >= 130;
 }
 
 export function statementLabel(statement: string, lang: Lang = "zh"): string {
@@ -240,7 +325,9 @@ export function periodLabel(fact: FinancialFactView): string {
 }
 
 export function periodKey(fact: FinancialFactView): string {
-  return `${fact.periodEnd}|${fact.periodKind}|${fact.periodLabel ?? ""}`;
+  // Same natural key as `financial_facts_uq`: one column per period, even
+  // when a profile label and a filing label disagree.
+  return `${fact.periodEnd}|${fact.periodKind}`;
 }
 
 export function factText(value: unknown): string {

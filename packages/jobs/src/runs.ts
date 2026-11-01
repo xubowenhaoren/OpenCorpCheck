@@ -1,11 +1,11 @@
 import { Pool, type QueryResultRow } from "pg";
 
-export type RunKind = "research" | "f10" | "news";
+export type RunKind = "research" | "f10" | "news" | "financials";
 
 const DDL = `
 CREATE TABLE IF NOT EXISTS backfill_runs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  kind text NOT NULL CHECK (kind IN ('research', 'f10', 'news')),
+  kind text NOT NULL CHECK (kind IN ('research', 'f10', 'news', 'financials')),
   status text NOT NULL DEFAULT 'queued'
     CHECK (status IN ('queued', 'running', 'completed', 'partial', 'failed')),
   total_jobs integer NOT NULL DEFAULT 0,
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS backfill_runs (
 
 ALTER TABLE backfill_runs DROP CONSTRAINT IF EXISTS backfill_runs_kind_check;
 ALTER TABLE backfill_runs ADD CONSTRAINT backfill_runs_kind_check
-  CHECK (kind IN ('research', 'f10', 'news'));
+  CHECK (kind IN ('research', 'f10', 'news', 'financials'));
 
 CREATE TABLE IF NOT EXISTS backfill_jobs (
   id bigserial PRIMARY KEY,
@@ -380,13 +380,18 @@ export class JobStore {
   }
 
   /** Dead-letter workers do not know the origin queue; a run only uses one queue. */
-  async markJobDeadByKey(runId: string, jobKey: string): Promise<void> {
+  async markJobDeadByKey(
+    runId: string,
+    jobKey: string,
+    queue?: string,
+  ): Promise<void> {
     await this.query(
       `UPDATE backfill_jobs
        SET status = 'dead', finished_at = now(), updated_at = now()
        WHERE run_id = $1 AND job_key = $2
+         AND ($3::text IS NULL OR queue = $3)
          AND status <> 'completed'`,
-      [runId, jobKey],
+      [runId, jobKey, queue ?? null],
     );
     await this.refreshRun(runId);
   }

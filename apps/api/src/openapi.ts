@@ -154,6 +154,16 @@ export function openApiDocument() {
               schema: { type: "integer", minimum: 1, maximum: 200, default: 20 },
             },
             {
+              name: "financial_period_kind",
+              in: "query",
+              schema: {
+                type: "string",
+                enum: ["annual", "quarter", "half", "ttm"],
+              },
+              description:
+                "Filter financial facts to one statement period kind.",
+            },
+            {
               name: "fact_limit",
               in: "query",
               schema: { type: "integer", minimum: 1, maximum: 200, default: 30 },

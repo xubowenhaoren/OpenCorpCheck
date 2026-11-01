@@ -6,11 +6,13 @@ export const QUEUES = {
   REVIEW: "review.company",
   NEWS: "news.company",
   F10: "f10.page",
+  FINANCIALS: "financials.company",
   RESEARCH_DEAD: "research.company.dead",
   INGEST_DEAD: "ingest.company.dead",
   REVIEW_DEAD: "review.company.dead",
   NEWS_DEAD: "news.company.dead",
   F10_DEAD: "f10.page.dead",
+  FINANCIALS_DEAD: "financials.company.dead",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -58,6 +60,7 @@ export async function ensureQueues(boss: PgBoss): Promise<void> {
     QUEUES.REVIEW_DEAD,
     QUEUES.NEWS_DEAD,
     QUEUES.F10_DEAD,
+    QUEUES.FINANCIALS_DEAD,
   ]) {
     await ensureQueue(boss, name, {
       retryLimit: 0,
@@ -108,6 +111,15 @@ export async function ensureQueues(boss: PgBoss): Promise<void> {
     retryDelayMax: 300,
     expireInSeconds: 300,
     deadLetter: QUEUES.F10_DEAD,
+    deleteAfterSeconds: 604_800,
+  });
+  await ensureQueue(boss, QUEUES.FINANCIALS, {
+    retryLimit: 2,
+    retryDelay: 30,
+    retryBackoff: true,
+    retryDelayMax: 300,
+    expireInSeconds: 900,
+    deadLetter: QUEUES.FINANCIALS_DEAD,
     deleteAfterSeconds: 604_800,
   });
 }

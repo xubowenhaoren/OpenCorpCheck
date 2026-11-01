@@ -942,6 +942,36 @@
   }
   .fin-table .src-cell { white-space: nowrap; }
 
+  .fin-coverage {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    margin: -4px 0 12px; color: var(--muted); font-size: 12px;
+  }
+  .fin-mode-note { font-size: 12px; }
+  .fin-statement-tabs { margin-bottom: 10px; }
+  .fin-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 1px 6px; border-radius: 999px;
+    background: var(--bg-soft); color: var(--muted);
+    border: 1px solid var(--line);
+    font-size: 10.5px; font-weight: 600; line-height: 1.5; white-space: nowrap;
+  }
+  .fin-badge.sec { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+  .fin-badge.f10 { background: var(--info-bg); color: var(--info); border-color: transparent; }
+  .fin-badge.profile { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+  .fin-badge.derived {
+    background: transparent; color: var(--warn); border: 1px dashed var(--warn);
+  }
+  .fin-table th .fin-period { display: block; }
+  .fin-badges {
+    display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px;
+    margin-top: 3px; font-weight: 500;
+  }
+  .fin-table th .fin-badge { font-size: 9.5px; padding: 0 5px; }
+  .fin-cell { display: inline-flex; align-items: center; justify-content: flex-end; gap: 5px; }
+  .fin-cell .fin-badge { font-size: 9.5px; padding: 0 4px; }
+  .fin-table td.fin-empty { color: var(--line-strong); }
+  .metric .label .fin-badge { margin-left: 5px; font-size: 9px; padding: 0 4px; vertical-align: 1px; }
+
   .company-title-actions { display: flex; gap: 8px; flex: 0 0 auto; }
   .company-summary { margin: 0; color: var(--ink-2); font-size: 14.5px; line-height: 1.75; }
   .company-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }

@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
-import { getCompanyCard } from "../api";
+import { getCompanyCard, getCompanyFinancials } from "../api";
 import { CompanyFinancials } from "../components/CompanyFinancials";
 import { CompanyGraph } from "../components/CompanyGraph";
 import { CompanyHeader } from "../components/CompanyHeader";
@@ -32,11 +32,24 @@ export function CompanyPage() {
 
   const query = useQuery({
     queryKey: ["company", ref],
-    queryFn: () => getCompanyCard(ref ?? ""),
+    queryFn: () =>
+      getCompanyCard(ref ?? "", { include: "facts,relations,events" }),
     enabled: Boolean(ref),
   });
 
-  const card = query.data?.data;
+  // Statements are fetched per period kind so a full EDGAR/F10 statement is
+  // never cut off by the card's 200-row cap.
+  const financialsQuery = useQuery({
+    queryKey: ["company", ref, "financials"],
+    queryFn: () => getCompanyFinancials(ref ?? ""),
+    enabled: Boolean(ref),
+  });
+
+  const card = useMemo(() => {
+    const data = query.data?.data;
+    if (!data) return undefined;
+    return { ...data, financials: financialsQuery.data ?? [] };
+  }, [query.data, financialsQuery.data]);
 
   useEffect(() => {
     if (!card) return;
@@ -74,19 +87,21 @@ export function CompanyPage() {
     return urls.size;
   }, [card]);
 
-  if (query.isLoading) return <Loading />;
-  if (query.isError || !card) {
+  if (query.isLoading || financialsQuery.isLoading) return <Loading />;
+  if (query.isError || financialsQuery.isError || !card) {
+    const error = query.error ?? financialsQuery.error;
     return (
       <ErrorView
-        message={
-          query.error instanceof Error ? query.error.message : undefined
-        }
+        message={error instanceof Error ? error.message : undefined}
         code={
-          query.error instanceof Error && "code" in query.error
-            ? String((query.error as { code?: string }).code ?? "")
+          error instanceof Error && "code" in error
+            ? String((error as { code?: string }).code ?? "")
             : undefined
         }
-        onRetry={() => void query.refetch()}
+        onRetry={() => {
+          void query.refetch();
+          void financialsQuery.refetch();
+        }}
       />
     );
   }

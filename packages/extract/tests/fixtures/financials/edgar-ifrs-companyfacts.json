@@ -1,0 +1,408 @@
+{
+  "cik": 1650107,
+  "entityName": "Coca-Cola Europacific Partners Test plc",
+  "facts": {
+    "dei": {
+      "EntityCommonStockSharesOutstanding": {
+        "label": "Entity Common Stock, Shares Outstanding",
+        "units": {
+          "shares": []
+        }
+      }
+    },
+    "ifrs-full": {
+      "RevenueFromContractsWithCustomers": {
+        "label": "RevenueFromContractsWithCustomers",
+        "units": {
+          "EUR": [
+            {
+              "start": "2024-01-01",
+              "end": "2024-12-31",
+              "val": 20000000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            },
+            {
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "val": 21000000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            }
+          ],
+          "USD": [
+            {
+              "start": "2024-01-01",
+              "end": "2024-12-31",
+              "val": 22000000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            },
+            {
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "val": 23500000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            }
+          ]
+        }
+      },
+      "CostOfSales": {
+        "label": "CostOfSales",
+        "units": {
+          "EUR": [
+            {
+              "start": "2024-01-01",
+              "end": "2024-12-31",
+              "val": 12000000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            },
+            {
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "val": 12600000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            }
+          ]
+        }
+      },
+      "ProfitLossFromOperatingActivities": {
+        "label": "ProfitLossFromOperatingActivities",
+        "units": {
+          "EUR": [
+            {
+              "start": "2024-01-01",
+              "end": "2024-12-31",
+              "val": 1900000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            },
+            {
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "val": 2000000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            }
+          ]
+        }
+      },
+      "ProfitLoss": {
+        "label": "ProfitLoss",
+        "units": {
+          "EUR": [
+            {
+              "start": "2024-01-01",
+              "end": "2024-12-31",
+              "val": 1400000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            },
+            {
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "val": 1500000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            }
+          ]
+        }
+      },
+      "ProfitLossAttributableToOwnersOfParent": {
+        "label": "ProfitLossAttributableToOwnersOfParent",
+        "units": {
+          "EUR": [
+            {
+              "start": "2024-01-01",
+              "end": "2024-12-31",
+              "val": 1300000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            },
+            {
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "val": 1400000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            }
+          ]
+        }
+      },
+      "DilutedEarningsLossPerShare": {
+        "label": "DilutedEarningsLossPerShare",
+        "units": {
+          "EUR/shares": [
+            {
+              "start": "2024-01-01",
+              "end": "2024-12-31",
+              "val": 2.86,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            },
+            {
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "val": 3.07,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            }
+          ]
+        }
+      },
+      "CashAndCashEquivalents": {
+        "label": "CashAndCashEquivalents",
+        "units": {
+          "EUR": [
+            {
+              "end": "2024-12-31",
+              "val": 2800000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            },
+            {
+              "end": "2025-12-31",
+              "val": 3000000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            }
+          ]
+        }
+      },
+      "Assets": {
+        "label": "Assets",
+        "units": {
+          "EUR": [
+            {
+              "end": "2024-12-31",
+              "val": 28000000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            },
+            {
+              "end": "2025-12-31",
+              "val": 30000000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            }
+          ]
+        }
+      },
+      "Equity": {
+        "label": "Equity",
+        "units": {
+          "EUR": [
+            {
+              "end": "2024-12-31",
+              "val": 11000000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            },
+            {
+              "end": "2025-12-31",
+              "val": 12000000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            }
+          ]
+        }
+      },
+      "Borrowings": {
+        "label": "Borrowings",
+        "units": {
+          "EUR": [
+            {
+              "end": "2024-12-31",
+              "val": 9000000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            },
+            {
+              "end": "2025-12-31",
+              "val": 9500000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            }
+          ]
+        }
+      },
+      "CashFlowsFromUsedInOperatingActivities": {
+        "label": "CashFlowsFromUsedInOperatingActivities",
+        "units": {
+          "EUR": [
+            {
+              "start": "2024-01-01",
+              "end": "2024-12-31",
+              "val": 2300000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            },
+            {
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "val": 2500000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            }
+          ]
+        }
+      },
+      "PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities": {
+        "label": "PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
+        "units": {
+          "EUR": [
+            {
+              "start": "2024-01-01",
+              "end": "2024-12-31",
+              "val": 750000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            },
+            {
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "val": 800000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            }
+          ]
+        }
+      },
+      "CashFlowsFromUsedInInvestingActivities": {
+        "label": "CashFlowsFromUsedInInvestingActivities",
+        "units": {
+          "EUR": [
+            {
+              "start": "2024-01-01",
+              "end": "2024-12-31",
+              "val": -950000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            },
+            {
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "val": -1000000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            }
+          ]
+        }
+      },
+      "CashFlowsFromUsedInFinancingActivities": {
+        "label": "CashFlowsFromUsedInFinancingActivities",
+        "units": {
+          "EUR": [
+            {
+              "start": "2024-01-01",
+              "end": "2024-12-31",
+              "val": -480000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            },
+            {
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "val": -500000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "20-F",
+              "filed": "2026-03-01",
+              "accn": "0001650107-26-000010"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

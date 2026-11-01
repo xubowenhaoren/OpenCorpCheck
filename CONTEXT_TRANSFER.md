@@ -1,19 +1,44 @@
 # OpenCorpCheck — Context Transfer
 
-> Handoff: **2026-10-31 (this round: HSI + reviewer + F10 relations + NIM/Parallel)**.
+> Handoff: **2026-11-01 (this round: US EDGAR-only + Financials-tab UI)**.
 > The old 1,394-line document is preserved verbatim in
 > [`context_transfer_history.md`](context_transfer_history.md).
 >
-> Current phase: Phase 0 + P1 + P2 + P2.5 + P3.1–P3.5 complete.
+> Current phase: Phase 0 + P1 + P2 + P2.5 + P3.1–P3.5 complete, plus the
+> structured-financials backend, the US EDGAR-only cleanup and the
+> Financials-tab UI.
 > **This round adds**:
+> **(a) US is EDGAR-only** — `apps/worker/src/financials/run.ts` no longer
+> fetches or writes F10 for US; the former US `f10` rows were deleted
+> (**2,053 rows**; the 160 HK-sourced rows for dual-listed 阿里巴巴 were kept);
+> `edgar-xbrl.ts` now parses `us-gaap` **and** `ifrs-full`, so CCEP / Ferrovial /
+> Thomson Reuters are covered. NDX is **100/100 on `xbrl`, 0 `f10`**;
+> **(b) coverage compensation** — `total_liabilities = total_assets -
+> total_equity` and `gross_profit = revenue - cost_of_revenue` (then gross
+> margin) are derived when the taxonomy omits the subtotal; derived facts start
+> their quote with `计算：` and carry confidence < 1;
+> **(c) precedence** — the structured run passes the incoming method's own rank
+> (`xbrl` 30, `f10` 20), so an A/HK F10 pass cannot overwrite EDGAR rows for a
+> dual-listed company; `total_equity` now prefers the NCI-inclusive concept;
+> **(d) Financials-tab UI** — labels/order for all canonical items,
+> per-statement tabs, per-period source badges (`SEC 10-K/10-Q/20-F/40-F` /
+> `东方财富 F10` / `研究资料` / `推导` / `累计`), annual/quarter/half/TTM modes,
+> a coverage + fiscal-year-end line, and per-kind fetching so full statements
+> are not truncated by the 200-row card limit.
+> **Next round**: News auto-update (§10 Next 1) and the CSI A500 / S&P 500
+> placeholder layer (§10 Next 2). Read §0 and §10 first. The previous round's
+> structured-financials backend notes remain below for reference.
+>
+> **Previous round (2026-10-31)** added the headless provider route, HSI, the
+> hidden reviewer and structured F10 shareholder relations:
 > **(a) headless provider route — official DeepSeek by default (revised
-> 14:16)** — the local worker pool now runs **official `deepseek-flash` +
+> 14:16)** — the local worker pool runs **official `deepseek-flash` +
 > official `web_search`/`web_fetch`**. The NIM route
 > (`deepseek-ai/deepseek-v4.1-flash` through
 > `apps/worker/src/nim-gateway.ts`, `127.0.0.1:4010`, plus Parallel Search MCP)
-> remains available with `OCC_LLM_PROVIDER=nvidia` but is no longer the
-> default: it hit sustained per-model 429s during the HSI batch. The ACP
-> sidebar is unchanged and uses the same official DeepSeek + search/fetch;
+> remains available with `OCC_LLM_PROVIDER=nvidia` but is not the default: it
+> hit sustained per-model 429s during the HSI batch. The ACP sidebar is
+> unchanged and uses the same official DeepSeek + search/fetch;
 > **(b) HSI** — `config/indices/hsi.yaml` (85 constituents, `as_of`
 > 2026-10-31), worker `--universe hsi`, F10 attached by default for A/HK;
 > **(c) hidden reviewer** — `review.company` queue, official DeepSeek with
@@ -22,16 +47,10 @@
 > **(d) structured F10 shareholder relations** — `gdyj` / `MajorShareholder` /
 > `gbgd` tables become `reported`-status `owns` / `invests_in` edges when the
 > shareholder is already in the universe.
->
-> **Next after the HSI pilot/batch**: the `HK:00700` pilot completed research +
-> ingest + 3 reviewer cycles and ended `needs_review` with 6 real issues (the
-> gate working as designed). The 3-company cross-holding pilot (`00001` /
-> `00006` / `01038`) is still finishing reviewer revisions and has already
-> written real F10 ownership edges. **The full HSI batch (81 companies, run
-> `a19a67ba-8739-4361-833b-6887395556ad`) is live — supervise it via §0.**
-> News auto-update and A500/SPX placeholders remain §10 Next 1/2. The P3.4
-> first-class sub-agent card is **deferred — not needed for this project**;
-> `deep_research` stays a tool card.
+> The HSI pilot/batch and reviewer outcomes are in §0.3; News auto-update and
+> A500/SPX placeholders remain §10 Next 1/2. The P3.4 first-class sub-agent card
+> is **deferred — not needed for this project**; `deep_research` stays a tool
+> card.
 >
 > **Scope change (2026-10-30, revised 2026-10-31)**: placeholder coverage
 > expands to **CSI A500 (中证A500, 000510) + S&P 500 (SPX)**. Every constituent
@@ -55,17 +74,84 @@
 
 ---
 
-## 0. LIVE STATE — ChiNext 50 backfill COMPLETE (2026-10-31, read first)
+## 0. LIVE STATE — US EDGAR-only + Financials UI (2026-11-01, read first)
 
+> **US EDGAR-only cleanup + Financials-tab UI — 2026-11-01 (this round).**
+> No worker is running and all queues are empty, except four historical dead
+> `financials.company` jobs from earlier runs (`HK:00700`, `HK:00823`,
+> `A:600519`, `US:AAPL` in the `.dead` queue; they are not part of this
+> round's run).
+>
+> | Index | Constituents | Any structured | EDGAR `xbrl` | F10 `f10` | Cache ok |
+> |---|---|---|---|---|---|
+> | NDX | 100 | 100 | **100** | **0** | 100 |
+> | HSI | 85 | 84 | 0 | 84 | 84 |
+> | CYB50 | 50 | 50 | 0 | 50 | 50 |
+>
+> - **US F10 removed.** 2,053 US-page `f10` rows were deleted, matched on
+>   `sources.url LIKE '%PC_USF10%'` (not by company, so the 160 HK-sourced rows
+>   for dual-listed **阿里巴巴 / 09988** were kept). The US pipeline no longer
+>   touches F10: `F10_PAGE` has no US entry and `loadF10` is only called for
+>   A/HK. The generic F10 parser and its tests stay.
+> - **IFRS coverage.** `edgar-xbrl.ts` merges `us-gaap` + `ifrs-full`
+>   (us-gaap wins name collisions) and picks one reporting currency taken from
+>   `Assets`, so a dual-tagged concept (EUR + USD) cannot mix currencies.
+>   CCEP (18 annual items), Ferrovial (15) and Thomson Reuters (17) now parse
+>   from their 20-F/40-F filings.
+> - **Derived subtotals.** `computeDerivedFacts` calculates
+>   `gross_profit = revenue - cost_of_revenue`, then `gross_margin`, and
+>   `total_liabilities = total_assets - total_equity` when missing. Their quote
+>   starts with `计算：` and confidence is < 1; the UI shows a `推导` badge.
+>   Nothing is derived unless both inputs exist for the same period.
+> - **NDX item coverage after the rerun** (all 100 constituents, `xbrl`):
+>   revenue / net income / attributable / assets / equity / liabilities / cash
+>   / OCF / investing / financing **100**, eps 99, operating income 98,
+>   capex 97, FCF 97, total debt 95, SG&A 90, gross profit + margin 87,
+>   cost of revenue 86, R&D 74. Before the cleanup: gross profit 62,
+>   liabilities 76, debt 88, eps 96, capex/FCF 95, operating income 95,
+>   cost 85.
+> - **Runs:** cleanup fin-replay `7dacfac0-ce2c-4d61-983a-f180a1f1c23b`
+>   (NDX 100/100 `completed`, cache-only, p50 76 ms / p95 134 ms, **0 LLM
+>   tokens**). The earlier HSI/CYB50/NDX runs are unchanged.
+> - **Verified:** AAPL FY2025 revenue 416.161B / NI 112.010B / OCF 111.482B /
+>   capex 12.715B / assets 359.241B / liabilities 285.508B / equity 73.733B
+>   USD, SEC 10-K URL; **CCEP FY2025** EUR revenue 20.901B (not USD) /
+>   net income 1.979B / equity 8.303B / liabilities 21.569B, 20-F URL;
+>   **GOOGL FY2025** gross profit 240.301B (derived), revenue 402.836B;
+>   600519 FY2025 1721亿 CNY and 00700 FY2025 7437亿 HKD still come from F10.
+> - Precedence: `xbrl` (`trust_tier='filing'`) > `f10` (`secondary`) >
+>   `deterministic_table_v1`. The structured run now passes the incoming
+>   method's own rank (`xbrl` 30, `f10` 20), so an A/HK F10 pass cannot
+>   overwrite EDGAR rows for a dual-listed company. `total_equity` prefers the
+>   NCI-inclusive concept, which makes `assets - equity` exact. Profile rows
+>   within ±7 days of a structured period are removed.
+> - Env: `OCC_FINANCIALS`, `OCC_FINANCIALS_CONCURRENCY=2`,
+>   `OCC_EDGAR_USER_AGENT` (contact required), `OCC_EDGAR_DIR`,
+>   `OCC_EDGAR_CACHE_TTL_MS`. Migration
+>   `packages/db/migrations/0007_financials_stage.sql` (apply with
+>   `node apps/cli/dist/occ.js migrate`).
+> - **Next: News auto-update (§10 Next 1) and A500/SP 500 placeholders
+>   (§10 Next 2).** The US EDGAR-only + Financials-tab round is **done** — see
+>   §10 “Done — US EDGAR-only + Financials-tab UI (2026-11-01)”.
+>
 > Snapshot: **2026-10-31 (after the HSI batch)**. ChiNext 50 (`399673`, internal
 > code `CYB50`) is backfilled: **45 ready / 5 needs_review** across all 50
 > constituents, **50/50 CYB50 memberships** (`as_of=2026-06-15`), **1 reported
-> F10 edge** (宁德时代 invests_in 天华新能, 16.87%). No worker is running and
-> all queues are empty. Do **not** re-enqueue the universe; the 5
-> `needs_review` rows are operator work.
+> F10 edge** (宁德时代 invests_in 天华新能, 16.87%). The 5 `needs_review` rows
+> are operator work.
 >
-> **Next action: STAR 50 backfill** (`000688`, internal code `STAR50`) — the
-> same procedure as Next 3 below, with SSE instead of SZSE.
+> **Coverage milestone**: the project now has a minimal A + HK + US corpus —
+> 45 A ready (ChiNext 50), 59 HK ready (HSI), 100 US companies backfilled.
+> **Every index constituent now has structured financials** (NDX 100/100
+> `xbrl`, HSI 84/85, CYB50 50/50; `00823` is the only gap). The 3 IFRS-only
+> NDX issuers are covered by `ifrs-full` as of this round. US has no reviewer
+> state because that backfill predates `review.company`; it is ingested, not
+> review-gated.
+>
+> **STAR 50 is deferred to P2 priority** (2026-11-01): do not treat it as the
+> next action. The procedure is kept below for when it is picked up.
+> **Next round**: News auto-update and the A500/SPX placeholder layer
+> (§10 Next 1/2).
 >
 > **ChiNext 50 runs**: pilot `a8511401-a758-4a46-a917-c0aa7954ba2b` (3 targets,
 > `partial` 7/9, 2 revision-cap dead) and full batch
@@ -95,21 +181,27 @@
 > `config.ts`, `research/profiler.ts`, `research/reviewer.ts`,
 > `jobs/review.ts`, `tests/reviewer.test.ts` and `phase0/dsh.patch.yml`
 > (provider default, low reasoning, reviewer JSON repair, review concurrency
-> 4). They are built and were live; commit only when the user asks.
+> 4), **plus this round's structured-financials backend** (see §0.7). They are
+> built and were live; commit only when the user asks.
 
 ### 0.1 Running processes
 
-**None.** The drain worker exited at ~17:22 after the queues emptied; no NIM
+**None.** The financials drain exited after the final HSI rewrite; no NIM
 gateway is running. To process new work, resume with:
 
 ```bash
 cd /Users/bowenxu/Downloads/Projects/OpenCorpCheck
 OCC_LLM_PROVIDER=deepseek \
-node apps/worker/dist/cli.js work --queues research,ingest,review,f10 --drain
+node apps/worker/dist/cli.js work --queues research,ingest,review,f10,financials --drain
+
+# Financials only (deterministic, no LLM; the F10 sidecar must be running)
+OCC_FINANCIALS_CONCURRENCY=2 \
+node apps/worker/dist/cli.js work --queues financials --drain
 ```
 
-The last pool was research 4 / ingest 2 / review 4 (review was raised from 1
-to 4 at 16:42 to clear the backlog). No gateway is needed on the default path.
+The last research pool was research 4 / ingest 2 / review 4 (review was raised
+from 1 to 4 at 16:42 to clear the backlog). Financials run at concurrency 2 to
+match the F10 sidecar's browser cap. No gateway is needed on the default path.
 `OCC_LLM_PROVIDER=nvidia` restores the NIM + Parallel route (and then you need
 the gateway on `:4010`), but it is only a fallback: `deepseek-v4.1-flash` hit
 sustained per-model 429s at 13:49.
@@ -163,6 +255,25 @@ sustained per-model 429s at 13:49.
   pilot/retry jobs were enqueued with `--tickers`, which carries no index
   metadata.
 
+**Structured financials (2026-11-01, current):**
+
+- `financial_facts`: **29,683 `xbrl` + 15,767 `f10` + 1,430 profile**. The
+  profile rows fill older periods the structured sources do not cover; the
+  cleanup also removed profile counterparts of newly derived cells.
+- Coverage: **NDX 100/100** (all `xbrl`, 0 `f10`), **HSI 84/85** (all `f10`),
+  **CYB50 50/50** (all `f10`); `extraction_cache` 234 ok / 1 failed.
+- NDX item coverage (100 constituents, `xbrl`): revenue / net income /
+  attributable / assets / equity / liabilities / cash / OCF / investing /
+  financing **100**, eps 99, operating income 98, capex 97, FCF 97, total debt
+  95, SG&A 90, gross profit + margin 87, cost of revenue 86, R&D 74.
+- HSI item coverage: revenue / attributable 84, assets / equity 83, liabilities
+  82, EPS 79, gross profit / margin 73, operating income 69, total debt 61,
+  cash 60, OCF / investing / financing 54–55, capex 45, FCF 43, R&D 22,
+  SG&A 19, cost 10. Banks/insurers/REITs legitimately omit some lines.
+- CYB50 item coverage: **20/20 items on all 50 companies**.
+- Only failure: `HK:00823` 领展 REIT — F10 SPA renders 0 chars
+  (`EmptyRender`), no structured facts. Known F10 breakage; operator work.
+
 ### 0.3.1 RESOLVED — NIM 429 incident (2026-10-31 13:49–14:16, historical)
 
 > **Resolved 14:16** by switching the research default to official DeepSeek
@@ -207,7 +318,7 @@ OCC_NIM_RPM=20 node apps/worker/dist/nim-gateway-server.js &
 
 # 4) resume ONE worker with reduced concurrency (no re-enqueue)
 OCC_RESEARCH_CONCURRENCY=2 OCC_INGEST_CONCURRENCY=2 OCC_REVIEW_CONCURRENCY=1 \
-  node apps/worker/dist/cli.js work --queues research,ingest,review,f10 --drain
+  node apps/worker/dist/cli.js work --queues research,ingest,review,f10,financials --drain
 ```
 
 Then requeue only the dead company (not the universe):
@@ -269,7 +380,7 @@ node apps/worker/dist/cli.js enqueue research --tickers 01088:HK,00939:HK --forc
 ```bash
 cd /Users/bowenxu/Downloads/Projects/OpenCorpCheck
 
-node apps/worker/dist/cli.js status --run a19a67ba-8739-4361-833b-6887395556ad
+node apps/worker/dist/cli.js status --run 50b9d079-50cc-4490-8e6c-9dad0e7bf19c
 node apps/worker/dist/cli.js states --limit 100
 
 # queue depth / pending jobs
@@ -283,6 +394,21 @@ psql postgres://occ@127.0.0.1:5432/occdb -c \
   "select count(*) from index_memberships where index_code='HSI' and as_of='2026-10-31';"
 psql postgres://occ@127.0.0.1:5432/occdb -c \
   "select status,count(*) from relations group by 1;"
+
+# structured financials: methods, cache status, per-index coverage
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select method,count(*) from financial_facts group by 1 order by 1;"
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select status,count(*) from extraction_cache where stage='financials' group by 1;"
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select c.display_name, e.status, left(e.error,100)
+     from extraction_cache e join companies c on c.id=e.company_id
+    where e.stage='financials' and e.status<>'ok';"
+
+# US is EDGAR-only: this must return 0 (the 160 rows left are 阿里巴巴's HK page)
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select count(*) from financial_facts f join sources s on s.id=f.source_id
+    where f.method='f10' and s.url like '%PC_USF10%';"
 ```
 
 ### 0.5 What “normal” looks like
@@ -311,6 +437,17 @@ psql postgres://occ@127.0.0.1:5432/occdb -c \
   full batch; they are not stuck — they run when batch slots free.
 - F10 page JSON under `.occ/f10/` is the source for the post-batch relations
   pass; do not delete it.
+- **Structured financials are deterministic and LLM-free** (0 tokens; NDX
+  p50 ≈7 s / p95 ≈19 s). F10 pages are cached under
+  `.occ/f10/<market>/<code>/<page>.json`; EDGAR `companyfacts`/`submissions`
+  under `.occ/edgar/<cik>/`; the ticker→CIK map is
+  `.occ/edgar/company_tickers.json`. `--force` refreshes both source caches.
+  An F10 `EmptyRender` affects A/HK (US no longer uses F10); `00823` is the
+  one hard failure.
+- Do not edit `financial_facts` by hand to fake a value. Rerun
+  `enqueue financials`; precedence (`xbrl` > `f10` > profile) is enforced by
+  rank-guarded upserts, and profile rows are cleaned within ±7 days of a
+  structured period.
 
 ### 0.6 When the batch is done
 
@@ -323,14 +460,36 @@ node apps/worker/dist/cli.js states --limit 100
 
 node apps/worker/dist/cli.js relations f10 --universe hsi
 # re-resolve cached F10 pages now that all HSI companies exist
+
+# structured financials after a research/ingest batch
+node apps/worker/dist/cli.js status --run <financials-run-id>
+# expect completed|partial, created/active/retry = 0
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select method,count(*) from financial_facts group by 1;"
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select status,count(*) from extraction_cache where stage='financials' group by 1;"
 ```
 
 Then verify `/v1/indices/:code` / `/indices/HSI` shows the members and spot-check
 the graph for the CK group (`00001` / `00006` / `01038`) and a few bank/insurer
 names. Report the final counts, not a claim that every company passed review.
 
-### 0.7 Commits from this round
+### 0.7 Commits / working tree
 
+- **2026-11-01 (uncommitted, this round)**: US EDGAR-only + Financials-tab UI —
+  `apps/worker/src/financials/run.ts` (no US F10, method-rank upserts, CIK
+  fallback URL), `packages/extract/src/financials/edgar-xbrl.ts` (`ifrs-full`,
+  reporting currency, IFRS concepts), `canonical.ts` (derived gross profit /
+  liabilities), the US F10 row cleanup (DB only, not code), the new
+  `edgar-ifrs-*` fixtures + tests, `apps/web/src/format.ts`,
+  `CompanyFinancials.tsx`, `CompanyPage.tsx`, `api.ts`, `i18n.tsx`,
+  `styles.css`, `format.test.ts`, and the docs. The user has not asked for a
+  commit; leave the tree as-is unless told.
+- **2026-11-01 (uncommitted, previous round)**: structured financials backend —
+  `financials.company` queue + CLI, `packages/extract/src/financials/`
+  parsers, `apps/worker/src/financials/` fetch/store, EDGAR client, migration
+  `0007_financials_stage.sql`, `financial_period_kind` API filter, docs and
+  tests.
 - `039a38c` HSI pipeline / NIM + Parallel / reviewer / F10 relations
 - `81260bd` standalone NIM gateway + shared-port health recheck
 - `76aa5c2` research prompt: verify cited URLs / strip process residue
@@ -358,7 +517,7 @@ plus an AI watchlist and on-demand private companies):
 |---|---|---|---|
 | CSI A500 / 中证A500 | `000510` | A | **placeholder (planned)**: stub pages, filled only by operator batches |
 | S&P 500 | `SPX` | US | **placeholder (planned)**: stub pages, filled only by operator batches |
-| STAR 50 / 科创50 | `000688` | A (SSE) | planned bulk backfill (P4) |
+| STAR 50 / 科创50 | `000688` | A (SSE) | **deferred to P2 (2026-11-01)**: procedure in §10, not scheduled |
 | ChiNext 50 / 创业板50 | `399673` | A (SZSE) | **done 2026-10-31**: 50 constituents, 45 ready / 5 needs_review |
 | Hang Seng Index | `HSI` | HK | **snapshot added 2026-10-31**: 85 constituents in `config/indices/hsi.yaml`; pilot → full batch in progress |
 | NASDAQ-100 | `NDX` | US | **done**: 100 companies backfilled |
@@ -435,7 +594,8 @@ plus an AI watchlist and on-demand private companies):
   research → ingest → reviewer → revise.
 - **ChiNext 50 (2026-10-31)**: `config/indices/cyb50.yaml` + worker
   `--universe cyb50` (`CYB50`, SZSE). Full batch finished **45 ready /
-  5 needs_review**; `scripts/backfill-cyb50.sh` runs it. STAR 50 is next.
+  5 needs_review**; `scripts/backfill-cyb50.sh` runs it. STAR 50 is deferred
+  to P2 priority.
 - **Reviewer (2026-10-31)**: `review.company` queue + `company_research_state`;
   official DeepSeek with reasoning on, structured JSON, max 2 revisions, then
   `needs_review`. `occ-backfill states` exposes operator status.
@@ -443,6 +603,15 @@ plus an AI watchlist and on-demand private companies):
   `MajorShareholder` / US `gbgd` shareholder rows become `reported`-status
   `owns`/`invests_in` edges when the shareholder is in the company universe;
   page JSON cached under `.occ/f10/`.
+- **Structured financial statements (2026-11-01, backend)**: new
+  `financials.company` queue + `occ-backfill enqueue financials`. **US is
+  EDGAR-only** (`method='xbrl'`, `trust_tier='filing'` after the next
+  cleanup); A/HK use F10 `cwfx` / `NewFinancialAnalysis`
+  (`method='f10'`, `secondary`); profile facts remain the fallback for
+  periods the structured sources do not cover. Pure parsers in
+  `packages/extract/src/financials/`; raw caches under `.occ/f10/` and
+  `.occ/edgar/`; the current EDGAR-vs-F10 comparison is being retired for US.
+  The next round also implements the Financials-tab UI.
 
 Verified numbers worth keeping:
 
@@ -563,6 +732,11 @@ Key env:
 | `OCC_NIM_GATEWAY_PORT` / `OCC_NIM_RPM` | `4010` / `20` |
 | `OCC_REVIEW_MAX_CYCLES` | `2` (then `needs_review`) |
 | `OCC_F10_RELATIONS` | `on`; `none` disables structured shareholder extraction |
+| `OCC_FINANCIALS` | `on`; `none` stops ingest from enqueuing structured statements |
+| `OCC_FINANCIALS_CONCURRENCY` | `2` (the F10 sidecar also caps browser concurrency at 2) |
+| `OCC_EDGAR_DIR` | `.occ/edgar` (ticker map, companyfacts, submissions) |
+| `OCC_EDGAR_CACHE_TTL_MS` | `86400000` (24 h) |
+| `OCC_EDGAR_USER_AGENT` | `OpenCorpCheck/0.1 (Bowen Xu; xubowenhaoren@gmail.com)`; SEC requires a contact and ≤10 req/s |
 
 `OCC_AGENT_DSH_PATCH` defaults to `.dsh/acp.patch.yml`; pass `none` to disable
 the ACP overlay. The overlay sets `reasoningEffort: low` on `llm-deepseek` (ACP
@@ -590,8 +764,14 @@ Pages:
   基本资料 / 财务数据 / 关系图谱 / 新闻动态 / 资料来源.
   - Overview: one-line summary, segment bars, key numbers, recent events, and
     right-column shareholders/investments/related companies.
-  - Financials: metric cards + annual/quarterly tables by statement; every
-    cell can open its source; native currency formatting.
+  - Financials: metric cards (derived values carry a `推导` marker), a
+    coverage line (来源 + latest period + fiscal-year end), annual / quarter /
+    half / TTM modes, and per-statement tabs (利润表 / 资产负债表 / 现金流量表)
+    once a company has more than 12 rows. Each period column carries its source
+    badge (`SEC 10-K` / `SEC 10-Q` / `SEC 20-F` / `东方财富 F10` / `研究资料`);
+    a cell that differs from the column, or that was calculated, gets its own
+    badge, and A/HK 三季报 columns show `累计`. Every value can open its source;
+    values stay in native currency.
   - Graph: 1/2 hops, type filter, verified-only, graph/list toggle, zoom/drag,
     node/edge inspector with evidence quote + source, empty state.
   - News: timeline with source popovers.
@@ -879,6 +1059,19 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 - **F10** (`services/finance-analyst` + `packages/sources/eastmoney-f10`):
   A/HK/US structured pages, per-domain rate limits, table/XHR extraction,
   2 MB cap, retries + jitter. Eastmoney data is for internal demo + attribution.
+- **Structured financial statements** (`apps/worker/src/financials/` +
+  `packages/extract/src/financials/`): `financials.company` fetches F10
+  `cwfx` (HK `NewFinancialAnalysis`) for **A/HK only** and SEC EDGAR
+  `companyfacts` + `submissions` for **US only** (decision 42). EDGAR parses
+  `us-gaap` and `ifrs-full` and picks one reporting currency per company. Pure
+  parsers return canonical facts; the worker upserts `financial_facts` with
+  method precedence (`xbrl` > `f10` > profile), passing the incoming method's
+  own rank so a lower-precedence pass cannot clobber a dual-listed company's
+  filing rows. Missing subtotals (`gross_profit`, `total_liabilities`) are
+  derived and marked with a `计算：` quote. Values stay in native units; profile
+  rows within ±7 days of a structured period are removed so 52/53-week filings
+  do not duplicate columns. EDGAR needs `OCC_EDGAR_USER_AGENT` with a contact
+  and uses a global 110 ms limiter.
 
 ---
 
@@ -1020,6 +1213,46 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     out-of-universe names are counted, never fabricated as companies. Status is
     `reported` (not `inferred`) because the row is a direct table, but a human
     decision is still the only path to `verified`.
+40. **Structured financials use one canonical row with source precedence**
+    (decision 2026-11-01): SEC EDGAR XBRL (`xbrl`, `trust_tier='filing'`) beats
+    F10 (`f10`, `secondary`) beats the research profile. The existing
+    `financial_facts_uq` stays `(company, statement, item, period_end,
+    period_kind)`; do not add a source discriminator until a conflict view is
+    actually scheduled. The structured run passes the incoming method's own
+    rank (`xbrl` 30, `f10` 20), so a profile re-run or an A/HK F10 pass cannot
+    clobber filing data — including for dual-listed companies where a US EDGAR
+    row and an HK F10 row share a period. Values are native units; the
+    EDGAR-vs-F10 comparison is retired with the US F10 leg (decision 42) and
+    now always records zeros.
+41. **Dead-letter updates are queue-scoped** (decision 2026-11-01): the
+    `financials.company` job reuses the company key (`US:AAPL`), so
+    `markJobDeadByKey` filters by the originating queue. Without that, a dead
+    financials job could mark the research/ingest job row dead. Enrichment
+    dead queues (`financials`, `f10`, `news`) never touch
+    `company_research_state`; only research/ingest/review do.
+42. **US structured financials are EDGAR-only** (decision 2026-11-01,
+    **executed 2026-11-01**): remove US F10 fetching/writing and delete existing
+    US `f10` rows. F10 remains the A/HK structured layer. EDGAR covers
+    `ifrs-full` and derives `total_liabilities = assets - equity` and
+    `gross_profit = revenue - cost_of_revenue` where the taxonomy omits the
+    subtotal. Rationale: SEC filings are the primary source; F10 US is a
+    secondary repackaging with cumulative quarters and mapping differences
+    (7.0% of 5,835 comparable cells differ >1%, concentrated in SG&A, capex,
+    gross profit, liabilities and near-zero net income), and it adds no
+    independent information. Keep the generic F10 parser for A/HK.
+    Executed as: `run.ts` never calls `loadF10` for US; **2,053** US-page
+    `f10` rows deleted by `sources.url LIKE '%PC_USF10%'` (the 160 HK-sourced
+    rows for dual-listed 阿里巴巴 were kept); `ifrs-full` merged in
+    `edgar-xbrl.ts` with a single reporting currency per filing; NDX is
+    100/100 `xbrl` after rerun `7dacfac0-ce2c-4d61-983a-f180a1f1c23b`.
+43. **Derived financial cells are marked by their quote** (decision
+    2026-11-01): a calculated cell (`gross_profit`, `gross_margin`,
+    `total_liabilities`, `free_cash_flow`) always starts its `quote` with
+    `计算：` and has confidence < 1. No `derived` column is added; the Financials
+    tab detects the marker (`isDerivedFact`) and shows a `推导` badge. Never
+    render a derived cell as a reported line, and never derive without both
+    inputs for the same period. `total_equity` prefers the NCI-inclusive
+    concept so `assets - equity` is an exact liabilities figure.
 
 ---
 
@@ -1072,6 +1305,104 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 
 ## 10. Next tasks
 
+### Done — US EDGAR-only + Financials-tab UI (2026-11-01)
+
+> **Shipped.** US F10 removal, `ifrs-full` + derived subtotals, and the
+> Financials tab are complete. Result: NDX **100/100 `xbrl`, 0 `f10`**;
+> 2,053 US `f10` rows deleted; CCEP/FER/TRI covered; NDX liabilities
+> 100/100 (derived where needed), gross profit 87/100, debt 95, eps 99,
+> capex/FCF 97. Rerun `7dacfac0-ce2c-4d61-983a-f180a1f1c23b` (100/100,
+> cache-only, 0 LLM tokens). UI: canonical labels, statement tabs, per-period
+> source badges, `推导`/`累计` markers, annual/quarter/half/TTM modes, coverage
+> line, and per-kind fetching (`getCompanyFinancials`) so a full statement is
+> never truncated at 200 rows. Tests: extract 42, web 26, worker 40, API 30,
+> ingest 39, agent 17, CLI 7, retrieval 10, db 9, storage 5, sources 13 — all
+> green. The original task spec is kept below for reference.
+
+**Task 1 — remove US F10 financial data (backend).**
+
+Decision: for US, structured financials use **SEC EDGAR XBRL only**. F10 stays
+the A/HK structured layer. Rationale is in decision 42 and in the comparison
+in §0: F10 US is a secondary repackaging with cumulative quarters and mapping
+differences, while EDGAR is filing-grade and deeper.
+
+- [x] `apps/worker/src/financials/run.ts`: call `loadF10` only when
+  `market !== "US"`. US runs EDGAR only; the `F10_PAGE` map has no US entry
+  and the EDGAR-vs-F10 comparison records zeros.
+- [x] Keep `packages/extract/src/financials/f10-cwfx.ts` generic (A/HK still
+  use it) and keep its fixture tests. Do not delete the parser.
+- [x] Delete existing US F10 rows (**2,053 rows**; the checklist's earlier
+  estimate was 2,213, which also counted 阿里巴巴's HK-sourced rows). Match on
+  the US F10 source URL rather than company exchange, so a dual-listed
+  company's HK rows survive:
+
+```sql
+delete from financial_facts f
+using sources s
+where f.source_id = s.id
+  and f.method = 'f10'
+  and s.url like '%PC_USF10%';
+```
+
+- [x] Delete the EDGAR `extraction_cache` stage `financials` rows (97
+  companies with `xbrl` facts), then
+  `occ-backfill enqueue financials --universe ndx` +
+  `work --queues financials --drain` (no `--force`; the EDGAR cache was
+  fresh). Verified: no US `f10` rows returned.
+- [x] `.occ/f10/US/` page caches are unread; left on disk (harmless).
+
+**Coverage compensation — required in the same task:**
+
+Removing US F10 without compensation would lose: 38 companies' gross
+profit/margin, 23 total liabilities, 9 cost of revenue, 8 total debt, 5
+capex/FCF, 4 EPS (and the 3 IFRS-only issuers entirely).
+
+- [x] Add SEC `ifrs-full` concept mapping to
+  `packages/extract/src/financials/edgar-xbrl.ts` for the IFRS-only NDX issuers
+  (`CCEP`, `Ferrovial`, `Thomson Reuters`). Verified exact names in the cached
+  `companyfacts`: `Revenue`, `RevenueFromContractsWithCustomers`, `ProfitLoss`,
+  `ProfitLossAttributableToOwnersOfParent`,
+  `ProfitLossFromOperatingActivities`, `Assets`, `Liabilities`, `Equity`,
+  `CashAndCashEquivalents`, `CashFlowsFromUsedInOperatingActivities`,
+  `CashFlowsFromUsedInInvestingActivities`,
+  `CashFlowsFromUsedInFinancingActivities`, `Borrowings`,
+  `PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities`,
+  `DilutedEarningsLossPerShare`, `BasicAndDilutedEarningsLossPerShare`.
+- [x] Derive `total_liabilities = total_assets - total_equity` when the
+  `Liabilities` concept is missing.
+- [x] Derive `gross_profit = revenue - cost_of_revenue` when `GrossProfit` is
+  missing and both inputs exist; derive `gross_margin` from it.
+- [x] Keep the existing `total_debt` concept fallback; extended with IFRS
+  `Borrowings`/`LongtermBorrowings`/current+noncurrent borrowings and
+  convertible-debt concepts (DDOG/PDD now have total debt).
+- [x] Derived rows carry a quote like `计算：总资产 - 股东权益`, confidence
+  0.85, and are never rendered as reported lines (UI `推导` badge).
+- [x] Re-ran NDX and reported item coverage before/after. Core items
+  (revenue, net income, assets, equity, cash, OCF, investing, financing) are
+  **100/100**; the 3 IFRS issuers are covered; liabilities 100 (was 76) and
+  gross profit 87 (was 62) include derived values.
+
+**Task 2 — Financials tab UI.** Follow “Frontend UI — required changes” in
+“Done — Structured financial statements backend” below. Additional notes now
+that US is EDGAR-only:
+
+- US cells: `SEC 10-K` / `SEC 10-Q` badge; A/HK: `东方财富 F10`; profile-only
+  older periods: `研究资料`.
+- US quarters are true quarters; A/HK 三季报 are cumulative — show a `累计`
+  badge (or render from `periodStart`).
+- Derived US cells (liabilities/gross profit/FCF) need a `推导` marker in the
+  badge or source popover.
+- Use `financial_period_kind=annual|quarter` to fetch each mode separately; no
+  new endpoint.
+
+**Verification**
+
+- `select count(*) from financial_facts ... method='f10'` for NASDAQ/NYSE
+  companies = **0**.
+- A/HK F10 row counts unchanged; `HK:00823` remains the only known gap.
+- NDX core item coverage does not fall below the pre-removal level (EDGAR-only
+  plus derivation/IFRS); report actual numbers, do not fake values.
+
 ### Done — ChiNext 50 backfill (2026-10-31)
 
 Completed with the procedure below. Result: **45 ready / 5 needs_review**,
@@ -1095,7 +1426,7 @@ The 5 `needs_review` rows are operator work (revision cap).
    to `INDEX_UNIVERSES`; update the `unknown universe` message and the
    `--universe` usage in [`apps/worker/src/cli.ts`](apps/worker/src/cli.ts).
 3. Pilot: `enqueue research --universe cyb50 --limit 3`, then
-   `OCC_LLM_PROVIDER=deepseek node apps/worker/dist/cli.js work --queues research,ingest,review,f10 --drain`.
+   `OCC_LLM_PROVIDER=deepseek node apps/worker/dist/cli.js work --queues research,ingest,review,f10,financials --drain`.
    Verify research → ingest → review and that `index_memberships` gets CYB50
    rows.
 4. Batch: `enqueue research --universe cyb50 --exclude <pilots>` then the same
@@ -1112,7 +1443,11 @@ The 5 `needs_review` rows are operator work (revision cap).
 - Do not raise `OCC_REVIEW_MAX_CYCLES`; do not move the reviewer off
   official DeepSeek + `reasoningEffort: high`.
 
-### Next — STAR 50 backfill (SSE 000688, internal `STAR50`)
+### Deferred to P2 — STAR 50 backfill (SSE 000688, internal `STAR50`)
+
+> **Priority changed 2026-11-01: deferred to P2.** Minimal A + HK + US coverage
+> is considered sufficient for now; STAR 50 is not the next task. Keep this
+> procedure for when it is scheduled.
 
 Same procedure as the Done section above, with:
 - `config/indices/star50.yaml`, `index.code: "STAR50"`, `market: A`,
@@ -1123,6 +1458,159 @@ Same procedure as the Done section above, with:
 - `scripts/backfill-star50.sh` modeled on `scripts/backfill-cyb50.sh`.
 - A-share F10 (`gdyj`) is attached automatically; run the post-batch
   `relations f10 --universe star50` pass.
+
+### Done — Structured financial statements backend (2026-11-01)
+
+> **Status: backend implemented, tested and backfilled; the US F10 removal and
+> Financials-tab UI shipped on 2026-11-01 (see §10 “Done — US EDGAR-only +
+> Financials-tab UI”).** New
+> `financials.company` queue + `occ-backfill enqueue financials`; pure parsers
+> in `packages/extract/src/financials/{canonical,f10-cwfx,edgar-xbrl}.ts`; worker
+> stage in `apps/worker/src/financials/`. SEC EDGAR XBRL is the US
+> filing-grade source; F10 `cwfx` / `NewFinancialAnalysis` remains the A/HK
+> structured layer (**US F10 removed — decision 42**). Migration
+> `0007_financials_stage.sql` adds the
+> `financials` extraction-cache stage. Backend-round coverage was NDX 100/100,
+> HSI 84/85 (`00823` F10 EmptyRender), CYB50 50/50; the current figures live in
+> §0.3.
+>
+> **Original priority note (2026-11-01).** This was the gap identified after
+> the ChiNext 50 round: `financial_facts` previously came only from
+> deterministic Markdown extraction of research profiles. F10 `cwfx` statement
+> pages were scraped but never parsed into facts, and US had no SEC EDGAR/XBRL
+> adapter at all.
+
+**Source ladder and precedence**
+
+| Priority | Source | Markets | Method / trust |
+|---|---|---|---|
+| 1 | SEC EDGAR XBRL company facts + 10-K/10-Q links | US | `method='xbrl'`, `trust_tier='filing'` |
+| 2 | Eastmoney F10 `cwfx` (HK: `NewFinancialAnalysis`) | **A / HK only** (US removed by decision 2026-11-01) | `method='f10'`, `trust_tier='secondary'` |
+| 3 | Research profile Markdown tables | all | `deterministic_table_v1` (existing) |
+
+> **US source change (2026-11-01, executed):** US is **EDGAR-only**. The
+> dual-source US implementation described in this section is superseded; US
+> `f10` rows/fetching are gone and `ifrs-full` + derived subtotals are in
+> `edgar-xbrl.ts` / `canonical.ts`. F10 remains the A/HK structured layer. See
+> §10 “Done — US EDGAR-only + Financials-tab UI”.
+
+One row per `(company, statement, item, period_end, period_kind)` wins by
+precedence; `source_id`, `method` and `extractor_version` record the winner.
+Differences >1% between EDGAR and F10 are counted/logged in
+`extraction_cache.stats` (no UI in v1). Do not add a source discriminator to
+`financial_facts_uq` until a conflict/comparison view is actually scheduled.
+
+**Canonical item map (v1, ~20 items)**
+
+- `income`: `revenue`, `cost_of_revenue`, `gross_profit`, `gross_margin`,
+  `research_and_development`, `selling_general_admin`, `operating_income`,
+  `net_income`, `net_income_attributable`, `eps_diluted`
+- `cash_flow`: `operating_cash_flow`, `capex`, `free_cash_flow`, `investing_cash_flow`,
+  `financing_cash_flow`
+- `balance`: `cash_and_equivalents`, `total_assets`, `total_liabilities`,
+  `total_equity`, `total_debt`
+- US us-gaap concepts: `Revenues` /
+  `RevenueFromContractWithCustomerExcludingAssessedTax`, `GrossProfit`,
+  `OperatingIncomeLoss`, `NetIncomeLoss`, `EarningsPerShareDiluted`,
+  `NetCashProvidedByUsedInOperatingActivities`,
+  `PaymentsToAcquirePropertyPlantAndEquipment`, `Assets`, `Liabilities`,
+  `StockholdersEquity`, `CashAndCashEquivalentsAtCarryingValue`.
+- F10 `cwfx` Chinese labels map to the same keys (营业收入 / 营业总收入,
+  营业成本, 毛利润, 研发费用, 销售及管理费用, 营业利润, 净利润,
+  归母净利润, 每股收益, 经营活动现金流净额, 资本开支, 投资活动现金流净额,
+  筹资活动现金流净额, 货币资金, 总资产, 总负债, 股东权益, 总债务).
+- Store **native currency units**, never "millions": `unit='currency'` +
+  `currency`, `unit='percent'` for margins, `unit='shares'` for counts.
+  `period_label` keeps `FY2025` / `Q3 FY2026`; `fiscal_year_end` comes from
+  the filing.
+- `period_kind`: `annual` (10-K/FY), `quarter` (10-Q/Qn), `half` only when the
+  source reports H1 and no quarter; drop TTM at write time unless the UI gets
+  a TTM toggle.
+
+**Pipeline**
+
+1. New pure parsers with recorded fixtures (no network in tests):
+   `packages/extract/src/financials/f10-cwfx.ts` and
+   `packages/extract/src/financials/edgar-xbrl.ts`.
+2. Worker stage after ingest (reuse `ingest.company`, or a new
+   `financials.company` queue if it needs independent retries):
+   - F10: `POST /v1/f10/scrape {market, code, pages:["cwfx"]}`; cache page
+     JSON under `.occ/f10/<market>/<code>/cwfx.json`.
+   - EDGAR: cache `companyfacts` JSON under `.occ/edgar/<cik>/companyfacts.json`;
+     fetch submissions for filing URLs; `User-Agent` required, ≤10 req/s,
+     fixture tests must not call the network.
+   - Idempotent by input sha256; delete only rows owned by the same
+     extractor version. Never touch llm/human rows with a different method.
+3. CIK mapping: cache `https://www.sec.gov/files/company_tickers.json`; resolve
+   ticker → CIK; record the CIK on the source metadata.
+4. Operator commands (capped, no web route):
+   `occ-backfill enqueue financials --universe ndx|hsi|cyb50|star50`
+   and `--tickers AAPL,600519:A,00700:HK`; plus a re-run/force flag for the
+   existing corpus. No scheduled full sweep.
+5. Reviewer: not involved. Financials are deterministic; a failed parse must
+   leave prior facts intact and log the error.
+
+**Acceptance**
+
+- AAPL: revenue / net income / operating cash flow / capex / total assets
+  match the latest 10-K within rounding; every cell opens the SEC filing URL;
+  values in USD (not millions).
+- 600519 and 300750: F10 `cwfx` annual/quarter values match the page tables;
+  CNY; source opens the F10 page.
+- 00700: HKD; annual + interim (half) handled.
+- Precedence verified: US uses EDGAR over F10; A/HK use F10 over profile;
+  profile-only items still render when no structured value exists.
+- Zero LLM calls; rerun is idempotent; no duplicate `(statement,item,period)`
+  rows; no unit-scaling errors.
+- Tests: one fixture per market/source plus precedence/conflict unit tests.
+
+**Frontend UI — required changes (no new page) — DONE 2026-11-01**
+
+> **Shipped 2026-11-01.** Kept as the design record: the tab fetches each
+> `financial_period_kind` separately (no new endpoint), US rows are true filing
+> periods and EDGAR-only, A/HK 三季报 are cumulative (badge 累计), and derived
+> cells carry the 推导 marker.
+
+The existing `CompanyFinancials` tab already renders `financial_facts` grouped
+by `statement`, with annual/quarter toggle and a per-row 来源 button. New rows
+appear automatically once they use the canonical `statement`/`item` keys, but
+these adjustments are needed:
+
+1. **Labels and ordering** — extend `FIN_ITEM_LABEL` and `FIN_ITEM_ORDER` in
+   [`apps/web/src/format.ts`](apps/web/src/format.ts) for every canonical item.
+   Unknown keys currently fall back to raw `snake_case`
+   (`financialItemLabel`), which would show `research_and_development` to
+   users.
+2. **Statement navigation** — full EDGAR/F10 statements have 20–40 rows; the
+   current stacked layout becomes very long. Add per-statement tabs
+   (利润表 / 资产负债表 / 现金流量表) or collapsible sections when a company has
+   more than ~12 rows.
+3. **Source type per row/cell** — cells are already clickable and open the
+   fact's source, but the row-level 来源 button uses the *first* period's fact
+   only, which becomes misleading when EDGAR supplies the latest period and F10
+   the older ones. Show a small source badge per cell/period
+   (`SEC 10-K` / `东方财富 F10` / `研究资料`) or drop the row-level button for
+   mixed-source rows. Derive it from `method` (`xbrl` / `f10` / `llm_web`) and
+   the source title; EDGAR rows must use `trust_tier='filing'`.
+4. **Period controls** — annual/quarter already exist; decide TTM (add a toggle
+   or drop it at write time) and show the fiscal year end in the header.
+5. **Coverage line** — one line on the Financials tab: “财报来源：SEC EDGAR
+   (10-K) · 2026-09-27” or “东方财富 F10 · 2026-06-30”, plus the existing
+   empty state when only profile facts exist.
+6. **No change needed** to the Sources tab (already groups by trust tier) or the
+   graph; the source popover already carries quote/date.
+
+**Optional v2 (do not build in v1)**: side-by-side EDGAR vs F10 conflict view
+(>1% differences). That requires adding a source discriminator to
+`financial_facts_uq` and a conflict API/view; document the decision first.
+
+**Non-goals**
+
+- Full XBRL taxonomy coverage; v1 is a curated ~20-item map.
+- CNINFO / HKEXnews official statement adapters (F10 is the structured layer
+  for A/HK for now).
+- LLM extraction for financials.
+- UI conflict comparison in v1.
 
 ### Next 0 — Headless-provider cutover only (P0)
 
@@ -1561,7 +2049,7 @@ tests.
 
 **HSI status 2026-10-31**: `config/indices/hsi.yaml` has 85 constituents and
 `scripts/backfill-hsi.sh` runs the batch (enqueue `--universe hsi --exclude
-00700` → `work --queues research,ingest,review,f10 --drain` → `relations f10
+00700` → `work --queues research,ingest,review,f10,financials --drain` → `relations f10
 --universe hsi`). A/HK research attaches F10 by default. After ingest, the
 index page `/indices/HSI` reads the memberships with no API change. The
 post-batch `relations f10` pass re-resolves cached shareholder pages against the
@@ -1570,7 +2058,8 @@ now-complete HSI universe (a 01038 shareholder of 00006 may not exist yet when
 as run `a19a67ba-8739-4361-833b-6887395556ad` (excludes the 4 pilot names
 `00700,00001,00006,01038`); `occ-backfill status` / `states` track it.
 ChiNext 50 is done (`config/indices/cyb50.yaml`, 2026-10-31; 45 ready /
-5 needs_review). **STAR 50 remains** (`000688`, SSE, internal `STAR50`).
+5 needs_review). **STAR 50 is deferred to P2 priority** (`000688`, SSE,
+internal `STAR50`); procedure kept in §10.
 
 - Index snapshots: **STAR 50 (000688, SSE)**, **ChiNext 50 (399673, SZSE)**,
   **HSI**; store `as_of`, weights and license. **Do not add S&P 500.** NDX is
@@ -1615,6 +2104,22 @@ and a UI smoke suite.
   in-universe shareholders become `owns`/`invests_in` with evidence; refresh
   does not delete LLM or verified edges; `relations f10 --universe hsi`
   re-resolves cached pages after the batch.
+- [ ] Structured financials: `enqueue financials --universe ndx|hsi|cyb50`
+  (or `--tickers`) runs through `financials.company`; **US is EDGAR-only**
+  (`method='xbrl'`, `trust_tier='filing'`, SEC filing URL) and has **no
+  `f10` rows**; A/HK rows carry `method='f10'` + `secondary` and open the F10
+  page; values are in native units; rerunning does not duplicate periods;
+  `OCC_EDGAR_USER_AGENT` has a real contact and
+  `OCC_FINANCIALS_CONCURRENCY` stays ≤2.
+- [x] US F10 cleanup: **2,053 US `f10` rows deleted** (HK-sourced rows for
+  dual-listed 阿里巴巴 kept); the US pipeline does not fetch or write F10; the
+  3 IFRS-only NDX issuers are covered via `ifrs-full`; derived
+  `total_liabilities`/`gross_profit` carry a `计算：` quote, confidence < 1 and
+  the UI `推导` marker.
+- [x] Financials tab UI: canonical labels/order, per-statement tabs, per-period
+  source badges (`SEC 10-K/10-Q/20-F/40-F` / `东方财富 F10` / `研究资料` /
+  `推导`), annual/quarter/half/TTM controls, coverage + fiscal-year-end line;
+  US quarters are true quarters, A/HK 三季报 carry `累计`.
 - [ ] ACP sidebar unchanged: same model row, `reasoningEffort`, timeout,
   `deepseek-official` tools and `agent-trace.ts`.
 - [ ] Repo is private; no key/token/cookie/`.env` tracked.
@@ -1672,7 +2177,8 @@ and a UI smoke suite.
       `revise` is capped at 2 cycles.
 - [ ] Shared task dock prototype approved (commit `dd465fc`); production dock
       wires **only** `news_refresh` — no `company_research` rows, no filter tabs.
-- [ ] A/HK **bulk backfill** plan is STAR 50 + ChiNext 50 + HSI; **A500 and
+- [ ] A/HK **bulk backfill** plan is STAR 50 + ChiNext 50 + HSI; ChiNext 50 is
+      done and STAR 50 is deferred to P2 priority; **A500 and
       SPX stay placeholder-only** (filled by explicit, capped operator batches),
       never a full sweep.
 - [ ] Do not write `deepseek-v4-pro` back into any config.

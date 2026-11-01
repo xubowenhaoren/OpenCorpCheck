@@ -290,6 +290,8 @@ const includeList = z.preprocess(
 export const CompanyCardQuerySchema = z.object({
   include: includeList,
   financial_limit: z.coerce.number().int().min(1).max(200).default(20),
+  /** Optional statement-period filter so the UI can page annual vs quarter. */
+  financial_period_kind: PeriodKindSchema.optional(),
   fact_limit: z.coerce.number().int().min(1).max(200).default(30),
   relation_limit: z.coerce.number().int().min(1).max(200).default(20),
   event_limit: z.coerce.number().int().min(1).max(100).default(10),

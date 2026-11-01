@@ -47,7 +47,7 @@ export interface EnqueueResearchOptions {
 
 export interface EnqueueResult {
   runId: string;
-  kind: "research" | "f10" | "news";
+  kind: "research" | "f10" | "news" | "financials";
   targets: number;
   jobs: number;
 }
@@ -339,6 +339,85 @@ export async function enqueueF10(
   return {
     runId,
     kind: "f10",
+    targets: targets.length,
+    jobs: specs.length,
+  };
+}
+
+export interface EnqueueFinancialsOptions {
+  universe?: string;
+  tickers?: string;
+  exclude?: string;
+  limit?: number;
+  shard?: { index: number; count: number };
+  force?: boolean;
+}
+
+/**
+ * Queue structured financial statements for an explicit target list. One job
+ * per company; the worker fetches EDGAR (US) and F10 (A/HK/US), parses both
+ * and stores facts by source precedence.
+ */
+export async function enqueueFinancials(
+  boss: PgBoss,
+  options: EnqueueFinancialsOptions,
+): Promise<EnqueueResult> {
+  const targets = (
+    await resolveTargets({
+      universe: options.universe,
+      tickers: options.tickers,
+      exclude: options.exclude,
+      limit: options.limit,
+      shard: options.shard,
+      requireF10: true,
+    })
+  ).filter((target) => target.market && target.code);
+  if (targets.length === 0) {
+    throw new Error(
+      "no financials targets matched; pass --tickers with an explicit market (e.g. 600519:A)",
+    );
+  }
+
+  const runId = randomUUID();
+  const runOptions = {
+    universe: options.universe ?? null,
+    tickers: options.tickers ?? null,
+    exclude: options.exclude ?? null,
+    limit: options.limit ?? null,
+    shard: options.shard ?? null,
+    force: Boolean(options.force),
+    concurrency: config.financialsConcurrency,
+    edgarDir: config.edgarDir,
+    f10Dir: config.f10Dir,
+  };
+  const specs: JobSpec[] = targets.map((target) => ({
+    queue: QUEUES.FINANCIALS,
+    jobKey: target.key,
+    companyId: target.key,
+    payload: {
+      runId,
+      key: target.key,
+      ticker: target.ticker,
+      code: target.code!,
+      market: target.market!,
+      force: Boolean(options.force),
+    },
+  }));
+
+  await createRun("financials", runOptions, specs, runId);
+  const priorityByKey = new Map(
+    targets.map((target) => [target.key, target.priority]),
+  );
+  for (const spec of specs) {
+    await sendJob(boss, spec.queue, spec.payload, {
+      key: `${runId}:${spec.jobKey}`,
+      priority: priorityByKey.get(spec.jobKey) ?? PRIORITY_FALLBACK,
+    });
+  }
+
+  return {
+    runId,
+    kind: "financials",
     targets: targets.length,
     jobs: specs.length,
   };

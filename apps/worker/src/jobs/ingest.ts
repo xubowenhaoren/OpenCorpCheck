@@ -28,6 +28,7 @@ import {
 import { getIngestContext } from "../ingest-runtime.js";
 import { QUEUES } from "../queues.js";
 import { extractF10Relations } from "../research/f10-relations.js";
+import type { FinancialsJobData } from "./financials.js";
 import type { ReviewJobData } from "./review.js";
 
 export interface IngestJobData {
@@ -54,6 +55,7 @@ export interface IngestJobData {
 
 export interface IngestJobContext {
   enqueueReview?: (data: ReviewJobData) => Promise<void>;
+  enqueueFinancials?: (data: FinancialsJobData) => Promise<void>;
 }
 
 export async function handleIngestJobs(
@@ -131,6 +133,32 @@ async function processIngestJob(
       market,
       ...(job.signal ? { signal: job.signal } : {}),
     });
+    // Structured statements are a separate queue so EDGAR/F10 failures retry
+    // independently and never fail the profile ingest.
+    let financialsQueued = false;
+    if (
+      config.financials !== "none" &&
+      context.enqueueFinancials &&
+      (data.reviewAttempt ?? 0) === 0
+    ) {
+      try {
+        await context.enqueueFinancials({
+          runId: data.runId,
+          key: data.key,
+          ticker: data.ticker,
+          code,
+          market,
+        });
+        financialsQueued = true;
+      } catch (error) {
+        log({
+          event: "financials_enqueue_failed",
+          run: data.runId,
+          key: data.key,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
     await markJobCompleted(data.runId, queue, data.key);
     if (data.review !== false && context.enqueueReview) {
       await context.enqueueReview({
@@ -163,6 +191,7 @@ async function processIngestJob(
       durationMs: Date.now() - startedAt,
       extraction,
       f10Relations,
+      financialsQueued,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -2,6 +2,7 @@ import type {
   CompanyCard,
   CompanyGraphView,
   CompanyHit,
+  FinancialFactView,
   IndexView,
   SearchResponse,
 } from "@occ/core";
@@ -98,6 +99,7 @@ export function getCompanyCard(
   options: {
     include?: string;
     financialLimit?: number;
+    financialPeriodKind?: string;
     factLimit?: number;
     relationLimit?: number;
     eventLimit?: number;
@@ -109,12 +111,34 @@ export function getCompanyCard(
     {
       include: options.include ?? "financials,facts,relations,events",
       financial_limit: options.financialLimit ?? 200,
+      financial_period_kind: options.financialPeriodKind,
       fact_limit: options.factLimit ?? 200,
       relation_limit: options.relationLimit ?? 200,
       event_limit: options.eventLimit ?? 100,
       relation_status: options.relationStatus,
     },
   );
+}
+
+/**
+ * Fetch every statement period separately. A single `financial_limit=200`
+ * request truncates full EDGAR/F10 statements once annual + quarterly columns
+ * exceed 200 rows, so each kind is read on its own.
+ */
+export async function getCompanyFinancials(
+  ref: string,
+): Promise<FinancialFactView[]> {
+  const kinds = ["annual", "quarter", "half", "ttm"] as const;
+  const pages = await Promise.all(
+    kinds.map((kind) =>
+      getCompanyCard(ref, {
+        include: "financials",
+        financialLimit: 200,
+        financialPeriodKind: kind,
+      }),
+    ),
+  );
+  return pages.flatMap((page) => page.data.financials ?? []);
 }
 
 export interface GraphParams {

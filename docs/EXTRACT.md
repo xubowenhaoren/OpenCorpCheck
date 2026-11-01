@@ -144,6 +144,69 @@ HK HSI holdings are a useful example: Power Assets (00006) reports 长江基建
 (01038) and 长江和记 (00001) as shareholders, so the graph gets real investment
 edges once those companies are ingested.
 
+## Structured financial statements (2026-11-01)
+
+The `financials.company` queue adds filing-grade statements on top of the
+profile extraction. One row per `(company, statement, item, period_end,
+period_kind)` wins by source precedence:
+
+| Priority | Source | Markets | `method` / `sources.trust_tier` |
+|---|---|---|---|
+| 1 | SEC EDGAR XBRL `companyfacts` + 10-K/10-Q filing URL | US | `xbrl` / `filing` |
+| 2 | Eastmoney F10 `cwfx` (HK: `NewFinancialAnalysis`) | **A / HK only** (US removed 2026-11-01) | `f10` / `secondary` |
+| 3 | Research-profile Markdown tables | all | `deterministic_table_v1` |
+
+> **US is EDGAR-only (done 2026-11-01).** The US pipeline no longer fetches or
+> writes F10; the existing US `f10` rows were deleted (2,053 rows). EDGAR
+> parses both `us-gaap` and `ifrs-full`, so 20-F/40-F issuers (CCEP, Ferrovial,
+> Thomson Reuters) are covered. F10 remains the A/HK structured layer and the
+> generic parser/tests stay. After the cleanup NDX is **100/100 on `xbrl`**.
+
+- Pure parsers live in `packages/extract/src/financials/f10-cwfx.ts`,
+  `edgar-xbrl.ts` and `canonical.ts`; fixture tests never call the network.
+- The worker stage (`apps/worker/src/financials/run.ts`) caches the raw pages
+  under `.occ/f10/<market>/<code>/<page>.json` (A/HK only) and
+  `.occ/edgar/<cik>/companyfacts.json` + `submissions.json`; the ticker → CIK
+  map is `.occ/edgar/company_tickers.json`.
+- EDGAR merges the `us-gaap` and `ifrs-full` taxonomies (us-gaap wins a
+  concept-name collision) and picks one reporting currency per company, taken
+  from `Assets`, so a dual-tagged concept (EUR + USD) cannot mix currencies.
+- Values are stored in native units (`unit='currency'` + `currency`,
+  `unit='percent'`, `unit='currency_per_share'`), never millions. `period_label`
+  keeps `FY2025` / `2026Q3` / `2026H1` and `period_start` records the window.
+- EDGAR prefers a true 90-day quarter when a filing reports both the quarter and
+  its YTD total. F10 keeps the source's cumulative 一季报/中报/三季报 columns;
+  `period_start` (e.g. Jan 1) tells consumers it is cumulative.
+- **Derived cells are marked, not reported**: when the taxonomy omits a
+  subtotal, `computeDerivedFacts` calculates `gross_profit = revenue -
+  cost_of_revenue`, `total_liabilities = total_assets - total_equity`,
+  `gross_margin = gross_profit / revenue` and `free_cash_flow = operating cash
+  flow - |capex|`. Their quote always starts with `计算：` and confidence is
+  below 1; the web UI shows a `推导` badge. Nothing is derived unless both
+  inputs exist for the same period.
+- Upserts only overwrite an equal/lower-ranked method (`xbrl` 30, `f10` 20,
+  profile 10), so re-running profile extraction never clobbers filing data. The
+  structured run passes the incoming method's own rank, so an A/HK F10 pass
+  cannot overwrite EDGAR rows for a dual-listed company. Profile rows within
+  ±7 days of a structured period are removed, preventing duplicate columns for
+  52/53-week fiscal calendars.
+- The EDGAR-vs-F10 comparison (`extraction_cache.stats.comparison`) is retired
+  with the US F10 leg; it now always records zeros. Do not add a source
+  discriminator or a conflict view until it is actually scheduled.
+- CIK resolution uses `company_tickers.json`. SEC requires a declared
+  `OCC_EDGAR_USER_AGENT` with contact info and ≤10 requests/second (a global
+  110 ms limiter); responses are cached for 24 h.
+- `OCC_FINANCIALS=none` stops ingest from enqueuing the stage; the explicit
+  command still works and `--force` refreshes both source caches.
+
+```bash
+# Pilot / explicit batch (never a full-universe sweep by default)
+node apps/worker/dist/cli.js enqueue financials --tickers AAPL:US,600519:A,00700:HK --force
+node apps/worker/dist/cli.js enqueue financials --universe ndx
+OCC_FINANCIALS_CONCURRENCY=2 \
+  node apps/worker/dist/cli.js work --queues financials --drain
+```
+
 ## Reviewer (hidden quality gate)
 
 Research + ingest can enqueue `review.company`. The reviewer is a second

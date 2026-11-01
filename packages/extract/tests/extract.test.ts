@@ -4,7 +4,7 @@ import { parseSectionMarkdown, type ParsedSection } from "@occ/ingest";
 import { describe, expect, it } from "vitest";
 
 import { parseDataCutoff, parseSourceChapter } from "../src/citations.js";
-import { extractFinancials } from "../src/financials.js";
+import { extractFinancials } from "../src/financials/index.js";
 import { parseMarkdownTables } from "../src/markdown-table.js";
 import { parseFiscalYearEnd, parsePeriodLabel } from "../src/periods.js";
 import { extractSegmentFacts } from "../src/segments.js";

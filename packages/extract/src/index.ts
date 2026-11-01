@@ -1,6 +1,6 @@
 export * from "./citations.js";
 export * from "./extract.js";
-export * from "./financials.js";
+export * from "./financials/index.js";
 export * from "./markdown-table.js";
 export * from "./periods.js";
 export * from "./relations/extract.js";

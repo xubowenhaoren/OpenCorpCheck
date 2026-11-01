@@ -22,7 +22,7 @@ import {
 } from "@occ/ingest";
 
 import { parseDataCutoff, parseSourceChapter } from "./citations.js";
-import { extractFinancials } from "./financials.js";
+import { extractFinancials } from "./financials/profile.js";
 import { parseFiscalYearEnd } from "./periods.js";
 import {
   buildRelationRequest,

@@ -1,0 +1,230 @@
+{
+  "cik": 320193,
+  "entityName": "Apple Inc.",
+  "facts": {
+    "us-gaap": {
+      "RevenueFromContractWithCustomerExcludingAssessedTax": {
+        "label": "Revenue from Contract with Customer, Excluding Assessed Tax",
+        "units": {
+          "USD": [
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": 416161000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2025-10-31",
+              "accn": "0000320193-25-000079"
+            },
+            {
+              "start": "2026-03-29",
+              "end": "2026-06-27",
+              "val": 109417000000,
+              "fy": 2026,
+              "fp": "Q3",
+              "form": "10-Q",
+              "filed": "2026-07-31",
+              "accn": "0000320193-26-000020"
+            },
+            {
+              "start": "2025-09-28",
+              "end": "2026-06-27",
+              "val": 364400000000,
+              "fy": 2026,
+              "fp": "Q3",
+              "form": "10-Q",
+              "filed": "2026-07-31",
+              "accn": "0000320193-26-000020"
+            }
+          ]
+        }
+      },
+      "GrossProfit": {
+        "label": "Gross Profit",
+        "units": {
+          "USD": [
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": 195201000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2025-10-31",
+              "accn": "0000320193-25-000079"
+            },
+            {
+              "start": "2026-03-29",
+              "end": "2026-06-27",
+              "val": 54770000000,
+              "fy": 2026,
+              "fp": "Q3",
+              "form": "10-Q",
+              "filed": "2026-07-31",
+              "accn": "0000320193-26-000020"
+            }
+          ]
+        }
+      },
+      "NetIncomeLoss": {
+        "label": "Net Income (Loss)",
+        "units": {
+          "USD": [
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": 112010000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2025-10-31",
+              "accn": "0000320193-25-000079"
+            },
+            {
+              "start": "2026-03-29",
+              "end": "2026-06-27",
+              "val": 29789000000,
+              "fy": 2026,
+              "fp": "Q3",
+              "form": "10-Q",
+              "filed": "2026-07-31",
+              "accn": "0000320193-26-000020"
+            }
+          ]
+        }
+      },
+      "EarningsPerShareDiluted": {
+        "label": "Earnings Per Share, Diluted",
+        "units": {
+          "USD/shares": [
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": 7.46,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2025-10-31",
+              "accn": "0000320193-25-000079"
+            },
+            {
+              "start": "2026-03-29",
+              "end": "2026-06-27",
+              "val": 2.02,
+              "fy": 2026,
+              "fp": "Q3",
+              "form": "10-Q",
+              "filed": "2026-07-31",
+              "accn": "0000320193-26-000020"
+            }
+          ]
+        }
+      },
+      "NetCashProvidedByUsedInOperatingActivities": {
+        "label": "Net Cash Provided by (Used in) Operating Activities",
+        "units": {
+          "USD": [
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": 111482000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2025-10-31",
+              "accn": "0000320193-25-000079"
+            },
+            {
+              "start": "2025-09-28",
+              "end": "2026-06-27",
+              "val": 116996000000,
+              "fy": 2026,
+              "fp": "Q3",
+              "form": "10-Q",
+              "filed": "2026-07-31",
+              "accn": "0000320193-26-000020"
+            }
+          ]
+        }
+      },
+      "PaymentsToAcquirePropertyPlantAndEquipment": {
+        "label": "Payments to Acquire Property, Plant and Equipment",
+        "units": {
+          "USD": [
+            {
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "val": 12715000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2025-10-31",
+              "accn": "0000320193-25-000079"
+            },
+            {
+              "start": "2025-09-28",
+              "end": "2026-06-27",
+              "val": 6799000000,
+              "fy": 2026,
+              "fp": "Q3",
+              "form": "10-Q",
+              "filed": "2026-07-31",
+              "accn": "0000320193-26-000020"
+            }
+          ]
+        }
+      },
+      "Assets": {
+        "label": "Assets",
+        "units": {
+          "USD": [
+            {
+              "end": "2025-09-27",
+              "val": 359241000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2025-10-31",
+              "accn": "0000320193-25-000079"
+            },
+            {
+              "end": "2026-06-27",
+              "val": 383266000000,
+              "fy": 2026,
+              "fp": "Q3",
+              "form": "10-Q",
+              "filed": "2026-07-31",
+              "accn": "0000320193-26-000020"
+            }
+          ]
+        }
+      },
+      "LongTermDebt": {
+        "label": "Long-Term Debt",
+        "units": {
+          "USD": [
+            {
+              "end": "2025-09-27",
+              "val": 90678000000,
+              "fy": 2025,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2025-10-31",
+              "accn": "0000320193-25-000079"
+            },
+            {
+              "end": "2026-06-27",
+              "val": 82350000000,
+              "fy": 2026,
+              "fp": "Q3",
+              "form": "10-Q",
+              "filed": "2026-07-31",
+              "accn": "0000320193-26-000020"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

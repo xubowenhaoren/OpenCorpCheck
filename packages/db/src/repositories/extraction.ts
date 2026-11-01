@@ -210,7 +210,11 @@ export async function upsertReportedRelations(
   return { relations: rows.length, evidence: evidenceCount, reviews: reviewCount };
 }
 
-export type ExtractionStage = "deterministic" | "relations" | "f10_relations";
+export type ExtractionStage =
+  | "deterministic"
+  | "relations"
+  | "f10_relations"
+  | "financials";
 
 export interface ExtractionCacheInput {
   companyId: string;
@@ -397,6 +401,7 @@ export async function clearDeterministicFacts(
 export async function upsertFinancialFacts(
   db: Db,
   rows: NewFinancialFact[],
+  options: { rank?: number } = {},
 ): Promise<number> {
   if (rows.length === 0) return 0;
   // ON CONFLICT cannot update the same row twice in one statement; collapse
@@ -410,6 +415,7 @@ export async function upsertFinancialFacts(
     );
   }
   const values = [...unique.values()];
+  const rank = options.rank ?? 10;
   await db
     .insert(financialFacts)
     .values(values)
@@ -437,8 +443,81 @@ export async function upsertFinancialFacts(
         extractorVersion: excluded("extractor_version"),
         sourceRefs: excluded("source_refs"),
       },
+      // Precedence: a profile row never overwrites F10 or XBRL; F10 never
+      // overwrites XBRL. Same-rank refreshes still update.
+      where: sql`(CASE ${financialFacts.method}
+        WHEN 'xbrl' THEN 30
+        WHEN 'f10' THEN 20
+        ELSE 10
+      END) <= ${rank}`,
     });
   return values.length;
+}
+
+/** Delete rows owned by one structured extractor, leaving other methods alone. */
+export async function clearFinancialFactsByExtractor(
+  db: Db,
+  companyId: string,
+  extractorVersion: string,
+): Promise<void> {
+  await db
+    .delete(financialFacts)
+    .where(
+      and(
+        eq(financialFacts.companyId, companyId),
+        eq(financialFacts.extractorVersion, extractorVersion),
+      ),
+    );
+}
+
+export interface SourceRecordInput {
+  url: string;
+  title?: string;
+  trustTier: string;
+  fetchedAt?: Date;
+  license?: string;
+}
+
+/**
+ * Upsert one provenance row for a structured financial cell and return its id.
+ * The id is derived from the canonical URL, so repeated runs reuse the row.
+ */
+export async function upsertSourceRecord(
+  db: Db,
+  input: SourceRecordInput,
+): Promise<string> {
+  const canonical = canonicalizeUrl(input.url);
+  const id = `src_web_${sha1(canonical).slice(0, 24)}`;
+  await db
+    .insert(sources)
+    .values({
+      id,
+      url: input.url,
+      canonicalUrl: canonical,
+      domain: (() => {
+        try {
+          return new URL(canonical).hostname;
+        } catch {
+          return undefined;
+        }
+      })(),
+      title: input.title,
+      fetchedAt: input.fetchedAt,
+      httpStatus: 200,
+      trustTier: input.trustTier,
+      license: input.license,
+    })
+    .onConflictDoUpdate({
+      target: sources.id,
+      set: {
+        url: input.url,
+        canonicalUrl: canonical,
+        title: input.title,
+        trustTier: input.trustTier,
+        ...(input.license ? { license: input.license } : {}),
+      },
+    });
+  return id;
 }
 
 export async function upsertFacts(

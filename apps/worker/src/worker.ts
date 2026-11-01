@@ -8,6 +8,11 @@ import {
   upsertCompanyState,
 } from "./db.js";
 import { handleF10Jobs, type F10JobData } from "./jobs/f10.js";
+import {
+  closeFinancialsRuntime,
+  handleFinancialsJobs,
+  type FinancialsJobData,
+} from "./jobs/financials.js";
 import { handleIngestJobs, type IngestJobData } from "./jobs/ingest.js";
 import { handleNewsJobs, type NewsJobData } from "./jobs/news.js";
 import { handleResearchJobs, type ResearchJobData } from "./jobs/research.js";
@@ -25,7 +30,13 @@ import {
   startBoss,
 } from "./queues.js";
 
-export type QueueKind = "research" | "ingest" | "review" | "news" | "f10";
+export type QueueKind =
+  | "research"
+  | "ingest"
+  | "review"
+  | "news"
+  | "f10"
+  | "financials";
 
 export interface WorkerOptions {
   queues: QueueKind[];
@@ -68,6 +79,23 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
     await sendJob(boss, QUEUES.REVIEW, data, {
       key: `${data.runId}:${data.key}:review:${data.reviewAttempt ?? 0}`,
       priority: 40,
+    });
+  };
+
+  const enqueueFinancials = async (
+    data: FinancialsJobData,
+  ): Promise<void> => {
+    await resetJobForRetry(data.runId, QUEUES.FINANCIALS, data.key);
+    await createFollowUpJob({
+      runId: data.runId,
+      queue: QUEUES.FINANCIALS,
+      jobKey: data.key,
+      companyId: data.key,
+      payload: data,
+    });
+    await sendJob(boss, QUEUES.FINANCIALS, data, {
+      key: `${data.runId}:${data.key}:financials`,
+      priority: 45,
     });
   };
 
@@ -128,7 +156,7 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
         localConcurrency: config.ingestConcurrency,
         pollingIntervalSeconds: 2,
       },
-      (jobs) => handleIngestJobs(jobs, { enqueueReview }),
+      (jobs) => handleIngestJobs(jobs, { enqueueReview, enqueueFinancials }),
     );
     await boss.work<DeadJobData>(
       QUEUES.INGEST_DEAD,
@@ -184,6 +212,22 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
       handleDead,
     );
   }
+  if (kinds.has("financials")) {
+    await boss.work<FinancialsJobData>(
+      QUEUES.FINANCIALS,
+      {
+        batchSize: 1,
+        localConcurrency: config.financialsConcurrency,
+        pollingIntervalSeconds: 2,
+      },
+      handleFinancialsJobs,
+    );
+    await boss.work<DeadJobData>(
+      QUEUES.FINANCIALS_DEAD,
+      { batchSize: 1, localConcurrency: 1, pollingIntervalSeconds: 2 },
+      handleDead,
+    );
+  }
 
   log({
     event: "worker_started",
@@ -194,6 +238,7 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
     reviewConcurrency: config.reviewConcurrency,
     newsConcurrency: config.newsConcurrency,
     f10Concurrency: config.f10Concurrency,
+    financialsConcurrency: config.financialsConcurrency,
     drain: Boolean(options.drain),
   });
 
@@ -204,6 +249,7 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
     log({ event: "worker_stopping", signal });
     await boss.stop({ graceful: true, timeout: 30_000 });
     await closeIngestRuntime();
+    await closeFinancialsRuntime();
     await stopNimGateway();
     process.exit(0);
   };
@@ -215,6 +261,7 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
     log({ event: "worker_drained" });
     await boss.stop({ graceful: true, timeout: 30_000 });
     await closeIngestRuntime();
+    await closeFinancialsRuntime();
     await stopNimGateway();
     return;
   }
@@ -227,14 +274,30 @@ async function handleDead(jobs: Job<DeadJobData>[]): Promise<void> {
   for (const job of jobs) {
     const data = job.data;
     if (data.runId && data.key) {
-      await markJobDeadByKey(data.runId, data.key);
-      await upsertCompanyState({
-        companyId: data.key,
-        status:
-          job.name === QUEUES.REVIEW_DEAD ? "needs_review" : "failed",
-        runId: data.runId,
-        lastError: `dead-lettered from ${job.name}`,
-      });
+      // Scope to the originating queue: financials reuses the company key, so
+      // an unscoped update would mark the research/ingest row dead too.
+      const sourceQueue = job.name.replace(/\.dead$/, "");
+      await markJobDeadByKey(data.runId, data.key, sourceQueue);
+      // Only the research pipeline owns company_research_state. A dead
+      // financials/news/f10 job is an enrichment gap, not a failed profile.
+      if (
+        job.name === QUEUES.RESEARCH_DEAD ||
+        job.name === QUEUES.INGEST_DEAD
+      ) {
+        await upsertCompanyState({
+          companyId: data.key,
+          status: "failed",
+          runId: data.runId,
+          lastError: `dead-lettered from ${job.name}`,
+        });
+      } else if (job.name === QUEUES.REVIEW_DEAD) {
+        await upsertCompanyState({
+          companyId: data.key,
+          status: "needs_review",
+          runId: data.runId,
+          lastError: `dead-lettered from ${job.name}`,
+        });
+      }
     }
     log({
       event: "job_dead_lettered",
@@ -253,6 +316,9 @@ function queueNamesFor(kinds: QueueKind[]): string[] {
     if (kind === "review") names.push(QUEUES.REVIEW, QUEUES.REVIEW_DEAD);
     if (kind === "news") names.push(QUEUES.NEWS, QUEUES.NEWS_DEAD);
     if (kind === "f10") names.push(QUEUES.F10, QUEUES.F10_DEAD);
+    if (kind === "financials") {
+      names.push(QUEUES.FINANCIALS, QUEUES.FINANCIALS_DEAD);
+    }
   }
   return names;
 }
