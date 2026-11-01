@@ -128,6 +128,18 @@ const INDEX_UNIVERSES: Record<
     exchange: "HKEX",
     coverage: "index_member",
   },
+  cyb50: {
+    file: "cyb50.yaml",
+    market: "A",
+    exchange: "SZSE",
+    coverage: "index_member",
+  },
+  chinext50: {
+    file: "cyb50.yaml",
+    market: "A",
+    exchange: "SZSE",
+    coverage: "index_member",
+  },
 };
 
 /** Primary listings from an index snapshot (`config/indices/<universe>.yaml`). */
@@ -267,7 +279,7 @@ export async function resolveTargets(
       }
     } else {
       throw new Error(
-        `unknown universe ${options.universe}; use mag7, ai-watchlist, ndx or hsi`,
+        `unknown universe ${options.universe}; use mag7, ai-watchlist, ndx, hsi or cyb50`,
       );
     }
   }

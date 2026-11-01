@@ -27,11 +27,11 @@ Usage:
   occ-backfill work [--queues research,ingest,review,news,f10] [--drain]
   occ-backfill status [--run <uuid>] [--json]
   occ-backfill states [--limit N] [--json]
-  occ-backfill relations f10 [--universe hsi|ndx|... | --tickers ...] [--force]
+  occ-backfill relations f10 [--universe hsi|ndx|cyb50|... | --tickers ...] [--force]
   occ-backfill config
 
 Enqueue options:
-  --universe mag7|ai-watchlist|ndx|hsi
+  --universe mag7|ai-watchlist|ndx|hsi|cyb50
   --tickers AAPL,600519:A,00700:HK
   --exclude 00700,AAPL         Drop targets after universe expansion
   --limit N                      Cap targets after priority sort
