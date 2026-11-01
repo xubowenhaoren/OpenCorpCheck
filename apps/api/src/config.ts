@@ -122,6 +122,17 @@ export const config = {
     companies: process.env.OCC_QDRANT_COMPANIES ?? "occ_companies",
     documents: process.env.OCC_QDRANT_DOCUMENTS ?? "occ_documents",
   },
+  /** Automatic news sweep (the API only schedules; the worker fetches). */
+  newsSweepEnabled:
+    process.env.OCC_NEWS_SWEEP !== "none" && process.env.OCC_NEWS_SWEEP !== "off",
+  newsSweepCron: process.env.OCC_NEWS_SWEEP_CRON ?? "0 7 * * *",
+  newsSweepTz:
+    process.env.OCC_NEWS_SWEEP_TZ?.trim() ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone ||
+    undefined,
+  newsTtlMs: intEnv("OCC_NEWS_TTL_MS", 82_800_000),
+  newsClaimTimeoutMs: intEnv("OCC_NEWS_CLAIM_TIMEOUT_MS", 1_800_000),
+  newsHistoryMs: intEnv("OCC_NEWS_HISTORY_MS", 259_200_000),
   fusion: (process.env.OCC_FUSION ?? "rrf") as "rrf" | "dbsf",
   rrfK: intEnv("OCC_RRF_K", 60),
   prefetchLimit: intEnv("OCC_PREFETCH_LIMIT", 100),

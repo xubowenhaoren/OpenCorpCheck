@@ -464,6 +464,39 @@ export const extractionCache = pgTable(
   (table) => [primaryKey({ columns: [table.companyId, table.stage] })],
 );
 
+/**
+ * Per-company news refresh cursor and lease (decision 44). Rows are created
+ * lazily by the automatic sweep; `companies` LEFT JOIN this table is the
+ * source of truth for "who is due?".
+ */
+export const globalNewsLastUpdate = pgTable(
+  "global_news_last_update",
+  {
+    key: text("key").primaryKey(),
+    companyId: text("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    ticker: text("ticker"),
+    name: text("name"),
+    lastUpdateAt: timestamp("last_update_at", { withTimezone: true }),
+    newestPublishedAt: timestamp("newest_published_at", { withTimezone: true }),
+    lastRunId: text("last_run_id"),
+    lastStatus: text("last_status").notNull().default("never"),
+    lastInserted: integer("last_inserted").notNull().default(0),
+    lastSkipped: integer("last_skipped").notNull().default(0),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    lastEnqueuedAt: timestamp("last_enqueued_at", { withTimezone: true }),
+    nextDueAt: timestamp("next_due_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("global_news_company_uq").on(table.companyId),
+    index("global_news_due_idx").on(table.nextDueAt),
+  ],
+);
+
 export const schema = {
   companies,
   companyIds,
@@ -480,4 +513,5 @@ export const schema = {
   relationEvidence,
   reviewQueue,
   outbox,
+  globalNewsLastUpdate,
 };

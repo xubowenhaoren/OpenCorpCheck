@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createApp, type HealthReport } from "../src/app.js";
 import type { AgentService } from "../src/services/agent.js";
 import type { CompanyService } from "../src/services/company.js";
+import type { NewsService } from "../src/services/news.js";
 import type { ResearchService } from "../src/services/research.js";
 import type { ReviewService } from "../src/services/review.js";
 import type { SearchService } from "../src/services/search.js";
@@ -252,6 +253,28 @@ const fakeAgent = {
   cancel: async () => undefined,
 } as unknown as AgentService;
 
+const fakeNews = {
+  getStatus: async (company?: string) => {
+    if (company === "missing") {
+      throw new AppError("not_found", `company not found: ${company}`);
+    }
+    return {
+      active: null,
+      lastSweep: null,
+      sweeps: [],
+      dueCount: 0,
+      nextDueAt: null,
+      totalCompanies: 0,
+      ttlMs: 82_800_000,
+      sweepCron: "0 7 * * *",
+      historyMs: 259_200_000,
+      serverTime: new Date().toISOString(),
+      triggered: false,
+      pendingSweep: false,
+    };
+  },
+} as unknown as NewsService;
+
 const healthy: HealthReport = {
   ok: true,
   database: { ok: true },
@@ -266,6 +289,7 @@ function app() {
     research: fakeResearch,
     review: fakeReview,
     agent: fakeAgent,
+    news: fakeNews,
     health: async () => healthy,
   });
 }
@@ -516,5 +540,32 @@ describe("agent sidebar", () => {
     const response = await app().request("/v1/agent/ui");
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("Agent Sidebar");
+  });
+});
+
+describe("news status", () => {
+  it("returns the sweep window without a refresh control", async () => {
+    const response = await app().request("/v1/news/status");
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.dueCount).toBe(0);
+    expect(body.data.sweepCron).toBe("0 7 * * *");
+    expect(body.meta.request_id).toBeTruthy();
+  });
+
+  it("returns 404 for an unknown company", async () => {
+    const response = await app().request("/v1/news/status?company=missing");
+    expect(response.status).toBe(404);
+  });
+
+  it("has no public refresh or sweep route", async () => {
+    for (const path of [
+      "/v1/news/refresh",
+      "/v1/news/sweep",
+      "/v1/companies/apple/news/refresh",
+    ]) {
+      const response = await app().request(path, { method: "POST" });
+      expect(response.status).toBe(404);
+    }
   });
 });

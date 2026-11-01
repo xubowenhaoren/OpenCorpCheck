@@ -45,6 +45,8 @@ CREATE INDEX IF NOT EXISTS backfill_jobs_key_idx
   ON backfill_jobs (job_key);
 
 ALTER TABLE backfill_jobs ADD COLUMN IF NOT EXISTS duration_ms integer;
+ALTER TABLE backfill_jobs
+  ADD COLUMN IF NOT EXISTS meta jsonb NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE TABLE IF NOT EXISTS research_cache (
   company_id text PRIMARY KEY,
@@ -112,6 +114,7 @@ export interface BackfillJobRow {
   attempts: number;
   last_error: string | null;
   payload: Record<string, unknown>;
+  meta: Record<string, unknown>;
 }
 
 export interface ResearchCacheRow {
@@ -153,6 +156,8 @@ export interface RunSummary {
     avg: number | null;
   };
   tokens: { input: number; output: number };
+  /** Sum of per-job `meta.inserted` / `meta.skipped` (used by news sweeps). */
+  news: { inserted: number; skipped: number };
   failed: Array<{
     company_id: string;
     page: string | null;
@@ -175,6 +180,7 @@ export interface RunDetail {
     started_at: Date | null;
     finished_at: Date | null;
     payload: Record<string, unknown>;
+    meta: Record<string, unknown>;
   }>;
   summary: RunSummary;
 }
@@ -259,7 +265,7 @@ export class JobStore {
   ): Promise<BackfillJobRow | null> {
     const rows = await this.query<BackfillJobRow>(
       `SELECT run_id, queue, job_key, company_id, page, status, attempts,
-              last_error, payload
+              last_error, payload, meta
        FROM backfill_jobs
        WHERE run_id = $1 AND queue = $2 AND job_key = $3`,
       [runId, queue, jobKey],
@@ -313,6 +319,7 @@ export class JobStore {
     runId: string,
     queue: string,
     jobKey: string,
+    meta?: Record<string, unknown>,
   ): Promise<void> {
     await this.query(
       `UPDATE backfill_jobs
@@ -321,9 +328,15 @@ export class JobStore {
              WHEN started_at IS NULL THEN NULL
              ELSE (EXTRACT(EPOCH FROM (now() - started_at)) * 1000)::int
            END,
+           meta = COALESCE($4::jsonb, meta),
            last_error = NULL
        WHERE run_id = $1 AND queue = $2 AND job_key = $3`,
-      [runId, queue, jobKey],
+      [
+        runId,
+        queue,
+        jobKey,
+        meta === undefined ? null : JSON.stringify(meta),
+      ],
     );
     await this.refreshRun(runId);
   }
@@ -623,6 +636,13 @@ export class JobStore {
        WHERE j.run_id = $1 AND j.queue = 'research.company'`,
       [runId],
     );
+    const news = await this.query<{ inserted: number | null; skipped: number | null }>(
+      `SELECT coalesce(sum((meta->>'inserted')::int), 0)::int AS inserted,
+              coalesce(sum((meta->>'skipped')::int), 0)::int AS skipped
+       FROM backfill_jobs
+       WHERE run_id = $1 AND queue = 'news.company'`,
+      [runId],
+    );
     return {
       run: runs[0] ?? null,
       counts: Object.fromEntries(
@@ -633,6 +653,10 @@ export class JobStore {
         input: Number(tokens[0]?.input ?? 0),
         output: Number(tokens[0]?.output ?? 0),
       },
+      news: {
+        inserted: Number(news[0]?.inserted ?? 0),
+        skipped: Number(news[0]?.skipped ?? 0),
+      },
       failed,
     };
   }
@@ -641,7 +665,7 @@ export class JobStore {
     const summary = await this.getRunSummary(runId);
     const jobs = await this.query<RunDetail["jobs"][number]>(
       `SELECT queue, job_key, company_id, page, status, attempts, last_error,
-              duration_ms, started_at, finished_at, payload
+              duration_ms, started_at, finished_at, payload, meta
        FROM backfill_jobs
        WHERE run_id = $1
        ORDER BY id`,
@@ -657,6 +681,84 @@ export class JobStore {
        FROM backfill_runs ORDER BY created_at DESC LIMIT $1`,
       [limit],
     );
+  }
+
+  /**
+   * Automatic news sweeps inside the retention window, newest first. The dock
+   * reads this so a completed sweep is still visible after the operator was
+   * away; manual `enqueue news` runs are included only when they carry the
+   * same shape (they are still `kind='news'`).
+   */
+  async listNewsSweeps(
+    sinceMs: number,
+    limit = 20,
+  ): Promise<Array<Record<string, unknown>>> {
+    return this.query<Record<string, unknown>>(
+      `SELECT r.id, r.kind, r.status, r.total_jobs, r.completed_jobs,
+              r.failed_jobs, r.options, r.created_at, r.updated_at,
+              coalesce((SELECT sum((j.meta->>'inserted')::int)
+                          FROM backfill_jobs j WHERE j.run_id = r.id), 0)::int
+                AS inserted,
+              coalesce((SELECT sum((j.meta->>'skipped')::int)
+                          FROM backfill_jobs j WHERE j.run_id = r.id), 0)::int
+                AS skipped
+       FROM backfill_runs r
+       WHERE r.kind = 'news'
+         AND r.created_at >= now() - ($1::int * interval '1 millisecond')
+       ORDER BY r.created_at DESC
+       LIMIT $2`,
+      [sinceMs, limit],
+    );
+  }
+
+  /** The most recent news sweep, active or finished. */
+  async getLatestNewsSweep(): Promise<Record<string, unknown> | null> {
+    const rows = await this.query<Record<string, unknown>>(
+      `SELECT r.id, r.status, r.total_jobs, r.completed_jobs, r.failed_jobs,
+              r.options, r.created_at, r.updated_at
+       FROM backfill_runs r
+       WHERE r.kind = 'news'
+       ORDER BY r.created_at DESC
+       LIMIT 1`,
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
+   * The newest news job for one company key. `company_id` in backfill_jobs is
+   * the canonical key (`US:AAPL`), which is also what the worker logs.
+   */
+  async getNewsJobForCompany(
+    key: string,
+  ): Promise<Record<string, unknown> | null> {
+    const rows = await this.query<Record<string, unknown>>(
+      `SELECT r.id AS run_id, r.status AS run_status, r.total_jobs,
+              r.completed_jobs, r.failed_jobs, r.created_at, r.updated_at,
+              j.status AS job_status, j.last_error, j.meta, j.started_at,
+              j.finished_at
+       FROM backfill_jobs j
+       JOIN backfill_runs r ON r.id = j.run_id
+       WHERE r.kind = 'news' AND j.company_id = $1
+       ORDER BY r.created_at DESC
+       LIMIT 1`,
+      [key],
+    );
+    return rows[0] ?? null;
+  }
+
+  /** Drop news run history older than the retention window (default 3 days). */
+  async pruneNewsRuns(olderThanMs: number): Promise<number> {
+    const rows = await this.query<{ count: number }>(
+      `WITH gone AS (
+         DELETE FROM backfill_runs
+         WHERE kind = 'news'
+           AND created_at < now() - ($1::int * interval '1 millisecond')
+         RETURNING 1
+       )
+       SELECT count(*)::int AS count FROM gone`,
+      [olderThanMs],
+    );
+    return Number(rows[0]?.count ?? 0);
   }
 
   async close(): Promise<void> {

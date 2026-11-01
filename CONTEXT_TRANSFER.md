@@ -25,14 +25,15 @@
 > `东方财富 F10` / `研究资料` / `推导` / `累计`), annual/quarter/half/TTM modes,
 > a coverage + fiscal-year-end line, and per-kind fetching so full statements
 > are not truncated by the 200-row card limit.
-> **Next round: automatic news refresh (design only)** — the manual 刷新新闻
-> button is **cancelled**; news updates run from a pg-boss schedule with a
-> per-company cursor table `global_news_last_update`. The approved dock
-> prototype (`docs/prototypes/task-dock.html`, commit `dd465fc`) is still the
-> visual reference for progress, but it has no manual controls. Read §0 and §10
-> “Next — Automatic news refresh” first. After that: the CSI A500 / S&P 500
-> placeholder layer (§10 Next 2). The previous round's structured-financials
-> backend notes remain below for reference.
+> **Shipped this round: automatic news refresh** — the manual 刷新新闻 button
+> stays cancelled. News updates run from a pg-boss schedule + lazy status
+> trigger with a per-company cursor table `global_news_last_update`; the top-nav
+> TaskDock observes sweeps and keeps the last 3 days of completed records. The
+> approved prototype (`docs/prototypes/task-dock.html`, commit `dd465fc`) is the
+> visual reference, with its manual controls removed. Read §0 and §10 “Done —
+> Automatic news refresh” first. **Next:** the CSI A500 / S&P 500 placeholder
+> layer (§10 Next 2). The previous round's structured-financials backend notes
+> remain below for reference.
 >
 > **Previous round (2026-10-31)** added the headless provider route, HSI, the
 > hidden reviewer and structured F10 shareholder relations:
@@ -79,12 +80,67 @@
 
 ---
 
-## 0. LIVE STATE — US EDGAR-only + Financials UI (2026-11-01, read first)
+## 0. LIVE STATE — automatic news refresh (2026-11-01, read first)
 
-> **US EDGAR-only cleanup + Financials-tab UI — 2026-11-01 (this round).**
-> No worker is running and all queues are empty, except four historical dead
+> **Automatic news refresh shipped — 2026-11-01 (this round).**
+>
+> - **State:** migration `0008_global_news_last_update.sql` (table + indexes,
+>   `backfill_jobs.meta`). One cursor/lease row per company; the sweep source is
+>   `companies LEFT JOIN global_news_last_update`, so no registry/backfill is
+>   needed. Fixtures and `stub` coverage never participate.
+> - **Producer:** queue `news.sweep` (policy `short`) + pg-boss schedule
+>   `news-sweep`, `OCC_NEWS_SWEEP_CRON` default `0 7 * * *` in
+>   `OCC_NEWS_SWEEP_TZ` (default machine TZ), `missed: "once"`. The handler
+>   advisory-locks `occ:news:sweep`, selects due companies
+>   (`OCC_NEWS_SWEEP_BATCH=250`), leases each row for
+>   `OCC_NEWS_CLAIM_TIMEOUT_MS` (30 min), creates a `news` run and enqueues
+>   `news.company` jobs. It never fetches.
+> - **Lazy UI trigger:** `GET /v1/news/status` checks `dueCount` and enqueues
+>   the producer when needed (skipped while a sweep is queued or the latest run
+>   is still progressing; the response carries `triggered`).
+>   There is **no** POST refresh/sweep route. Opening 5173 is enough.
+> - **Worker write-back:** success stamps `last_update_at`, `next_due_at =
+>   +23 h` (`OCC_NEWS_TTL_MS`), `ok`/`empty`, resets failures; failure never
+>   advances the cursor and backs off `min(15 min × 2^n, TTL)`, pausing after 5.
+>   Per-job `inserted`/`skipped`/`articles`/`newestPublishedAt` go to
+>   `backfill_jobs.meta`.
+> - **Window:** cold start 30 days / 20 items; steady
+>   `clamp(ceil((now − min(last_update_at, newest_published_at))/1d)+1, 1, 30)`
+>   with 10 items. The cursor is a hint, never a filter.
+> - **History:** news runs are pruned at `OCC_NEWS_HISTORY_MS` (3 days). The
+>   top-nav `TaskDock` shows the active sweep and completed sweeps from the last
+>   3 days; idle shows the last sweep + next due. News tab shows
+>   `更新于 … · 自动更新` / `正在更新…` and refetches the company card when the
+>   cursor advances.
+> - **Live run `b892648d-4537-4b73-8916-aaeca32bfedc`** (source `ui`, started
+>   2026-11-01 22:36 UTC): **completed 236/236, 0 failed** in 8m59s; **232
+>   `ok` / 4 `empty`**, **3,237 new articles** (3,245 news documents total),
+>   38 skipped, 0 LLM tokens. AAPL: 20 articles / 19 inserted, status `ok`,
+>   next due ≈ +23 h. Verified in the dock (`已完成 — 新增 3237 条`,
+>   `最近更新 · 刚刚`, `下次自动更新约 23 小时后`), the News tab (600519: 28
+>   items, `更新于 … · 自动更新`), dark mode, and mobile (390 px, no horizontal
+>   scroll). Killing/restarting the worker mid-sweep resumed the queued jobs
+>   from pg-boss; the completed run survived API restarts.
+> - **Run it:** `scripts/dev-news-worker.sh start|stop|status|restart|logs`
+>   (persistent `node apps/worker/dist/cli.js work --queues news`), or
+>   `node apps/worker/dist/cli.js work --queues news`. The API schedules and
+>   observes but never fetches. Operator extras:
+>   `node apps/worker/dist/cli.js news status` and `news sweep --now`.
+> - Env: `OCC_NEWS_SWEEP` (`none` disables), `OCC_NEWS_SWEEP_CRON`,
+>   `OCC_NEWS_SWEEP_TZ`, `OCC_NEWS_TTL_MS=82800000`,
+>   `OCC_NEWS_CLAIM_TIMEOUT_MS=1800000`, `OCC_NEWS_SWEEP_BATCH=250`,
+>   `OCC_NEWS_HISTORY_MS=259200000`, `OCC_NEWS_PAUSE_AFTER=5`,
+>   `OCC_NEWS_CONCURRENCY=2`.
+>
+> The US EDGAR-only / Financials-tab round below is complete; its notes remain
+> as reference.
+
+## 0A. PREVIOUS ROUND — US EDGAR-only + Financials UI (2026-11-01)
+
+> **US EDGAR-only cleanup + Financials-tab UI — 2026-11-01 (previous round).**
+> No worker was running and all queues were empty, except four historical dead
 > `financials.company` jobs from earlier runs (`HK:00700`, `HK:00823`,
-> `A:600519`, `US:AAPL` in the `.dead` queue; they are not part of this
+> `A:600519`, `US:AAPL` in the `.dead` queue; they are not part of that
 > round's run).
 >
 > | Index | Constituents | Any structured | EDGAR `xbrl` | F10 `f10` | Cache ok |
@@ -135,13 +191,13 @@
 >   `OCC_EDGAR_CACHE_TTL_MS`. Migration
 >   `packages/db/migrations/0007_financials_stage.sql` (apply with
 >   `node apps/cli/dist/occ.js migrate`).
-> - **Next: automatic news refresh (design only)** — no manual 刷新新闻 button.
->   A pg-boss schedule selects due companies from `global_news_last_update`
->   (per-company cursor/lease), enqueues `news.company`, and the worker stamps
->   the cursor. The top-nav `TaskDock` (prototype
+> - **Automatic news refresh shipped in the next round** — no manual 刷新新闻
+>   button. A pg-boss schedule + lazy status trigger select due companies from
+>   `global_news_last_update` (per-company cursor/lease), enqueue `news.company`,
+>   and the worker stamps the cursor. The top-nav `TaskDock` (prototype
 >   [`docs/prototypes/task-dock.html`](docs/prototypes/task-dock.html), commit
->   `dd465fc`) observes the sweeps. See §10 “Next — Automatic news refresh”.
->   After that: A500/SP 500 placeholders (§10 Next 2). The US EDGAR-only +
+>   `dd465fc`) observes the sweeps. See §10 “Done — Automatic news refresh”.
+>   Next: A500/SP 500 placeholders (§10 Next 2). The US EDGAR-only +
 >   Financials-tab round is **done** — see §10 “Done — US EDGAR-only +
 >   Financials-tab UI (2026-11-01)”.
 >
@@ -161,9 +217,10 @@
 >
 > **STAR 50 is deferred to P2 priority** (2026-11-01): do not treat it as the
 > next action. The procedure is kept below for when it is picked up.
-> **Next round**: automatic news refresh (§10 “Next — Automatic news refresh”)
-> — pg-boss sweep + `global_news_last_update`; no manual refresh button. After
-> that: A500/SPX placeholders (§10 Next 2).
+> **Automatic news refresh shipped** (2026-11-01, §10 “Done — Automatic news
+> refresh”) — pg-boss sweep + `global_news_last_update`; no manual refresh
+> button, 3-day history, lazy UI-triggered sweep. **Next:** A500/SPX
+> placeholders (§10 Next 2).
 >
 > **ChiNext 50 runs**: pilot `a8511401-a758-4a46-a917-c0aa7954ba2b` (3 targets,
 > `partial` 7/9, 2 revision-cap dead) and full batch
@@ -198,19 +255,30 @@
 
 ### 0.1 Running processes
 
-**No backfill worker and no NIM gateway.** The financials drain exited after the
-US rerun. The developer may keep the API (`node apps/api/dist/server.js`,
-:8787) and Vite (`corepack pnpm --filter @occ/web dev`, :5173) running for
-manual UI testing; those are not batch workers. **Automatic news refresh
-(§10 Next) needs a worker with the `news` queue** — the API only schedules and
-enqueues. To process new work, resume with:
+**Live now (2026-11-01, automatic news round):**
+
+- API `node apps/api/dist/server.js` on `:8787` (PID written in `.occ/api.log`).
+- Vite `corepack pnpm --filter @occ/web dev` on `:5173` (proxies `/v1`).
+- **Persistent news worker** `node apps/worker/dist/cli.js work --queues news`
+  started by `scripts/dev-news-worker.sh start`; pid in
+  `.occ/news-worker.pid`, log in `.occ/news-worker.log`. It registers the
+  `news-sweep` schedule and processes `news.sweep` + `news.company`.
+- Native Postgres 17 (`:5432`), Qdrant (`:6333`), embeddings sidecar (`:8080`).
+  No NIM gateway (official DeepSeek is the default); no research/financials
+  worker is running.
+
+The API schedules and lazily triggers sweeps but never fetches. If the news
+worker is stopped, sweep jobs stay queued and the dock shows `排队中`. To run a
+one-off drain instead:
 
 ```bash
 cd /Users/bowenxu/Downloads/Projects/OpenCorpCheck
+scripts/dev-news-worker.sh start    # status | stop | restart | logs
+node apps/worker/dist/cli.js work --queues news --drain
+
+# research / financials (previous rounds; not needed for news)
 OCC_LLM_PROVIDER=deepseek \
 node apps/worker/dist/cli.js work --queues research,ingest,review,f10,financials --drain
-
-# Financials only (deterministic, no LLM; the F10 sidecar must be running)
 OCC_FINANCIALS_CONCURRENCY=2 \
 node apps/worker/dist/cli.js work --queues financials --drain
 ```
@@ -426,13 +494,20 @@ psql postgres://occ@127.0.0.1:5432/occdb -c \
   "select count(*) from financial_facts f join sources s on s.id=f.source_id
     where f.method='f10' and s.url like '%PC_USF10%';"
 
-# After the automatic news refresh lands (§10 Next): due backlog and cursor state
+# Automatic news refresh: cursor state, sweep progress, worker log
+node apps/worker/dist/cli.js news status
+scripts/dev-news-worker.sh status
+tail -n 20 .occ/news-worker.log
+curl -s 'http://127.0.0.1:8787/v1/news/status?company=AAPL'
 psql postgres://occ@127.0.0.1:5432/occdb -c \
   "select count(*) filter (where next_due_at <= now()) due, count(*) total
      from global_news_last_update;"
 psql postgres://occ@127.0.0.1:5432/occdb -c \
   "select key,last_status,last_update_at,next_due_at,consecutive_failures
      from global_news_last_update order by last_update_at nulls first limit 20;"
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select id,status,total_jobs,completed_jobs,failed_jobs,created_at
+     from backfill_runs where kind='news' order by created_at desc limit 5;"
 ```
 
 ### 0.5 What “normal” looks like
@@ -468,6 +543,15 @@ psql postgres://occ@127.0.0.1:5432/occdb -c \
   `.occ/edgar/company_tickers.json`. `--force` refreshes both source caches.
   An F10 `EmptyRender` affects A/HK (US no longer uses F10); `00823` is the
   one hard failure.
+- **Automatic news refresh is normal** (2026-11-01). Opening 5173 with
+  `scripts/dev-news-worker.sh start` running triggers a due sweep; the dock
+  shows progress and keeps completed sweeps for 3 days. The first cold sweep
+  fetched 20 items/company (236 companies → 3,237 new articles, 3,245 news
+  documents) and took **~9 min** at `OCC_NEWS_CONCURRENCY=2`; steady-state
+  sweeps fetch 10 items, skip unchanged articles and make no embedding call.
+  **0 LLM tokens.** A dock stuck on `排队中` means the news worker is not
+  running; it is not a data error. The global `nextDueAt` during an active
+  sweep is the 30 min lease, not the next cron time.
 - Do not edit `financial_facts` by hand to fake a value. Rerun
   `enqueue financials`; precedence (`xbrl` > `f10` > profile) is enforced by
   rank-guarded upserts, and profile rows are cleaned within ±7 days of a
@@ -500,16 +584,25 @@ names. Report the final counts, not a claim that every company passed review.
 
 ### 0.7 Commits / working tree
 
-- **2026-11-01 (uncommitted, this round)**: US EDGAR-only + Financials-tab UI —
-  `apps/worker/src/financials/run.ts` (no US F10, method-rank upserts, CIK
-  fallback URL), `packages/extract/src/financials/edgar-xbrl.ts` (`ifrs-full`,
-  reporting currency, IFRS concepts), `canonical.ts` (derived gross profit /
-  liabilities), the US F10 row cleanup (DB only, not code), the new
-  `edgar-ifrs-*` fixtures + tests, `apps/web/src/format.ts`,
-  `CompanyFinancials.tsx`, `CompanyPage.tsx`, `api.ts`, `i18n.tsx`,
-  `styles.css`, `format.test.ts`, and the docs. The user has not asked for a
+- **2026-11-01 (uncommitted, this round)**: automatic news refresh —
+  `packages/db/migrations/0008_global_news_last_update.sql`,
+  `packages/db/src/repositories/news.ts` (+ schema export),
+  `packages/sources/news/src/window.ts` (+ test), `packages/jobs/src/queues.ts`
+  (`news.sweep`, `registerNewsSweepSchedule`), `packages/jobs/src/runs.ts`
+  (`backfill_jobs.meta`, news sweep history/prune), `apps/worker/src/news-sweep.ts`,
+  `jobs/news.ts` cursor write-back, `worker.ts`, `cli.ts` (`news status` /
+  `news sweep --now`), `backfill.ts` (leases operator news jobs), worker config;
+  `apps/api/src/services/news.ts`, `app.ts` (`GET /v1/news/status`),
+  `server.ts` (schedule registration), API config, `apps/api/tests/app.test.ts`;
+  `apps/web/src/components/TaskDock.tsx`, `TopNav.tsx`, `CompanyNews.tsx`,
+  `api.ts`, `i18n.tsx`, `styles.css`, `lib/news-dock.ts` (+ test);
+  `scripts/dev-news-worker.sh`; `docs/NEWS.md`. The user has not asked for a
   commit; leave the tree as-is unless told.
-- **2026-11-01 (uncommitted, previous round)**: structured financials backend —
+- **2026-11-01 (committed `75864fb`)**: US EDGAR-only + Financials-tab UI —
+  `apps/worker/src/financials/run.ts`, `edgar-xbrl.ts`, `canonical.ts`, the US
+  F10 row cleanup (DB only, not code), `edgar-ifrs-*` fixtures + tests,
+  `format.ts`, `CompanyFinancials.tsx`, `CompanyPage.tsx`, docs.
+- **2026-11-01 (uncommitted from earlier rounds)**: structured financials backend —
   `financials.company` queue + CLI, `packages/extract/src/financials/`
   parsers, `apps/worker/src/financials/` fetch/store, EDGAR client, migration
   `0007_financials_stage.sql`, `financial_period_kind` API filter, docs and
@@ -761,6 +854,13 @@ Key env:
 | `OCC_EDGAR_DIR` | `.occ/edgar` (ticker map, companyfacts, submissions) |
 | `OCC_EDGAR_CACHE_TTL_MS` | `86400000` (24 h) |
 | `OCC_EDGAR_USER_AGENT` | `OpenCorpCheck/0.1 (Bowen Xu; xubowenhaoren@gmail.com)`; SEC requires a contact and ≤10 req/s |
+| `OCC_NEWS_SWEEP` | on; `none` disables the automatic sweep (no public refresh control) |
+| `OCC_NEWS_SWEEP_CRON` / `_TZ` | `0 7 * * *` / machine timezone |
+| `OCC_NEWS_TTL_MS` | `82800000` (23 h; keep shorter than the sweep period) |
+| `OCC_NEWS_CLAIM_TIMEOUT_MS` | `1800000` (30 min lease) |
+| `OCC_NEWS_SWEEP_BATCH` | `250` |
+| `OCC_NEWS_HISTORY_MS` | `259200000` (3 days of sweep history) |
+| `OCC_NEWS_PAUSE_AFTER` | `5` consecutive failures → `paused` for one TTL |
 
 `OCC_AGENT_DSH_PATCH` defaults to `.dsh/acp.patch.yml`; pass `none` to disable
 the ACP overlay. The overlay sets `reasoningEffort: low` on `llm-deepseek` (ACP
@@ -800,6 +900,14 @@ Pages:
     node/edge inspector with evidence quote + source, empty state.
   - News: timeline with source popovers.
   - Sources: grouped by trust tier, deduped, copy-all-citations.
+- **Top-nav TaskDock** (2026-11-01): last control after `EN` / 深色. Collapsed
+  34 px ring with the active sweep's progress and a count badge; expanded card
+  shows the active sweep, per-company subtasks (`19 条` / `抓取中` / `队列中`,
+  link to `/c/:ticker`) and completed sweeps within the last 3 days. Idle shows
+  the last sweep and next due time. **No manual controls**; polling
+  `/v1/news/status` is also what lazily starts a due sweep. The News tab adds
+  `更新于 … · 自动更新` / `正在更新…` and refetches the card when the cursor
+  advances.
 - `/graph?company=` — global ego network with company picker.
 - `/indices/NDX` — 100 QQQ constituents; planned A/HK index pages show the
   not-loaded state. The UI filter codes are
@@ -829,9 +937,18 @@ Backend endpoints added with the UI:
   (title, prompt count, updated time; subagent children excluded).
 - `GET /v1/agent/sessions/:id/replay` — persisted turns + tool calls from
   dsh's `session.v4.jsonl.zstd`; 404 when no log exists.
-- `@occ/db` — `listIndexCompanyIds`, `listSectors`.
+- `GET /v1/news/status[?company=<ref>]` (2026-11-01) — active/last/recent news
+  sweeps, `dueCount`, `triggered`, `pendingSweep`, next due, TTL/cron, and
+  per-company cursor + latest job. Read-only; no `POST /v1/news/refresh`, no
+  client-triggered fetch.
+- `GET /v1/runs/:id` now includes job `payload` and `meta` (news per-company
+  counts) for the task dock.
+- `@occ/db` — `listIndexCompanyIds`, `listSectors`, and the news state helpers
+  (`listDueNewsCompanies`, `leaseNewsCompany`, `markNewsSuccess`,
+  `markNewsFailure`, `getNewsCompanyKey`, `getNewsDueSummary`).
 - `@occ/core` — `CompanyGraphQuerySchema`, `CompanyGraphView`,
-  `IndexMemberView`, `IndexView`; `SearchCompaniesQuery.sector`.
+  `IndexMemberView`, `IndexView`; `SearchCompaniesQuery.sector`;
+  `ResearchJobView.payload/meta`.
 
 Known limitations:
 
@@ -841,11 +958,13 @@ Known limitations:
 - Many NDX companies have `sector = null`; the index page shows `—`.
 - English mode translates UI chrome only; company descriptions stay as sourced.
 - Hot companies are a static front-end list; there is no admin backend.
-- News is a static DB snapshot: no automatic sweep yet and **no refresh button
-  by design**; ingestion is CLI/worker-only. The automatic per-company cursor
-  design is §10 “Next — Automatic news refresh”. The source is Google News
-  RSS, not agentic search, so a refresh costs 0 LLM tokens.
-- No web unit tests beyond trajectory helpers; acceptance is currently
+- **News updates are automatic** (2026-11-01): daily `news.sweep` schedule +
+  lazy status trigger, `global_news_last_update` cursor, 3-day run history.
+  There is still **no refresh button and no POST route** by design. Updates
+  progress only while the news worker runs (`scripts/dev-news-worker.sh`).
+  The source is Google News RSS, not agentic search, so a refresh costs 0 LLM
+  tokens. See §10 “Done — Automatic news refresh”.
+- No web unit tests beyond trajectory/news-dock helpers; acceptance is currently
   Playwright/manual.
 - Production static hosting (API/nginx same-origin) is still TODO.
 
@@ -1076,12 +1195,12 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
   nothing changes. Section markdown and F10 JSON upload as
   `sections/<slug>/<sha>.md` / `f10/<market>/<code>/<page>/<sha>.json`;
   upload failures warn but do not block ingestion.
-- **News** (`packages/sources/news`): Google News RSS, link-only, ~10 items /
-  company / 30 days, `doc_type='news'`. No full-text fetch or redistribution.
-  Ingestion is deterministic and LLM-free; today it runs only through the
-  `news.company` worker queue (`occ-backfill enqueue news`). Automatic
-  incremental refresh is designed in §10 “Next — Automatic news refresh”
-  (`global_news_last_update` + pg-boss sweep); it is not implemented yet.
+- **News** (`packages/sources/news`): Google News RSS, link-only, 10 items in
+  steady state / 20 cold start, 30-day maximum window, `doc_type='news'`. No
+  full-text fetch or redistribution. Ingestion is deterministic and LLM-free.
+  **Automatic refresh is implemented** (2026-11-01): `news.sweep` schedule +
+  lazy `/v1/news/status` trigger, `global_news_last_update` cursor/lease,
+  worker write-back, 3-day history. See §10 “Done — Automatic news refresh”.
 - **F10** (`services/finance-analyst` + `packages/sources/eastmoney-f10`):
   A/HK/US structured pages, per-domain rate limits, table/XHR extraction,
   2 MB cap, retries + jitter. Eastmoney data is for internal demo + attribution.
@@ -1303,6 +1422,20 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     created lazily and no registry/backfill is needed; fixtures and stubs never
     get a row. Do **not** add `companies.news_updated_at`. Manual refresh is
     cancelled (decision 34).
+45. **The UI observes, the server triggers** (decision 2026-11-01): the dock
+    polls `GET /v1/news/status`; that request may lazily enqueue the
+    `news.sweep` producer when `dueCount > 0` (skipped while a sweep is queued
+    or the latest run is still progressing; `triggered` makes the dock poll
+    every 5 s until the run appears). There is still no public refresh control
+    and no POST route. This is how “open the site and news is already refreshing” works
+    without a button. Sweeps progress only while a news worker runs; the
+    persistent local pool is `scripts/dev-news-worker.sh`.
+46. **News history is kept for 3 days** (decision 2026-11-01): news
+    `backfill_runs`/`backfill_jobs` are pruned at `OCC_NEWS_HISTORY_MS`
+    (259,200,000) so the dock can show completed sweeps after an absence
+    without growing forever. The cursor table itself is not pruned; it is the
+    scheduling truth. Per-job `inserted`/`skipped` live in
+    `backfill_jobs.meta`.
 
 ---
 
@@ -1738,7 +1871,18 @@ Acceptance and rollback are in the migration doc §7–8. The sidebar path is
 explicitly out of scope: its DeepSeek key, model row, timeout and
 `reasoningEffort` must remain byte-for-byte unchanged.
 
-### Next — Automatic news refresh (design only, 2026-11-01)
+### Done — Automatic news refresh (shipped 2026-11-01)
+
+> **Shipped.** Migration `0008_global_news_last_update.sql`, `news.sweep`
+> queue + `registerNewsSweepSchedule`, `runNewsSweep` with advisory lock and
+> lease, worker cursor write-back, lazy `/v1/news/status` trigger, read-only
+> status API, `TaskDock` in the top nav, News-tab status line + refetch, CLI
+> `news status` / `news sweep --now`, `scripts/dev-news-worker.sh`, tests
+> (sources/news 9, web 33, API 33). Live run `b892648d-…` completed
+> 236/236 (0 failed, 8m59s): 232 `ok` / 4 `empty`, 3,237 new articles, 38
+> skipped, 0 LLM tokens. History is pruned at 3 days
+> (`OCC_NEWS_HISTORY_MS`). The design below is kept for reference; it is no
+> longer a plan.
 
 > **Decision change.** The manual **刷新新闻** button is **cancelled**, and with
 > it `POST /v1/companies/:ref/news/refresh` and the page-entry nudge. News
@@ -1756,7 +1900,10 @@ explicitly out of scope: its DeepSeek key, model row, timeout and
 > per-company cursor plus a schedule is both simpler for the user and more
 > precise than a button.
 >
-> **This section is a plan only — do not write code until it is picked up.**
+> **Status: implemented 2026-11-01.** The plan text below matches the shipped
+> code except for these additions: the lazy `/v1/news/status` trigger (UI
+> opens → API enqueues the producer), `backfill_jobs.meta` for per-job counts,
+> and `scripts/dev-news-worker.sh` for a persistent local worker.
 
 **State table `global_news_last_update`** — the per-company lease and
 incremental cursor. One row per company; the key uses the same canonical target
@@ -2014,7 +2161,7 @@ are **cancelled**. Placeholders are filled only when the operator runs a local
 batch through the worker pool (NIM + Parallel). There is still **no full
 constituent sweep**: A500/SPX batches are explicit, capped and operator-started.
 On-demand **news refresh is cancelled** (2026-11-01): news updates are
-fully automatic (§10 “Next — Automatic news refresh”, 0 LLM tokens).
+fully automatic (§10 “Done — Automatic news refresh”, 0 LLM tokens).
 
 Placeholder row:
 

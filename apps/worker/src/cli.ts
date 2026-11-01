@@ -19,6 +19,7 @@ import {
 } from "./db.js";
 import { runF10RelationsCommand } from "./f10-relations-command.js";
 import { startNimGateway } from "./nim-gateway.js";
+import { newsSweepStatus, runNewsSweep } from "./news-sweep.js";
 import { queueCounts, startBoss } from "./queues.js";
 import { resolveTargets } from "./universe.js";
 import { runWorkers, type QueueKind } from "./worker.js";
@@ -31,6 +32,8 @@ Usage:
   occ-backfill enqueue f10 [options]
   occ-backfill enqueue news [options]
   occ-backfill enqueue financials [options]
+  occ-backfill news status
+  occ-backfill news sweep --now
   occ-backfill work [--queues research,ingest,review,news,f10,financials] [--drain]
   occ-backfill status [--run <uuid>] [--json]
   occ-backfill states [--limit N] [--json]
@@ -63,6 +66,13 @@ Environment:
   OCC_F10_CONCURRENCY (default 4)
   OCC_FINANCIALS_CONCURRENCY (default 2)
   OCC_FINANCIALS (on default; none stops auto-enqueue after ingest)
+  OCC_NEWS_SWEEP (on default; none disables the automatic news sweep)
+  OCC_NEWS_SWEEP_CRON (default "0 7 * * *")
+  OCC_NEWS_SWEEP_TZ (default: the machine's local timezone)
+  OCC_NEWS_TTL_MS (default 82,800,000 = 23 h; keep shorter than the sweep period)
+  OCC_NEWS_CLAIM_TIMEOUT_MS (default 1,800,000 = 30 min lease)
+  OCC_NEWS_SWEEP_BATCH (default 250)
+  OCC_NEWS_HISTORY_MS (default 259,200,000 = 3 days of sweep history)
   OCC_EDGAR_USER_AGENT (SEC requires a contact, e.g. Name/1.0 (you@example.com))
   OCC_EDGAR_DIR (default .occ/edgar)
   OCC_QDRANT_URL (default http://127.0.0.1:6333)
@@ -103,6 +113,9 @@ async function main(): Promise<void> {
       return;
     case "states":
       await statesCommand(rest);
+      return;
+    case "news":
+      await newsCommand(rest);
       return;
     case "relations":
       await relationsCommand(rest);
@@ -378,8 +391,34 @@ async function statesCommand(args: string[]): Promise<void> {
   }
 }
 
-async function relationsCommand(args: string[]): Promise<void> {
-  const [kind, ...rest] = args;
+async function newsCommand(args: string[]): Promise<void> {
+  const [sub, ...rest] = args;
+  const { values } = parseArgs({
+    args: rest,
+    options: { now: { type: "boolean" }, json: { type: "boolean" } },
+  });
+  await migrate();
+  const boss = await startBoss();
+  try {
+    if (sub === "status") {
+      console.log(JSON.stringify(await newsSweepStatus(), null, 2));
+      return;
+    }
+    if (sub === "sweep") {
+      if (!values.now) {
+        throw new Error("news sweep requires --now (operator-forced sweep)");
+      }
+      const result = await runNewsSweep({ boss, source: "cli" });
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    throw new Error("news requires `status` or `sweep --now`");
+  } finally {
+    await boss.stop({ graceful: false });
+  }
+}
+
+async function relationsCommand(args: string[]): Promise<void> {  const [kind, ...rest] = args;
   if (kind !== "f10") {
     throw new Error("relations requires `f10` (structured shareholder pass)");
   }

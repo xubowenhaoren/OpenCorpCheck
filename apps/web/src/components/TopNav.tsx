@@ -4,6 +4,7 @@ import { useAgent } from "../contexts/AgentContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../i18n";
 import { SearchBox } from "./SearchBox";
+import { TaskDock } from "./TaskDock";
 
 export function TopNav() {
   const location = useLocation();
@@ -67,6 +68,7 @@ export function TopNav() {
           >
             {theme === "dark" ? t("nav.themeLight") : t("nav.themeDark")}
           </button>
+          <TaskDock />
         </div>
       </div>
     </header>

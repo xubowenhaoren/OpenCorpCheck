@@ -5,6 +5,8 @@ export const QUEUES = {
   INGEST: "ingest.company",
   REVIEW: "review.company",
   NEWS: "news.company",
+  /** One producer job that selects due companies and enqueues `news.company`. */
+  NEWS_SWEEP: "news.sweep",
   F10: "f10.page",
   FINANCIALS: "financials.company",
   RESEARCH_DEAD: "research.company.dead",
@@ -104,6 +106,15 @@ export async function ensureQueues(boss: PgBoss): Promise<void> {
     deadLetter: QUEUES.NEWS_DEAD,
     deleteAfterSeconds: 604_800,
   });
+  // `short`: at most one queued sweep. The advisory lock inside the handler is
+  // the second guard for overlapping cron passes / two API instances.
+  await ensureQueue(boss, QUEUES.NEWS_SWEEP, {
+    policy: "short",
+    retryLimit: 1,
+    retryDelay: 120,
+    expireInSeconds: 900,
+    deleteAfterSeconds: 259_200,
+  });
   await ensureQueue(boss, QUEUES.F10, {
     retryLimit: 3,
     retryDelay: 15,
@@ -198,3 +209,25 @@ export function pendingJobs(counts: QueueCounts[]): number {
     0,
   );
 }
+
+export const NEWS_SWEEP_SCHEDULE = "news-sweep";
+
+/**
+ * Register the single daily news sweep. Idempotent: pg-boss keys the schedule
+ * row by name+key, so API and worker can both call this on boot without
+ * creating duplicates. `missed: "once"` sends one catch-up sweep if the
+ * machine was offline at the cron time.
+ */
+export async function registerNewsSweepSchedule(
+  boss: PgBoss,
+  cron: string,
+  tz?: string,
+): Promise<void> {
+  await boss.schedule(QUEUES.NEWS_SWEEP, cron, { source: "schedule" }, {
+    key: NEWS_SWEEP_SCHEDULE,
+    singletonKey: NEWS_SWEEP_SCHEDULE,
+    ...(tz ? { tz } : {}),
+    missed: "once",
+  });
+}
+

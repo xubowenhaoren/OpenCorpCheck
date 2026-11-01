@@ -15,6 +15,7 @@ import {
 } from "./jobs/financials.js";
 import { handleIngestJobs, type IngestJobData } from "./jobs/ingest.js";
 import { handleNewsJobs, type NewsJobData } from "./jobs/news.js";
+import { handleNewsSweepJobs, type NewsSweepData } from "./news-sweep.js";
 import { handleResearchJobs, type ResearchJobData } from "./jobs/research.js";
 import {
   handleReviewJobs,
@@ -26,6 +27,7 @@ import {
   QUEUES,
   pendingJobs,
   queueCounts,
+  registerNewsSweepSchedule,
   sendJob,
   startBoss,
 } from "./queues.js";
@@ -190,11 +192,23 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
       },
       handleNewsJobs,
     );
+    await boss.work<NewsSweepData>(
+      QUEUES.NEWS_SWEEP,
+      { batchSize: 1, localConcurrency: 1, pollingIntervalSeconds: 5 },
+      (jobs) => handleNewsSweepJobs(jobs, { boss }),
+    );
     await boss.work<DeadJobData>(
       QUEUES.NEWS_DEAD,
       { batchSize: 1, localConcurrency: 1, pollingIntervalSeconds: 2 },
       handleDead,
     );
+    if (config.newsSweepEnabled) {
+      await registerNewsSweepSchedule(
+        boss,
+        config.newsSweepCron,
+        config.newsSweepTz,
+      );
+    }
   }
   if (kinds.has("f10")) {
     await boss.work<F10JobData>(
@@ -314,7 +328,13 @@ function queueNamesFor(kinds: QueueKind[]): string[] {
     if (kind === "research") names.push(QUEUES.RESEARCH, QUEUES.RESEARCH_DEAD);
     if (kind === "ingest") names.push(QUEUES.INGEST, QUEUES.INGEST_DEAD);
     if (kind === "review") names.push(QUEUES.REVIEW, QUEUES.REVIEW_DEAD);
-    if (kind === "news") names.push(QUEUES.NEWS, QUEUES.NEWS_DEAD);
+    if (kind === "news") {
+      names.push(
+        QUEUES.NEWS,
+        QUEUES.NEWS_DEAD,
+        QUEUES.NEWS_SWEEP,
+      );
+    }
     if (kind === "f10") names.push(QUEUES.F10, QUEUES.F10_DEAD);
     if (kind === "financials") {
       names.push(QUEUES.FINANCIALS, QUEUES.FINANCIALS_DEAD);

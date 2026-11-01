@@ -86,6 +86,24 @@ export const config = {
   ingestConcurrency: intEnv("OCC_INGEST_CONCURRENCY", 4),
   reviewConcurrency: intEnv("OCC_REVIEW_CONCURRENCY", 4),
   newsConcurrency: intEnv("OCC_NEWS_CONCURRENCY", 2),
+  /**
+   * Automatic news refresh (decision 29/44). The TTL is deliberately shorter
+   * than the daily sweep period so every company is due at the next sweep.
+   * Change cron and TTL together, never one without the other.
+   */
+  newsSweepEnabled:
+    process.env.OCC_NEWS_SWEEP !== "none" && process.env.OCC_NEWS_SWEEP !== "off",
+  newsSweepCron: process.env.OCC_NEWS_SWEEP_CRON ?? "0 7 * * *",
+  newsSweepTz:
+    process.env.OCC_NEWS_SWEEP_TZ?.trim() ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone ||
+    undefined,
+  newsTtlMs: intEnv("OCC_NEWS_TTL_MS", 82_800_000), // 23 h
+  newsClaimTimeoutMs: intEnv("OCC_NEWS_CLAIM_TIMEOUT_MS", 1_800_000), // 30 min
+  newsSweepBatch: intEnv("OCC_NEWS_SWEEP_BATCH", 250),
+  /** Sweep history kept for the task dock (3 days by default). */
+  newsHistoryMs: intEnv("OCC_NEWS_HISTORY_MS", 259_200_000),
+  newsPauseAfterFailures: intEnv("OCC_NEWS_PAUSE_AFTER", 5),
   dshHome: pathEnv("OCC_DSH_HOME", "phase0/.dsh-home"),
   runsDir: pathEnv("OCC_RUNS_DIR", ".occ/runs"),
   sectionsDir: pathEnvAny(
@@ -175,6 +193,12 @@ export function publicConfig(): Record<string, unknown> {
     ingestConcurrency: config.ingestConcurrency,
     reviewConcurrency: config.reviewConcurrency,
     newsConcurrency: config.newsConcurrency,
+    newsSweepEnabled: config.newsSweepEnabled,
+    newsSweepCron: config.newsSweepCron,
+    newsTtlMs: config.newsTtlMs,
+    newsClaimTimeoutMs: config.newsClaimTimeoutMs,
+    newsSweepBatch: config.newsSweepBatch,
+    newsHistoryMs: config.newsHistoryMs,
     dshHome: config.dshHome,
     runsDir: config.runsDir,
     sectionsDir: config.sectionsDir,

@@ -176,23 +176,28 @@ function pickListing(bundle: CompanyBundle): Listing | null {
   return null;
 }
 
+type RunDetailJob = {
+  queue: string;
+  job_key: string;
+  company_id: string;
+  status: string;
+  attempts: number;
+  last_error: string | null;
+  duration_ms: number | null;
+  started_at: Date | string | null;
+  finished_at: Date | string | null;
+  payload?: Record<string, unknown>;
+  meta?: Record<string, unknown>;
+};
+
 function toRunView(detail: {
   run: Record<string, unknown> | null;
-  jobs: Array<{
-    queue: string;
-    job_key: string;
-    company_id: string;
-    status: string;
-    attempts: number;
-    last_error: string | null;
-    duration_ms: number | null;
-    started_at: Date | string | null;
-    finished_at: Date | string | null;
-  }>;
+  jobs: RunDetailJob[];
   summary?: {
     counts: Record<string, number>;
     durationMs: { p50: number | null; p95: number | null; avg: number | null };
     tokens: { input: number; output: number };
+    news?: { inserted: number; skipped: number };
     failed: Array<{
       company_id: string;
       page: string | null;
@@ -222,6 +227,8 @@ function toRunView(detail: {
       ...(job.duration_ms !== null ? { durationMs: job.duration_ms } : {}),
       ...(job.started_at ? { startedAt: iso(job.started_at) } : {}),
       ...(job.finished_at ? { finishedAt: iso(job.finished_at) } : {}),
+      ...(job.payload ? { payload: job.payload } : {}),
+      ...(job.meta ? { meta: job.meta } : {}),
     })),
     ...(detail.summary ? { summary: detail.summary } : {}),
   };

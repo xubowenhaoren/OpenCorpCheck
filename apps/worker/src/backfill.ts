@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  createDb,
+  leaseNewsCompany,
+  resolveCompanyId,
+} from "@occ/db";
+import {
   FinanceAnalystClient,
   type Market,
   type PagesResponse,
@@ -199,28 +204,62 @@ export async function enqueueNews(
     maxItems: options.maxItems ?? 10,
     sinceDays: options.sinceDays ?? 30,
     force: Boolean(options.force),
+    source: "cli",
     concurrency: config.newsConcurrency,
   };
 
-  const specs: JobSpec[] = targets.map((target) => ({
-    queue: QUEUES.NEWS,
-    jobKey: target.key,
-    companyId: target.key,
-    payload: {
-      runId,
-      key: target.key,
-      ticker: target.ticker,
-      name: target.name,
-      market: target.market ?? "US",
-      ...(options.query ? { query: options.query } : {}),
-      maxItems: options.maxItems ?? 10,
-      sinceDays: options.sinceDays ?? 30,
-      force: Boolean(options.force),
-    },
-  }));
+  // Operator batches lease the same cursor rows as the automatic sweep, so a
+  // manual run and a sweep cannot fetch the same company twice.
+  const { db, pool } = createDb(config.databaseUrl);
+  const specs: JobSpec[] = [];
+  const priorityByKey = new Map<string, number>();
+  try {
+    for (const target of targets) {
+      const companyId =
+        (await resolveCompanyId(db, target.ticker)) ??
+        (await resolveCompanyId(db, target.key));
+      if (!companyId) continue;
+      if (!options.force) {
+        const claimed = await leaseNewsCompany(db, {
+          companyId,
+          key: target.key,
+          ticker: target.ticker,
+          name: target.name,
+          claimTimeoutMs: config.newsClaimTimeoutMs,
+        });
+        if (!claimed) continue;
+      }
+      specs.push({
+        queue: QUEUES.NEWS,
+        jobKey: target.key,
+        companyId: target.key,
+        payload: {
+          runId,
+          key: target.key,
+          companyId,
+          ticker: target.ticker,
+          name: target.name,
+          market: target.market ?? "US",
+          ...(options.query ? { query: options.query } : {}),
+          maxItems: options.maxItems ?? 10,
+          sinceDays: options.sinceDays ?? 30,
+          ttlMs: config.newsTtlMs,
+          source: "cli",
+          force: Boolean(options.force),
+        },
+      });
+      priorityByKey.set(target.key, target.priority);
+    }
+  } finally {
+    await pool.end();
+  }
+  if (specs.length === 0) {
+    throw new Error(
+      "no news targets are due; they are leased by a sweep or were checked recently (use --force to override)",
+    );
+  }
 
   await createRun("news", runOptions, specs, runId);
-  const priorityByKey = new Map(targets.map((target) => [target.key, target.priority]));
   for (const spec of specs) {
     await sendJob(boss, spec.queue, spec.payload, {
       key: `${runId}:${spec.jobKey}`,

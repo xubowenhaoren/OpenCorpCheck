@@ -40,11 +40,15 @@ export interface ResearchJobView {
   durationMs?: number;
   startedAt?: string;
   finishedAt?: string;
+  /** Job input; for news jobs it carries `ticker` / `name` / `market`. */
+  payload?: Record<string, unknown>;
+  /** Job result summary; news jobs record `inserted` / `skipped`. */
+  meta?: Record<string, unknown>;
 }
 
 export interface ResearchRunView {
   id: string;
-  kind: "research" | "f10" | "news";
+  kind: "research" | "f10" | "news" | "financials";
   status: RunStatus;
   totalJobs: number;
   completedJobs: number;
@@ -57,6 +61,7 @@ export interface ResearchRunView {
     counts: Record<string, number>;
     durationMs: { p50: number | null; p95: number | null; avg: number | null };
     tokens: { input: number; output: number };
+    news?: { inserted: number; skipped: number };
     failed: Array<{
       company_id: string;
       page: string | null;

@@ -1,6 +1,6 @@
 import { serve } from "@hono/node-server";
 import { createDb } from "@occ/db";
-import { JobStore, startBoss } from "@occ/jobs";
+import { JobStore, registerNewsSweepSchedule, startBoss } from "@occ/jobs";
 import {
   HttpEmbeddingClient,
   HttpRerankClient,
@@ -13,6 +13,7 @@ import { createApp, type HealthReport } from "./app.js";
 import { config, publicConfig } from "./config.js";
 import { AgentService } from "./services/agent.js";
 import { CompanyService } from "./services/company.js";
+import { NewsService } from "./services/news.js";
 import { ResearchService } from "./services/research.js";
 import { ReviewService } from "./services/review.js";
 import { SearchService } from "./services/search.js";
@@ -59,6 +60,16 @@ const boss = await startBoss({
   applicationName: "occ-api",
 });
 const research = new ResearchService({ db, store: jobStore, boss });
+const news = new NewsService({ db, store: jobStore, boss });
+// Idempotent: the worker registers the same schedule. `missed: "once"` also
+// gives the first boot after downtime a catch-up sweep.
+if (config.newsSweepEnabled) {
+  await registerNewsSweepSchedule(
+    boss,
+    config.newsSweepCron,
+    config.newsSweepTz,
+  );
+}
 const agent = new AgentService({
   apiUrl: `http://127.0.0.1:${config.apiPort}`,
   repoRoot: config.repoRoot,
@@ -121,7 +132,7 @@ async function checkEmbeddings(): Promise<{
   }
 }
 
-const app = createApp({ search, company, research, review, agent, health });
+const app = createApp({ search, company, research, review, agent, news, health });
 
 const server = serve(
   { fetch: app.fetch, port: config.apiPort, hostname: "127.0.0.1" },

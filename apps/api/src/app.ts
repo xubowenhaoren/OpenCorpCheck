@@ -29,6 +29,7 @@ import { openApiDocument } from "./openapi.js";
 import { reviewUiHtml } from "./review-ui.js";
 import type { AgentService } from "./services/agent.js";
 import type { CompanyService } from "./services/company.js";
+import type { NewsService } from "./services/news.js";
 import type { ResearchService } from "./services/research.js";
 import type { ReviewService } from "./services/review.js";
 import type { SearchService } from "./services/search.js";
@@ -46,6 +47,7 @@ export interface AppDeps {
   research: ResearchService;
   review: ReviewService;
   agent: AgentService;
+  news: NewsService;
   health: () => Promise<HealthReport>;
 }
 
@@ -222,6 +224,25 @@ export function createApp(deps: AppDeps): Hono {
     c.header("x-request-id", requestId);
     return c.json({
       data: run,
+      meta: {
+        request_id: requestId,
+        as_of: new Date().toISOString(),
+        took_ms: Math.round(performance.now() - started),
+      },
+    });
+  });
+
+  // Automatic news refresh is read-only from the public UI. There is no
+  // refresh/sweep POST: polling this endpoint may lazily enqueue the server-side
+  // producer when companies are due, but the browser cannot fetch news itself.
+  app.get("/v1/news/status", async (c) => {
+    const requestId = crypto.randomUUID();
+    const started = performance.now();
+    const company = new URL(c.req.url).searchParams.get("company") ?? undefined;
+    const status = await deps.news.getStatus(company ?? undefined);
+    c.header("x-request-id", requestId);
+    return c.json({
+      data: status,
       meta: {
         request_id: requestId,
         as_of: new Date().toISOString(),

@@ -5,3 +5,4 @@ export * from "./repositories/companies.js";
 export * from "./repositories/documents.js";
 export * from "./repositories/extraction.js";
 export * from "./repositories/insights.js";
+export * from "./repositories/news.js";

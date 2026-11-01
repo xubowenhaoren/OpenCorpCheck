@@ -4,6 +4,7 @@ import type {
   CompanyHit,
   FinancialFactView,
   IndexView,
+  ResearchRunView,
   SearchResponse,
 } from "@occ/core";
 
@@ -174,6 +175,78 @@ export function getIndex(
 
 export function getSectors(): Promise<{ data: { sectors: string[] } }> {
   return request<{ data: { sectors: string[] } }>("/v1/sectors");
+}
+
+export interface NewsSweepView {
+  runId: string;
+  status: "queued" | "running" | "completed" | "partial" | "failed";
+  total: number;
+  done: number;
+  failed: number;
+  inserted: number;
+  skipped: number;
+  startedAt: string;
+  finishedAt: string | null;
+  elapsedMs: number | null;
+  source: string | null;
+  sweepSource: string | null;
+  active: boolean;
+}
+
+export interface NewsCompanyStatusView {
+  key: string;
+  ticker: string;
+  market: string;
+  lastUpdateAt: string | null;
+  lastStatus: "never" | "ok" | "empty" | "failed" | "paused";
+  nextDueAt: string | null;
+  lastInserted: number;
+  lastSkipped: number;
+  consecutiveFailures: number;
+  run: {
+    runId: string;
+    runStatus: string;
+    jobStatus: string;
+    inserted: number;
+    skipped: number;
+    startedAt: string | null;
+    finishedAt: string | null;
+  } | null;
+}
+
+export interface NewsStatusView {
+  active: NewsSweepView | null;
+  lastSweep: NewsSweepView | null;
+  sweeps: NewsSweepView[];
+  dueCount: number;
+  nextDueAt: string | null;
+  totalCompanies: number;
+  ttlMs: number;
+  sweepCron: string;
+  historyMs: number;
+  serverTime: string;
+  triggered: boolean;
+  pendingSweep: boolean;
+  company?: NewsCompanyStatusView;
+}
+
+/** Read-only automatic news status; polling may lazily start a due sweep. */
+export function getNewsStatus(
+  company?: string,
+): Promise<{ data: NewsStatusView; meta: Record<string, unknown> }> {
+  return request<{ data: NewsStatusView; meta: Record<string, unknown> }>(
+    "/v1/news/status",
+    { company },
+  );
+}
+
+/** Run detail for the task dock (per-company subtasks). */
+export function getRun(
+  runId: string,
+): Promise<{ data: ResearchRunView; meta: Record<string, unknown> }> {
+  return request<{ data: ResearchRunView; meta: Record<string, unknown> }>(
+    `/v1/runs/${encodeURIComponent(runId)}`,
+  );
 }
 
 export interface AgentStreamEvent {
