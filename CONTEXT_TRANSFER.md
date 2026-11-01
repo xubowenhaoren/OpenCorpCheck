@@ -25,8 +25,12 @@
 > `东方财富 F10` / `研究资料` / `推导` / `累计`), annual/quarter/half/TTM modes,
 > a coverage + fiscal-year-end line, and per-kind fetching so full statements
 > are not truncated by the 200-row card limit.
-> **Next round**: News auto-update (§10 Next 1) and the CSI A500 / S&P 500
-> placeholder layer (§10 Next 2). Read §0 and §10 first. The previous round's
+> **Next round: News refresh UI + worker pool** — the approved dock prototype
+> is already in the repo at
+> [`docs/prototypes/task-dock.html`](docs/prototypes/task-dock.html)
+> (commit `dd465fc`); production wires only `news_refresh`. Read §0 and §10
+> “Next — News refresh UI + worker pool” first. After that: the CSI A500 /
+> S&P 500 placeholder layer (§10 Next 2). The previous round's
 > structured-financials backend notes remain below for reference.
 >
 > **Previous round (2026-10-31)** added the headless provider route, HSI, the
@@ -47,8 +51,8 @@
 > **(d) structured F10 shareholder relations** — `gdyj` / `MajorShareholder` /
 > `gbgd` tables become `reported`-status `owns` / `invests_in` edges when the
 > shareholder is already in the universe.
-> The HSI pilot/batch and reviewer outcomes are in §0.3; News auto-update and
-> A500/SPX placeholders remain §10 Next 1/2. The P3.4 first-class sub-agent card
+> The HSI pilot/batch and reviewer outcomes are in §0.3; News refresh UI +
+> worker pool and A500/SPX placeholders remain §10 Next. The P3.4 first-class sub-agent card
 > is **deferred — not needed for this project**; `deep_research` stays a tool
 > card.
 >
@@ -130,9 +134,14 @@
 >   `OCC_EDGAR_CACHE_TTL_MS`. Migration
 >   `packages/db/migrations/0007_financials_stage.sql` (apply with
 >   `node apps/cli/dist/occ.js migrate`).
-> - **Next: News auto-update (§10 Next 1) and A500/SP 500 placeholders
->   (§10 Next 2).** The US EDGAR-only + Financials-tab round is **done** — see
->   §10 “Done — US EDGAR-only + Financials-tab UI (2026-11-01)”.
+> - **Next: News refresh UI + worker pool** — refresh endpoint + worker stamps,
+>   the per-company 刷新新闻 button and the production top-nav `TaskDock`. The
+>   approved prototype is
+>   [`docs/prototypes/task-dock.html`](docs/prototypes/task-dock.html) (commit
+>   `dd465fc`); production wires **only** `news_refresh`. See §10 “Next — News
+>   refresh UI + worker pool”. After that: A500/SP 500 placeholders (§10
+>   Next 2). The US EDGAR-only + Financials-tab round is **done** — see §10
+>   “Done — US EDGAR-only + Financials-tab UI (2026-11-01)”.
 >
 > Snapshot: **2026-10-31 (after the HSI batch)**. ChiNext 50 (`399673`, internal
 > code `CYB50`) is backfilled: **45 ready / 5 needs_review** across all 50
@@ -150,8 +159,10 @@
 >
 > **STAR 50 is deferred to P2 priority** (2026-11-01): do not treat it as the
 > next action. The procedure is kept below for when it is picked up.
-> **Next round**: News auto-update and the A500/SPX placeholder layer
-> (§10 Next 1/2).
+> **Next round**: News refresh UI + worker pool (§10 “Next — News refresh
+> UI + worker pool”); the approved dock prototype is
+> `docs/prototypes/task-dock.html` (commit `dd465fc`). After that: A500/SPX
+> placeholders (§10 Next 2).
 >
 > **ChiNext 50 runs**: pilot `a8511401-a758-4a46-a917-c0aa7954ba2b` (3 targets,
 > `partial` 7/9, 2 revision-cap dead) and full batch
@@ -186,8 +197,11 @@
 
 ### 0.1 Running processes
 
-**None.** The financials drain exited after the final HSI rewrite; no NIM
-gateway is running. To process new work, resume with:
+**No backfill worker and no NIM gateway.** The financials drain exited after the
+US rerun. The developer may keep the API (`node apps/api/dist/server.js`,
+:8787) and Vite (`corepack pnpm --filter @occ/web dev`, :5173) running for
+manual UI testing; those are not batch workers. To process new work, resume
+with:
 
 ```bash
 cd /Users/bowenxu/Downloads/Projects/OpenCorpCheck
@@ -818,7 +832,8 @@ Known limitations:
 - English mode translates UI chrome only; company descriptions stay as sourced.
 - Hot companies are a static front-end list; there is no admin backend.
 - News is a static DB snapshot: no refresh button and no automatic stale sweep
-  yet; ingestion is CLI/worker-only (planned in §10 Next 1). The source is
+  yet; ingestion is CLI/worker-only (planned in §10 “Next — News refresh UI +
+  worker pool”). The source is
   Google News RSS, not agentic search, so a refresh costs 0 LLM tokens.
 - No web unit tests beyond trajectory helpers; acceptance is currently
   Playwright/manual.
@@ -1055,7 +1070,7 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
   company / 30 days, `doc_type='news'`. No full-text fetch or redistribution.
   Ingestion is deterministic and LLM-free; today it runs only through the
   `news.company` worker queue (`occ-backfill enqueue news`). Manual refresh and
-  stale sweep are §10 Next 1.
+  stale sweep are the next task (§10 “Next — News refresh UI + worker pool”).
 - **F10** (`services/finance-analyst` + `packages/sources/eastmoney-f10`):
   A/HK/US structured pages, per-domain rate limits, table/XHR extraction,
   2 MB cap, retries + jitter. Eastmoney data is for internal demo + attribution.
@@ -1688,64 +1703,128 @@ Acceptance and rollback are in the migration doc §7–8. The sidebar path is
 explicitly out of scope: its DeepSeek key, model row, timeout and
 `reasoningEffort` must remain byte-for-byte unchanged.
 
-### Next 1 — News auto-update (after the NIM + Parallel migration)
+### Next — News refresh UI + worker pool (2026-11-01)
 
-**Source facts (verified 2026-10-30).** The news tab is **Google News RSS**, not
-agentic search: [`packages/sources/news/src/google-news.ts`](packages/sources/news/src/google-news.ts)
+> **This is the next agent's task.** The approved dock prototype is already in
+> the repo: [`docs/prototypes/task-dock.html`](docs/prototypes/task-dock.html)
+> (commit `dd465fc`, “place the task dock in the top nav after EN/深色”). Open
+> it in a browser first; it renders both task kinds but **production wires only
+> `news_refresh`** (decision 33 — no filter tabs, no `company_research` rows).
+> News refresh must stay **LLM-free: 0 LLM tokens** (Google News RSS + local
+> BGE-M3 embedding only).
+>
+> **Already implemented (verified 2026-11-01):**
+> - `news.company` queue + `apps/worker/src/jobs/news.ts` (`fetchGoogleNews` →
+>   `ingestNews`; idempotent by title+snippet hash; logs
+>   `inserted/updated/skipped/indexedChunks`).
+> - `enqueueNews` (CLI only) in
+>   [`apps/worker/src/backfill.ts`](apps/worker/src/backfill.ts) — creates a
+>   `news` run + one job per company.
+> - `GET /v1/runs` and `GET /v1/runs/:id` (run + per-job status + summary); the
+>   web has no client for them yet.
+> - News events already render in
+>   [`CompanyNews.tsx`](apps/web/src/components/CompanyNews.tsx) via
+>   `listEvents`; there is **no refresh button and no timestamp**.
+> - Top nav is [`TopNav.tsx`](apps/web/src/components/TopNav.tsx); the dock must
+>   be the last control after `EN` / `深色` (decision 33).
+>
+> **What is missing:** `companies.news_updated_at`, a web-triggerable refresh
+> endpoint with server-side dedupe, the sweep producer, the per-company refresh
+> button, and the production `TaskDock`.
+
+**Source facts.** The news tab is **Google News RSS**, not agentic search:
+[`packages/sources/news/src/google-news.ts`](packages/sources/news/src/google-news.ts)
 fetches `news.google.com/rss/search` (one request per company, 10 items / 30
 days, link-only, no article bodies). [`packages/ingest/src/news.ts`](packages/ingest/src/news.ts)
 writes `documents(doc_type='news')` + one chunk + one source row and indexes
-the chunk; it is idempotent by title+snippet hash. The UI reads
-[`listEvents`](packages/db/src/repositories/insights.ts) from Postgres. **The
-refresh path must stay LLM-free: 0 LLM tokens; only local BGE-M3 embedding,
-and unchanged items skip embedding.**
+the chunk. The UI reads
+[`listEvents`](packages/db/src/repositories/insights.ts) from Postgres.
 
-Stage 1 — manual refresh (per company):
+**Task 1 — persistence + worker pool.**
 
-1. Add a **刷新新闻** button to the News tab header
-   ([`CompanyNews.tsx`](apps/web/src/components/CompanyNews.tsx)); states
-   `idle → refreshing → done | error`, disabled while a refresh is active.
-2. New API: `POST /v1/companies/:ref/news/refresh`.
-   - Resolve the company; reject fixtures and placeholders (no profile → no news).
-   - Deduplicate: if an active/recent news run for this company exists, return
-     it instead of enqueueing a second job (unique run/job key per company +
-     window).
-   - Enqueue the existing `news.company` pg-boss queue (2 retries, polite RSS);
-     respond `202 { runId, status }`.
-3. Persist a company-level timestamp on success (and on a successful empty
-   check): add `companies.news_updated_at` (or a small
-   `company_refresh_state` table). This is also the stage-2 input.
-4. UI polls the run (`GET /v1/runs/:runId` or a dedicated news status endpoint)
-   every ~1 s while visible; on `completed` invalidate the company query so the
-   list re-renders without a reload. Toast: “已更新 N 条” / “已是最新” / error.
-5. Do not pass `force=true` for normal refreshes: unchanged articles must not
-   re-embed.
+1. Migration `0008_news_refresh_state.sql`: add `companies.news_updated_at
+   timestamptz` (nullable) and `companies.news_last_refresh_run_id text`.
+   **There is no `is_placeholder` column** — placeholders are
+   `companies.coverage_tier='stub'`, fixtures are `is_fixture=true`. Do not add
+   a new table unless the run columns are insufficient.
+2. `apps/worker/src/jobs/news.ts`: on success (including a valid empty check)
+   stamp `news_updated_at = now()` and the run id; keep the existing
+   `inserted/updated/skipped` log and return it in the run so the dock can say
+   “已更新 N 条 / 已是最新”. A failed job must not stamp the timestamp.
+3. Sweep producer (worker side, pg-boss schedule, e.g. every 15 min): select
+   companies with `news_updated_at IS NULL OR news_updated_at < now() - ttl`,
+   exclude `is_fixture` and `coverage_tier='stub'`, cap at
+   `OCC_NEWS_REFRESH_BATCH` (default 50), and create **one** `news` run with one
+   job per stale company. Server owns dedupe (advisory lock / unique run key) so
+   multiple tabs and overlapping schedules cannot fan out. `OCC_NEWS_REFRESH_TTL_MS`
+   default 24 h; reuse `OCC_NEWS_CONCURRENCY` and polite RSS rate limits.
+4. Keep `occ-backfill enqueue news` working for operator batches.
 
-Stage 2 — automatic stale sweep:
+**Task 2 — API.**
 
-1. On entering any page, the client calls `POST /v1/news/refresh` (cheap,
-   idempotent). The server selects companies with
-   `news_updated_at < now() - ttl` (exclude fixtures/placeholders), caps the
-   sweep (`OCC_NEWS_REFRESH_BATCH`, e.g. 50), and enqueues one `news` run with
-   one job per stale company.
-2. **The server owns dedupe** (advisory lock / unique run per sweep); multiple
-   tabs must not fan out. A pg-boss schedule (e.g. every 15 min) should do the
-   real sweep; the page-entry call only nudges it.
-3. TTL: `OCC_NEWS_REFRESH_TTL_MS`, default 24 h. Respect Google News terms: one
-   request per company, reuse `newsConcurrency`, per-domain rate limits.
-4. UI: **reuse the shared top-nav task dock** (defined in Next 2) with task
-   kind `news_refresh`. Do not build a separate news progress widget: the dock
-   shows one group “更新新闻 · 42 家公司” with per-company subtasks and the
-   same completed/failed states as research.
+1. `POST /v1/companies/:ref/news/refresh` → `202 { runId, status, deduped }`.
+   Resolve the company; reject fixtures / stubs (no profile → no news); if a
+   run for this company is queued/active/recent, return it instead of
+   enqueueing (this is the “two clicks / two tabs = one job” rule). Enqueue one
+   `news.company` job through pg-boss (`createRun("news", …)`, like
+   `ResearchService.enqueue` in
+   [`apps/api/src/services/research.ts`](apps/api/src/services/research.ts)).
+   Do **not** pass `force=true`; unchanged articles must not re-embed.
+2. `POST /v1/news/refresh` (cheap, idempotent page-entry nudge): delegates to
+   the sweep producer / advisory lock; returns
+   `{ runId | null, stale, enqueued }`. Before the TTL it does nothing.
+3. Add both to `apps/api/src/openapi.ts`; expose a small `getRun` helper in
+   `apps/web/src/api.ts` for polling.
+4. The API only enqueues — workers do the fetch. If no worker is running, the
+   refresh stays `queued`; say so in the UI (`排队中`) instead of spinning.
 
-Acceptance:
+**Task 3 — News tab UI.**
 
-- Manual refresh shows new items without a full reload; unchanged refresh is a
-  clear no-op (“已是最新”).
-- Two clicks / two tabs produce one job.
-- Stage 2 enqueues stale companies once after TTL; a second page entry before
-  TTL does nothing.
-- No LLM API call anywhere in the refresh path; embeddings are local.
+1. Add a **刷新新闻** button to the News tab header in
+   [`CompanyNews.tsx`](apps/web/src/components/CompanyNews.tsx):
+   `idle → refreshing → done (“已更新 N 条” / “已是最新”) → error`, disabled
+   while active. Poll `GET /v1/runs/:runId` every ~1 s while visible; on
+   completion invalidate the company query so the list re-renders without a
+   reload. Do not pass `force`.
+2. Add the i18n keys (zh/en) and a small inline status line; reuse the existing
+   toast/notice pattern rather than adding a new global toast system.
+
+**Task 4 — production TaskDock (port the prototype).**
+
+1. Port [`docs/prototypes/task-dock.html`](docs/prototypes/task-dock.html) into
+   `apps/web/src/components/TaskDock.tsx` + styles:
+   - collapsed button: 46×46 ring with aggregate progress, count badge when
+     active; `aria-expanded`, `aria-controls`, `aria-label="任务进度，15/48"`;
+   - expanded card: header `任务` + subline, overall `15/48 · 31%` with
+     `role="progressbar"` (`aria-valuemin/max/now`), one group row per news run
+     (“更新新闻 · 42 家公司”), status line (`更新中 12/42 · 28%` /
+     `已完成 — 128 条` / `2 家需要重试`), progress bar, elapsed, chevron;
+     expanded body lists per-company subtasks with state dot, name + ticker,
+     detail (`8 条` / `抓取中` / `RSS 超时`), and a link to `/c/:ticker`.
+   - **Production differences:** no `公司数据` tab and no `company_research`
+     rows (decision 33); remove the prototype note; keep 全部/更新新闻 only if
+     a filter is kept — preferred: no tabs at all (one kind).
+2. Mount `<TaskDock />` in [`TopNav.tsx`](apps/web/src/components/TopNav.tsx)
+   as the last control after `EN` / `深色`; it must be global across routes.
+3. Polling: one manager per active run, `GET /v1/runs/:runId` every 1–2 s while
+   expanded, slower when collapsed; stop when the run is terminal. Closing the
+   dock does not cancel anything.
+4. States: `queued`, `running`, `completed`, `partial`, `failed`; colour **and**
+   text encode state; polite live region on completion; respect
+   `prefers-reduced-motion`; mobile becomes a full-width sheet under the header
+   and never causes horizontal scroll.
+
+**Acceptance**
+
+- Manual refresh shows new items without a reload; an unchanged refresh says
+  “已是最新”; two clicks / two tabs produce one job.
+- The dock appears on every route after `EN` / `深色`, shows the news run with
+  per-company progress, and stays consistent while collapsed/expanded.
+- Stage 2 enqueues each stale company once after the TTL; a second page entry
+  before the TTL does nothing; fixtures/stubs are never swept.
+- No LLM API call anywhere in the refresh path (embeddings are local); tests
+  cover dedupe, TTL selection and the dock’s pure view helpers.
+- `docs/UI.md` §7.5 and the §11 handoff checklist are updated.
 
 ### Next 2 — A500 + S&P 500 placeholders + local research/reviewer worker pool
 
@@ -1766,7 +1845,8 @@ profile is never overwritten.
 are **cancelled**. Placeholders are filled only when the operator runs a local
 batch through the worker pool (NIM + Parallel). There is still **no full
 constituent sweep**: A500/SPX batches are explicit, capped and operator-started.
-On-demand **news refresh** stays (Next 1, 0 LLM tokens).
+On-demand **news refresh** stays (§10 “Next — News refresh UI + worker
+pool”, 0 LLM tokens).
 
 Placeholder row:
 
@@ -2164,9 +2244,11 @@ and a UI smoke suite.
 - [ ] Resume failure shows the yellow `agent.resume.failed` notice between the
       question and the answer, then answers normally (do not fail the prompt).
 - [ ] News stage 1: “刷新新闻” updates the tab without a reload; unchanged run
-      says “已是最新”; two clicks/tabs produce one job; no LLM tokens.
+      says “已是最新”; two clicks/tabs produce one job; no LLM tokens; the
+      worker stamps `companies.news_updated_at` on success only.
 - [ ] News stage 2: entering a page after the TTL enqueues each stale company
-      once; before the TTL it does nothing.
+      once; before the TTL it does nothing; fixtures (`is_fixture`) and stubs
+      (`coverage_tier='stub'`) are never swept.
 - [ ] A500 + SPX placeholders: constituent counts match minus existing
       companies; no documents/embeddings; default search excludes them; index
       pages and direct `/c/:ticker` show the 未收录 state.
@@ -2175,8 +2257,11 @@ and a UI smoke suite.
 - [ ] Local capped research batch (operator CLI) runs through the worker pool on
       NIM/Parallel; reviewer pass flips the page to the full profile,
       `revise` is capped at 2 cycles.
-- [ ] Shared task dock prototype approved (commit `dd465fc`); production dock
-      wires **only** `news_refresh` — no `company_research` rows, no filter tabs.
+- [ ] Shared task dock prototype approved (commit `dd465fc`,
+      `docs/prototypes/task-dock.html`); port it to
+      `apps/web/src/components/TaskDock.tsx`, mount it in `TopNav.tsx` as the
+      last control after `EN` / `深色`, and wire **only** `news_refresh` — no
+      `company_research` rows, no filter tabs, no “原型 · 模拟数据” footer.
 - [ ] A/HK **bulk backfill** plan is STAR 50 + ChiNext 50 + HSI; ChiNext 50 is
       done and STAR 50 is deferred to P2 priority; **A500 and
       SPX stay placeholder-only** (filled by explicit, capped operator batches),
