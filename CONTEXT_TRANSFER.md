@@ -1187,15 +1187,17 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     costs **0 LLM tokens**. No summarization/review agent in this path;
     add AI summaries as a separate, explicitly opt-in feature later.
 29. **News refresh is automatic, idempotent and server-deduped** (revised
-    2026-11-01): a pg-boss schedule runs a sweep that selects due companies from
+    2026-11-01): a **daily** pg-boss schedule (`OCC_NEWS_SWEEP_CRON`, default
+    `0 7 * * *`) runs a sweep that selects due companies from
     `global_news_last_update` (per-company key `US:AAPL` / `A:600519` /
     `HK:00700` / `NAME:<slug>`, `last_update_at` + `next_due_at` lease) and
     enqueues one `news.company` job per company. An advisory lock makes
     concurrent sweeps a no-op; the lease (claim timeout) recovers jobs lost
     with a worker crash. The public UI has **no refresh control** and there is
     no client-triggered sweep. Article-level dedupe stays title+snippet hash
-    (unchanged items skip embedding). TTL, sweep interval and batch are
-    configurable.
+    (unchanged items skip embedding). TTL is 23 h (deliberately shorter than
+    the 24 h period) so every company is due each day; cron, TTL and batch are
+    configurable as a set.
 30. **Placeholders are first-class rows, not seed data**: `coverage_tier='stub'`
     (the current schema has **no `is_placeholder` column**; do not add one),
     only ticker + Chinese/English names + index membership. They are excluded
@@ -1802,10 +1804,14 @@ create index if not exists global_news_due_idx
 **Scheduling — one producer, pg-boss schedule**
 
 1. Register a fixed schedule `news-sweep` on worker/API boot (idempotent, same
-   schedule name): every `OCC_NEWS_SWEEP_INTERVAL_MIN` (default **15**, cron `*/N * * * *`).
-   The schedule job uses a pg-boss `singletonKey: "news-sweep"` so a worker that
-   was offline does not process a backlog of sweeps — at most one pending sweep
-   exists.
+   schedule name): **once a day**, `OCC_NEWS_SWEEP_CRON` default
+   `0 7 * * *` (07:00 server-local time). The schedule job uses a pg-boss
+   `singletonKey: "news-sweep"` so a worker that was offline does not process a
+   backlog of sweeps — at most one pending sweep exists. One daily sweep is
+   enough for this product: it is ≈235 RSS requests per day in total and keeps
+   the corpus at most ~24 h old. If fresher news is ever required, change the
+   cron **and** the TTL together (e.g. every 6 h with a 5 h TTL) — never change
+   one without the other.
 2. The sweep job **only selects and enqueues**. All fetching stays in the
    existing `news.company` queue (`apps/worker/src/jobs/news.ts`). The API
    never fetches news.
@@ -1835,10 +1841,16 @@ For each sweep:
    not a fixture, `coverage_tier <> 'stub'`, and
    `COALESCE(next_due_at, '-infinity') <= now()`. Order by
    `COALESCE(next_due_at, companies.created_at)` and limit to
-   `OCC_NEWS_SWEEP_BATCH` (default **50**).
-2. TTL: `OCC_NEWS_TTL_MS` default **6 h** (≈ 4 checks/day/company). Add jitter
-   of 0–10% of the TTL to the next due time so 235 companies do not all fall
-   due in the same minute.
+   `OCC_NEWS_SWEEP_BATCH` (default **250**, a safety cap that covers the current
+   235-company corpus — raise it when the corpus grows so no company waits
+   multiple days).
+2. TTL: `OCC_NEWS_TTL_MS` default **23 h**, deliberately **shorter than the
+   24 h sweep period** so every company is due at the next daily sweep (an
+   exact 24 h TTL would skip companies whose previous run finished after the
+   sweep time and leave them at 48 h). No jitter: the single daily sweep
+   enqueues the whole due set at once and `OCC_NEWS_CONCURRENCY=2` paces the
+   requests. The expected freshness is therefore “≤ ~24 h old”, which is the
+   agreed product trade-off.
 3. **Lease before enqueue:** set `last_enqueued_at = now()` and
    `next_due_at = now() + OCC_NEWS_CLAIM_TIMEOUT_MS` (default **30 min**). This
    is the dedupe guard for overlapping sweeps and multiple tabs/instances. A job
@@ -1851,12 +1863,14 @@ For each sweep:
    due company; job key `${runId}:${key}` (existing scheme).
 5. **On success** the worker stamps `last_update_at = now()`,
    `newest_published_at = max(seen pubDate)`,
-   `next_due_at = last_update_at + ttl + jitter`, `last_status = 'ok'` (or
+   `next_due_at = last_update_at + ttl`, `last_status = 'ok'` (or
    `'empty'` when the feed returned no items), `last_inserted` /
    `last_skipped`, and resets `consecutive_failures`.
 6. **On failure** do not touch `last_update_at`; increment
-   `consecutive_failures`; `next_due_at = now() + min(15 min × 2^n, ttl)`. After
-   5 consecutive failures set `last_status='paused'` and
+   `consecutive_failures`; `next_due_at = now() + min(15 min × 2^n, ttl)`. With
+   the daily sweep the practical retry is simply the next day's sweep; the
+   backoff mainly protects an operator `news sweep --now` from re-hitting a
+   failing feed. After 5 consecutive failures set `last_status='paused'` and
    `next_due_at = now() + 24 h`; a later success resets it. Never hammer Google
    News.
 7. Automatic runs never pass `force=true`; unchanged items must not re-embed.
@@ -1884,10 +1898,10 @@ for a query. Precise incrementality therefore has three layers:
 - `maxItems`: **20 on the cold start**, **10 steady state**. News remains a
   coverage layer of the newest items, not an archive; do not page backwards.
 
-**Volume estimate.** 235 real companies (NDX 100 + HSI 85 + CYB50 50) at 6 h →
-≈ 940 RSS requests/day, **0 LLM tokens**; embedding only for new articles
-(local BGE-M3). At 24 h it is ≈ 235/day. `OCC_NEWS_CONCURRENCY=2` stays; the
-sweep batch cap bounds the burst.
+**Volume estimate.** 235 real companies (NDX 100 + HSI 85 + CYB50 50) at one
+daily sweep → **≈235 RSS requests/day**, **0 LLM tokens**; embedding only for
+new articles (local BGE-M3). `OCC_NEWS_CONCURRENCY=2` stays and paces the
+burst; `OCC_NEWS_SWEEP_BATCH=250` covers the corpus in one sweep.
 
 **UI — observe only, no refresh control**
 
@@ -1924,7 +1938,7 @@ sweep batch cap bounds the burst.
 
 **API (read-only)**
 
-- `GET /v1/news/status` → `{ active: { runId, status, total, done, failed, startedAt } | null, lastSweep: {...} | null, dueCount, nextDueAt, ttlMs, sweepIntervalMin }`.
+- `GET /v1/news/status` → `{ active: { runId, status, total, done, failed, startedAt } | null, lastSweep: {...} | null, dueCount, nextDueAt, ttlMs, sweepCron }`.
 - `GET /v1/news/status?company=<ref>` → the global block plus
   `{ company: { key, lastUpdateAt, lastStatus, nextDueAt, lastInserted }, run?: {...} }`;
   404 for an unknown company.
@@ -1952,7 +1966,7 @@ sweep batch cap bounds the burst.
 **Tests and acceptance**
 
 - Unit (fake clock): due / not-due selection, lease expiry reclaims a lost job,
-  backoff after failures, paused after 5, jitter bounds, `sinceDays` clamp,
+  backoff after failures, paused after 5, TTL shorter than the sweep period, `sinceDays` clamp,
   second concurrent sweep is skipped by the advisory lock.
 - Worker (fixture RSS, no network): success stamps `last_update_at` and next
   due; an empty check still stamps and reports `empty`; a failure does not
@@ -2404,7 +2418,7 @@ and a UI smoke suite.
       question and the answer, then answers normally (do not fail the prompt).
 - [ ] Automatic news refresh (design in §10): `global_news_last_update` exists
       and is the only per-company cursor; the pg-boss `news-sweep` schedule
-      selects only due companies (advisory-locked, batch-capped, TTL + jitter);
+      selects only due companies (advisory-locked, daily cron, batch-capped, TTL < period);
       the worker stamps `last_update_at` / `next_due_at` on success (including
       an empty check) and backs off on failure; fixtures (`is_fixture`) and
       stubs (`coverage_tier='stub'`) never get a row; **no manual refresh
