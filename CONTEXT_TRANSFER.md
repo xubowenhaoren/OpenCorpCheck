@@ -55,16 +55,33 @@
 
 ---
 
-## 0. LIVE STATE — HSI backfill COMPLETE (17:25, read first)
+## 0. LIVE STATE — ChiNext 50 backfill COMPLETE (2026-10-31, read first)
 
-> Snapshot: **2026-10-31 17:25 PT**. The HSI batch finished as `partial`:
-> **59 ready / 26 needs_review** across all 85 constituents, **85/85 HSI
-> memberships**, **21 reported relations** (7 `owns` + 14 `invests_in`).
-> No worker is running and all queues are empty. Do **not** re-enqueue the
-> universe; the 26 `needs_review` rows are operator work.
+> Snapshot: **2026-10-31 (after the HSI batch)**. ChiNext 50 (`399673`, internal
+> code `CYB50`) is backfilled: **45 ready / 5 needs_review** across all 50
+> constituents, **50/50 CYB50 memberships** (`as_of=2026-06-15`), **1 reported
+> F10 edge** (宁德时代 invests_in 天华新能, 16.87%). No worker is running and
+> all queues are empty. Do **not** re-enqueue the universe; the 5
+> `needs_review` rows are operator work.
 >
-> **Next action: ChiNext 50 backfill** (`399673`, internal code `CYB50`) —
-> plan in §10 Next 3.
+> **Next action: STAR 50 backfill** (`000688`, internal code `STAR50`) — the
+> same procedure as Next 3 below, with SSE instead of SZSE.
+>
+> **ChiNext 50 runs**: pilot `a8511401-a758-4a46-a917-c0aa7954ba2b` (3 targets,
+> `partial` 7/9, 2 revision-cap dead) and full batch
+> `1514f251-5c6f-4eba-81a3-a063bb74732a` (47 targets, `partial` 138/141, 3
+> revision-cap dead). Tokens: 5.03M input / 836k output for the full batch;
+> p50 110 s per job.
+>
+> **Why only 1 A-share ownership edge**: A-share `gdyj` top-10 tables are
+> mostly funds below the 0.5% threshold plus out-of-universe groups — 1,073
+> shareholder rows read, 947 unmatched, 1 new edge. This is honest coverage,
+> not a bug; do not fabricate edges.
+>
+> **HSI (previous round)**: batch finished as `partial`: **59 ready / 26
+> needs_review** across all 85 constituents, **85/85 HSI memberships**,
+> **21 reported relations** (7 `owns` + 14 `invests_in`). Those 26
+> `needs_review` rows remain operator work. Details in §0.2/§0.3 below.
 
 > **14:16 provider switch (historical).** The 13:49 NIM incident (see §0.3.1)
 > was resolved by switching the research default to the official route. The
@@ -101,13 +118,32 @@ sustained per-model 429s at 13:49.
 
 | Run id | What | Final status |
 |---|---|---|
+| `1514f251-5c6f-4eba-81a3-a063bb74732a` | **full ChiNext 50 batch**, 47 targets; excludes pilots `300014,300015,300017` | `partial` — 138/141, 3 dead (revision cap: `300408`, `300757`, `300803`) |
+| `a8511401-a758-4a46-a917-c0aa7954ba2b` | ChiNext 50 pilot `300014` / `300015` / `300017` | `partial` — 7/9, 2 dead (revision cap) |
 | `a19a67ba-8739-4361-833b-6887395556ad` | **full HSI batch**, 81 targets; excludes pilots `00700,00001,00006,01038` | `partial` — 217/241, 24 dead (all revision cap) |
 | `5e7da4c4-4aa8-4c28-aa41-7f8604cabc60` | cross-holding pilot `00001` / `00006` / `01038` | `partial` — 7/9, 2 dead |
 | `b9d9b644-58c9-4ee1-b58a-f0401eecbc75` | `HK:00700` pilot | `partial` — `needs_review` after 2 revisions |
 | `cf9fcd03-afa1-4f95-8220-357141796bb2` | `HK:00101` dead-letter retry (1 target) | `completed` — 3/3, now `ready` |
 | `4e989c34-d38a-4820-96ac-559ff57c297a` | `HK:01088` / `HK:00939` parse-failure rerun | `partial` — 4/6, both revision cap |
 
-### 0.3 Final counts (17:25)
+### 0.3 Final counts
+
+**ChiNext 50 (2026-10-31, current):**
+
+- `company_research_state` for the 50 CYB50 companies: **`ready=45`**,
+  **`needs_review=5`** (`300014` 亿纬锂能, `300015` 爱尔眼科, `300408` 三环集团,
+  `300757` 罗博特科, `300803` 指南针). All 5 are **revision cap**
+  (`reviewer requested revisions 3 time(s)`), not parse/transport failures.
+- `index_memberships` CYB50 `as_of=2026-06-15`: **50/50**.
+- `relations` for CYB50 targets: **`reported=1`** (宁德时代 → 天华新能,
+  `invests_in`, 16.87%). 1,073 shareholder rows read by the post-batch
+  `relations f10 --universe cyb50` pass; 947 outside the universe (not
+  fabricated). A-share tables are mostly funds under 0.5%.
+- `/v1/indices/CYB50` returned **50 members** (API started temporarily for the
+  check, then stopped).
+- Full batch token use: 5.03M input / 836k output; p50 110 s, p95 229 s.
+
+**HSI (previous round, 17:25):**
 
 - research queue: `completed=299`, `failed=1` (historical `HK:00101` row);
   no active/created/retry. ingest `completed=291`; review `completed=187`.
@@ -323,7 +359,7 @@ plus an AI watchlist and on-demand private companies):
 | CSI A500 / 中证A500 | `000510` | A | **placeholder (planned)**: stub pages, filled only by operator batches |
 | S&P 500 | `SPX` | US | **placeholder (planned)**: stub pages, filled only by operator batches |
 | STAR 50 / 科创50 | `000688` | A (SSE) | planned bulk backfill (P4) |
-| ChiNext 50 / 创业板50 | `399673` | A (SZSE) | planned bulk backfill (P4) |
+| ChiNext 50 / 创业板50 | `399673` | A (SZSE) | **done 2026-10-31**: 50 constituents, 45 ready / 5 needs_review |
 | Hang Seng Index | `HSI` | HK | **snapshot added 2026-10-31**: 85 constituents in `config/indices/hsi.yaml`; pilot → full batch in progress |
 | NASDAQ-100 | `NDX` | US | **done**: 100 companies backfilled |
 
@@ -397,6 +433,9 @@ plus an AI watchlist and on-demand private companies):
 - **HSI (2026-10-31)**: `config/indices/hsi.yaml` + worker `--universe hsi`;
   A/HK research attaches F10 by default. Pilot on `HK:00700` exercises
   research → ingest → reviewer → revise.
+- **ChiNext 50 (2026-10-31)**: `config/indices/cyb50.yaml` + worker
+  `--universe cyb50` (`CYB50`, SZSE). Full batch finished **45 ready /
+  5 needs_review**; `scripts/backfill-cyb50.sh` runs it. STAR 50 is next.
 - **Reviewer (2026-10-31)**: `review.company` queue + `company_research_state`;
   official DeepSeek with reasoning on, structured JSON, max 2 revisions, then
   `needs_review`. `occ-backfill states` exposes operator status.
@@ -1033,45 +1072,57 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 
 ## 10. Next tasks
 
-### Next 3 — ChiNext 50 backfill (next action, 2026-10-31)
+### Done — ChiNext 50 backfill (2026-10-31)
 
-**Goal**: backfill the 50 **ChiNext 50 (创业板50, SZSE 399673)** constituents
-on the pipeline that just finished HSI.
+Completed with the procedure below. Result: **45 ready / 5 needs_review**,
+50/50 memberships, 1 reported F10 edge. Pilot run `a8511401…` (3 targets) and
+full batch `1514f251…` (47 targets). New files:
+`config/indices/cyb50.yaml`, `scripts/backfill-cyb50.sh`; `cyb50` /
+`chinext50` added to `INDEX_UNIVERSES` in
+[`apps/worker/src/universe.ts`](apps/worker/src/universe.ts).
+The 5 `needs_review` rows are operator work (revision cap).
 
-1. **Snapshot** `config/indices/cyb50.yaml`:
-   - `index.code: "CYB50"` (the web/API index code; `config/universe.yaml`
-     still lists the vendor code `399673`), `name: "ChiNext 50 (创业板50)"`,
-     `market: A`, `as_of`, `fetched_at`, `securities: 50`, `companies: 50`,
-     and a `source` with `url` + `license`.
-   - `constituents`: 6-digit SZSE tickers (`300750`, `300059`, …), Chinese
-     names, `exchange: SZSE`, `primary: true`. Verify against the SZSE
-     constituent list and record `as_of`; this is an internal snapshot.
-2. **Worker mapping** [`apps/worker/src/universe.ts`](apps/worker/src/universe.ts):
-   add
-   `cyb50: { file: "cyb50.yaml", market: "A", exchange: "SZSE", coverage: "index_member" }`,
-   update the `unknown index universe` message, and add `cyb50` to the
+**Steps that produced it** (reuse for STAR 50):
+
+1. Snapshot `config/indices/cyb50.yaml` with `index.code: "CYB50"`, market `A`,
+   exchange `SZSE`, `as_of`, source/license, and 6-digit tickers.
+   Verify against the current SZSE/CNI constituent list; the June 2026
+   rebalance added 罗博特科 / 迈为股份 / 光库科技 / 香农芯创 / 天华新能 and
+   removed 智飞生物 / 泰格医药 / 康龙化成 / 机器人 / 神州泰岳. Note that
+   `300223`'s ticker name is now **君正股份** (renamed 2026-08-13).
+2. Add
+   `cyb50: { file: "cyb50.yaml", market: "A", exchange: "SZSE", coverage: "index_member" }`
+   to `INDEX_UNIVERSES`; update the `unknown universe` message and the
    `--universe` usage in [`apps/worker/src/cli.ts`](apps/worker/src/cli.ts).
-3. **Pilot**: `enqueue research --universe cyb50 --limit 3`. The index spec
-   carries `exchange: SZSE` and A-share F10 (`gdyj`); verify research → ingest
-   → review on official DeepSeek with `reasoningEffort: low`, and check that
-   the A-share shareholder edges resolve.
-4. **Batch**: after the pilot,
-   `node apps/worker/dist/cli.js enqueue research --universe cyb50`, then
-   `OCC_LLM_PROVIDER=deepseek node apps/worker/dist/cli.js work --queues research,ingest,review,f10 --drain`
-   with the current pool (research 4 / ingest 2 / review 4). Supervise exactly
-   as in §0.4; never re-enqueue the universe on retries.
-5. **Finish**: `relations f10 --universe cyb50`; verify `/indices/CYB50` shows
-   50 members and spot-check the graph. Report ready/needs_review counts;
+3. Pilot: `enqueue research --universe cyb50 --limit 3`, then
+   `OCC_LLM_PROVIDER=deepseek node apps/worker/dist/cli.js work --queues research,ingest,review,f10 --drain`.
+   Verify research → ingest → review and that `index_memberships` gets CYB50
+   rows.
+4. Batch: `enqueue research --universe cyb50 --exclude <pilots>` then the same
+   drain. Supervise via `status --run` / `states`; never re-enqueue on retries.
+5. Finish: `relations f10 --universe cyb50`; verify
+   `curl /v1/indices/CYB50` shows 50 members. Report ready/needs_review;
    `needs_review` is operator work, not a failure.
 
 **Gotchas**
-- The internal index code must be **`CYB50`** (the web filter list is
-  `NDX, STAR50, CYB50, HSI`). Using `399673` as `index_code` leaves
-  `/indices/CYB50` empty.
-- A-share profiles are Chinese; the reviewer applies the same strict
-  numeric/citation checklist (expect a meaningful `needs_review` share).
+- The internal index code must equal the web filter code (`CYB50`, `STAR50`),
+  not the vendor code (`399673`, `000688`), or `/indices/CYB50` is empty.
+- A-share profiles are Chinese; expect a meaningful `needs_review` share and
+  sparse in-universe shareholder edges (see §0).
 - Do not raise `OCC_REVIEW_MAX_CYCLES`; do not move the reviewer off
   official DeepSeek + `reasoningEffort: high`.
+
+### Next — STAR 50 backfill (SSE 000688, internal `STAR50`)
+
+Same procedure as the Done section above, with:
+- `config/indices/star50.yaml`, `index.code: "STAR50"`, `market: A`,
+  `exchange: SSE`, 6-digit SSE tickers (688xxx), `as_of` from the current
+  SSE/STAR 50 constituent list with source + license.
+- `star50: { file: "star50.yaml", market: "A", exchange: "SSE", coverage: "index_member" }`
+  in `INDEX_UNIVERSES`, plus `--universe` usage text.
+- `scripts/backfill-star50.sh` modeled on `scripts/backfill-cyb50.sh`.
+- A-share F10 (`gdyj`) is attached automatically; run the post-batch
+  `relations f10 --universe star50` pass.
 
 ### Next 0 — Headless-provider cutover only (P0)
 
@@ -1517,8 +1568,9 @@ post-batch `relations f10` pass re-resolves cached shareholder pages against the
 now-complete HSI universe (a 01038 shareholder of 00006 may not exist yet when
 00006 ingests). The full batch for the remaining **81 companies** was enqueued
 as run `a19a67ba-8739-4361-833b-6887395556ad` (excludes the 4 pilot names
-`00700,00001,00006,01038`); `occ-backfill status` / `states` track it. STAR 50 /
-ChiNext 50 snapshots remain to do.
+`00700,00001,00006,01038`); `occ-backfill status` / `states` track it.
+ChiNext 50 is done (`config/indices/cyb50.yaml`, 2026-10-31; 45 ready /
+5 needs_review). **STAR 50 remains** (`000688`, SSE, internal `STAR50`).
 
 - Index snapshots: **STAR 50 (000688, SSE)**, **ChiNext 50 (399673, SZSE)**,
   **HSI**; store `as_of`, weights and license. **Do not add S&P 500.** NDX is
