@@ -25,13 +25,14 @@
 > `东方财富 F10` / `研究资料` / `推导` / `累计`), annual/quarter/half/TTM modes,
 > a coverage + fiscal-year-end line, and per-kind fetching so full statements
 > are not truncated by the 200-row card limit.
-> **Next round: News refresh UI + worker pool** — the approved dock prototype
-> is already in the repo at
-> [`docs/prototypes/task-dock.html`](docs/prototypes/task-dock.html)
-> (commit `dd465fc`); production wires only `news_refresh`. Read §0 and §10
-> “Next — News refresh UI + worker pool” first. After that: the CSI A500 /
-> S&P 500 placeholder layer (§10 Next 2). The previous round's
-> structured-financials backend notes remain below for reference.
+> **Next round: automatic news refresh (design only)** — the manual 刷新新闻
+> button is **cancelled**; news updates run from a pg-boss schedule with a
+> per-company cursor table `global_news_last_update`. The approved dock
+> prototype (`docs/prototypes/task-dock.html`, commit `dd465fc`) is still the
+> visual reference for progress, but it has no manual controls. Read §0 and §10
+> “Next — Automatic news refresh” first. After that: the CSI A500 / S&P 500
+> placeholder layer (§10 Next 2). The previous round's structured-financials
+> backend notes remain below for reference.
 >
 > **Previous round (2026-10-31)** added the headless provider route, HSI, the
 > hidden reviewer and structured F10 shareholder relations:
@@ -51,8 +52,8 @@
 > **(d) structured F10 shareholder relations** — `gdyj` / `MajorShareholder` /
 > `gbgd` tables become `reported`-status `owns` / `invests_in` edges when the
 > shareholder is already in the universe.
-> The HSI pilot/batch and reviewer outcomes are in §0.3; News refresh UI +
-> worker pool and A500/SPX placeholders remain §10 Next. The P3.4 first-class sub-agent card
+> The HSI pilot/batch and reviewer outcomes are in §0.3; automatic news refresh
+> and A500/SPX placeholders remain §10 Next. The P3.4 first-class sub-agent card
 > is **deferred — not needed for this project**; `deep_research` stays a tool
 > card.
 >
@@ -134,14 +135,15 @@
 >   `OCC_EDGAR_CACHE_TTL_MS`. Migration
 >   `packages/db/migrations/0007_financials_stage.sql` (apply with
 >   `node apps/cli/dist/occ.js migrate`).
-> - **Next: News refresh UI + worker pool** — refresh endpoint + worker stamps,
->   the per-company 刷新新闻 button and the production top-nav `TaskDock`. The
->   approved prototype is
->   [`docs/prototypes/task-dock.html`](docs/prototypes/task-dock.html) (commit
->   `dd465fc`); production wires **only** `news_refresh`. See §10 “Next — News
->   refresh UI + worker pool”. After that: A500/SP 500 placeholders (§10
->   Next 2). The US EDGAR-only + Financials-tab round is **done** — see §10
->   “Done — US EDGAR-only + Financials-tab UI (2026-11-01)”.
+> - **Next: automatic news refresh (design only)** — no manual 刷新新闻 button.
+>   A pg-boss schedule selects due companies from `global_news_last_update`
+>   (per-company cursor/lease), enqueues `news.company`, and the worker stamps
+>   the cursor. The top-nav `TaskDock` (prototype
+>   [`docs/prototypes/task-dock.html`](docs/prototypes/task-dock.html), commit
+>   `dd465fc`) observes the sweeps. See §10 “Next — Automatic news refresh”.
+>   After that: A500/SP 500 placeholders (§10 Next 2). The US EDGAR-only +
+>   Financials-tab round is **done** — see §10 “Done — US EDGAR-only +
+>   Financials-tab UI (2026-11-01)”.
 >
 > Snapshot: **2026-10-31 (after the HSI batch)**. ChiNext 50 (`399673`, internal
 > code `CYB50`) is backfilled: **45 ready / 5 needs_review** across all 50
@@ -159,10 +161,9 @@
 >
 > **STAR 50 is deferred to P2 priority** (2026-11-01): do not treat it as the
 > next action. The procedure is kept below for when it is picked up.
-> **Next round**: News refresh UI + worker pool (§10 “Next — News refresh
-> UI + worker pool”); the approved dock prototype is
-> `docs/prototypes/task-dock.html` (commit `dd465fc`). After that: A500/SPX
-> placeholders (§10 Next 2).
+> **Next round**: automatic news refresh (§10 “Next — Automatic news refresh”)
+> — pg-boss sweep + `global_news_last_update`; no manual refresh button. After
+> that: A500/SPX placeholders (§10 Next 2).
 >
 > **ChiNext 50 runs**: pilot `a8511401-a758-4a46-a917-c0aa7954ba2b` (3 targets,
 > `partial` 7/9, 2 revision-cap dead) and full batch
@@ -200,8 +201,9 @@
 **No backfill worker and no NIM gateway.** The financials drain exited after the
 US rerun. The developer may keep the API (`node apps/api/dist/server.js`,
 :8787) and Vite (`corepack pnpm --filter @occ/web dev`, :5173) running for
-manual UI testing; those are not batch workers. To process new work, resume
-with:
+manual UI testing; those are not batch workers. **Automatic news refresh
+(§10 Next) needs a worker with the `news` queue** — the API only schedules and
+enqueues. To process new work, resume with:
 
 ```bash
 cd /Users/bowenxu/Downloads/Projects/OpenCorpCheck
@@ -423,6 +425,14 @@ psql postgres://occ@127.0.0.1:5432/occdb -c \
 psql postgres://occ@127.0.0.1:5432/occdb -c \
   "select count(*) from financial_facts f join sources s on s.id=f.source_id
     where f.method='f10' and s.url like '%PC_USF10%';"
+
+# After the automatic news refresh lands (§10 Next): due backlog and cursor state
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select count(*) filter (where next_due_at <= now()) due, count(*) total
+     from global_news_last_update;"
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select key,last_status,last_update_at,next_due_at,consecutive_failures
+     from global_news_last_update order by last_update_at nulls first limit 20;"
 ```
 
 ### 0.5 What “normal” looks like
@@ -831,10 +841,10 @@ Known limitations:
 - Many NDX companies have `sector = null`; the index page shows `—`.
 - English mode translates UI chrome only; company descriptions stay as sourced.
 - Hot companies are a static front-end list; there is no admin backend.
-- News is a static DB snapshot: no refresh button and no automatic stale sweep
-  yet; ingestion is CLI/worker-only (planned in §10 “Next — News refresh UI +
-  worker pool”). The source is
-  Google News RSS, not agentic search, so a refresh costs 0 LLM tokens.
+- News is a static DB snapshot: no automatic sweep yet and **no refresh button
+  by design**; ingestion is CLI/worker-only. The automatic per-company cursor
+  design is §10 “Next — Automatic news refresh”. The source is Google News
+  RSS, not agentic search, so a refresh costs 0 LLM tokens.
 - No web unit tests beyond trajectory helpers; acceptance is currently
   Playwright/manual.
 - Production static hosting (API/nginx same-origin) is still TODO.
@@ -1069,8 +1079,9 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 - **News** (`packages/sources/news`): Google News RSS, link-only, ~10 items /
   company / 30 days, `doc_type='news'`. No full-text fetch or redistribution.
   Ingestion is deterministic and LLM-free; today it runs only through the
-  `news.company` worker queue (`occ-backfill enqueue news`). Manual refresh and
-  stale sweep are the next task (§10 “Next — News refresh UI + worker pool”).
+  `news.company` worker queue (`occ-backfill enqueue news`). Automatic
+  incremental refresh is designed in §10 “Next — Automatic news refresh”
+  (`global_news_last_update` + pg-boss sweep); it is not implemented yet.
 - **F10** (`services/finance-analyst` + `packages/sources/eastmoney-f10`):
   A/HK/US structured pages, per-domain rate limits, table/XHR extraction,
   2 MB cap, retries + jitter. Eastmoney data is for internal demo + attribution.
@@ -1175,13 +1186,21 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     refresh path reuses the Google News RSS adapter and local embeddings, so it
     costs **0 LLM tokens**. No summarization/review agent in this path;
     add AI summaries as a separate, explicitly opt-in feature later.
-29. **News refresh is idempotent and server-deduped**: one active news run per
-    company; stage 2 stale sweeps run server-side and multiple browser tabs
-    only nudge them. Track `news_updated_at` per company; TTL is configurable.
+29. **News refresh is automatic, idempotent and server-deduped** (revised
+    2026-11-01): a pg-boss schedule runs a sweep that selects due companies from
+    `global_news_last_update` (per-company key `US:AAPL` / `A:600519` /
+    `HK:00700` / `NAME:<slug>`, `last_update_at` + `next_due_at` lease) and
+    enqueues one `news.company` job per company. An advisory lock makes
+    concurrent sweeps a no-op; the lease (claim timeout) recovers jobs lost
+    with a worker crash. The public UI has **no refresh control** and there is
+    no client-triggered sweep. Article-level dedupe stays title+snippet hash
+    (unchanged items skip embedding). TTL, sweep interval and batch are
+    configurable.
 30. **Placeholders are first-class rows, not seed data**: `coverage_tier='stub'`
-    + `is_placeholder=true`, only ticker + Chinese/English names + index
-    membership. They are excluded from default semantic search, listed on index
-    pages and reachable by direct `/c/:ticker`; never overwrite a real profile.
+    (the current schema has **no `is_placeholder` column**; do not add one),
+    only ticker + Chinese/English names + index membership. They are excluded
+    from default semantic search, listed on index pages and reachable by direct
+    `/c/:ticker`; never overwrite a real profile.
 31. **Batch research uses our own durable queue, not a DSH batch plugin**
     (decision 2026-10-30): pg-boss is the queue/retry/progress store and a
     worker pool runs one `dsh --profile headless` process per company. The DSH
@@ -1195,15 +1214,19 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     (c) volume is 1–3 runs per company. A failed reviewer would block `ready`,
     so reliability matters more than the marginal cost. Never show reviewer
     internals or fake success in the UI.
-33. **One shared task dock, news-only** (decision 2026-10-31): the **top-nav**
-    control (last item after `EN` / `深色`) has exactly one producer,
-    `news_refresh` (badge “更新新闻”). No `company_research` rows, no filter
-    tabs. The prototype (commit `dd465fc`) is approved; only its news path is
-    wired.
+33. **One shared task dock, news-only** (decision 2026-10-31, revised
+    2026-11-01): the **top-nav** control (last item after `EN` / `深色`) has
+    exactly one producer, the automatic news sweep (badge “更新新闻”). No
+    `company_research` rows, no filter tabs, and **no retry/review buttons**
+    (failures retry automatically). The prototype (commit `dd465fc`) is the
+    approved visual reference; the production dock shows the active sweep and
+    the last completed one, and drops its manual controls.
 34. **No in-app on-demand stock research** (decision 2026-10-31): the
     placeholder CTA and `POST /v1/companies/:ref/research` are cancelled.
     Research is operator-initiated through the local worker pool (explicit,
-    capped batches). On-demand **news refresh** stays because it is LLM-free.
+    capped batches). On-demand **news refresh is cancelled** (2026-11-01):
+    news is fully automatic (§10 “Next — Automatic news refresh”), so no public
+    control can trigger a fetch. The operator CLI stays.
 35. **Step-level retry belongs to the NIM client, not the job queue**
     (decision 2026-10-31): NIM throws episodic 500s and sometimes returns an
     empty `content`; retry 3× with backoff and normalise
@@ -1268,6 +1291,16 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     render a derived cell as a reported line, and never derive without both
     inputs for the same period. `total_equity` prefers the NCI-inclusive
     concept so `assets - equity` is an exact liabilities figure.
+44. **News refresh state lives in `global_news_last_update`** (decision
+    2026-11-01): one row per company keyed by the worker's canonical target
+    string (`US:AAPL`, `A:600519`, `HK:00700`, `NAME:<slug>`) with
+    `last_update_at` (last successful check, including an empty one),
+    `newest_published_at` (incremental hint), `last_status`,
+    `consecutive_failures`, `last_enqueued_at` and `next_due_at` (lease + next
+    schedule). The sweep source is `companies` LEFT JOIN this table, so rows are
+    created lazily and no registry/backfill is needed; fixtures and stubs never
+    get a row. Do **not** add `companies.news_updated_at`. Manual refresh is
+    cancelled (decision 34).
 
 ---
 
@@ -1296,9 +1329,9 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 | News ingestion says `company not found` | Ingest the company profile first. |
 | Google News RSS is link-only, ~10/company | Don’t fetch/redistribute full text; add a separate adapter for bodies. |
 | News rerun shows `skipped=5` | Idempotent title+summary sha256; not a failure. |
-| “刷新新闻”完成但 UI 不变 | News events come from `documents` via `listEvents`; invalidate the company query after the run completes instead of relying on a cached response. Do not pass `force=true` for unchanged items. |
-| Two tabs trigger two news refreshes | Server-side dedupe with one active run per company; the page-entry call is only a nudge, not the scheduler. |
-| Placeholder companies pollute search | Default search excludes `is_placeholder`; index pages/direct routes include them with a “未收录” badge. |
+| Automatic news sweep finished but the UI is stale | News events come from `documents` via `listEvents`; poll the run/status and refetch the company query after it completes instead of relying on a cached response. Do not pass `force=true` for unchanged items. |
+| Concurrent sweeps duplicate jobs | The advisory lock makes a second producer a no-op, and `global_news_last_update.next_due_at` is leased before enqueue; tabs never trigger a sweep at all (no public trigger). |
+| Placeholder companies pollute search | Default search excludes `coverage_tier='stub'`; index pages/direct routes include them with a “未收录” badge. |
 | Reviewer/research loop never ends | Cap at 2 revise cycles, then `needs_review`; every attempt is logged. Never retry unbounded. |
 | Reviewer keeps rejecting a stable profile | `needs_review` is the honest outcome; fix the section manually (or improve the research prompt) and re-review. Do not silently flip it to `ready` or raise the cap in production. |
 | NIM request hangs | The gateway aborts at `OCC_NIM_REQUEST_TIMEOUT_MS` (default 600 s) and retries. The old no-timeout gateway could sit on one call for 10+ min; keep the timeout. |
@@ -1703,128 +1736,249 @@ Acceptance and rollback are in the migration doc §7–8. The sidebar path is
 explicitly out of scope: its DeepSeek key, model row, timeout and
 `reasoningEffort` must remain byte-for-byte unchanged.
 
-### Next — News refresh UI + worker pool (2026-11-01)
+### Next — Automatic news refresh (design only, 2026-11-01)
 
-> **This is the next agent's task.** The approved dock prototype is already in
-> the repo: [`docs/prototypes/task-dock.html`](docs/prototypes/task-dock.html)
-> (commit `dd465fc`, “place the task dock in the top nav after EN/深色”). Open
-> it in a browser first; it renders both task kinds but **production wires only
-> `news_refresh`** (decision 33 — no filter tabs, no `company_research` rows).
-> News refresh must stay **LLM-free: 0 LLM tokens** (Google News RSS + local
-> BGE-M3 embedding only).
+> **Decision change.** The manual **刷新新闻** button is **cancelled**, and with
+> it `POST /v1/companies/:ref/news/refresh` and the page-entry nudge. News
+> updates run **fully automatically** from the worker pool; the public UI only
+> observes them. The approved dock prototype
+> [`docs/prototypes/task-dock.html`](docs/prototypes/task-dock.html)
+> (commit `dd465fc`) is still the visual reference for progress, but its manual
+> controls, the `公司数据` tab and the filter tabs are out of scope
+> (decision 33).
 >
-> **Already implemented (verified 2026-11-01):**
-> - `news.company` queue + `apps/worker/src/jobs/news.ts` (`fetchGoogleNews` →
->   `ingestNews`; idempotent by title+snippet hash; logs
->   `inserted/updated/skipped/indexedChunks`).
-> - `enqueueNews` (CLI only) in
->   [`apps/worker/src/backfill.ts`](apps/worker/src/backfill.ts) — creates a
->   `news` run + one job per company.
-> - `GET /v1/runs` and `GET /v1/runs/:id` (run + per-job status + summary); the
->   web has no client for them yet.
-> - News events already render in
->   [`CompanyNews.tsx`](apps/web/src/components/CompanyNews.tsx) via
->   `listEvents`; there is **no refresh button and no timestamp**.
-> - Top nav is [`TopNav.tsx`](apps/web/src/components/TopNav.tsx); the dock must
->   be the last control after `EN` / `深色` (decision 33).
+> **Why automatic.** News is LLM-free, link-only and cheap (one Google News RSS
+> request per company per cycle; local BGE-M3 embedding only for new items).
+> Asking a retail user to press refresh adds a fourth action (“搜 → 看 → 问 →
+> 刷新”), and the server would still have to dedupe clicks and tabs. A
+> per-company cursor plus a schedule is both simpler for the user and more
+> precise than a button.
 >
-> **What is missing:** `companies.news_updated_at`, a web-triggerable refresh
-> endpoint with server-side dedupe, the sweep producer, the per-company refresh
-> button, and the production `TaskDock`.
+> **This section is a plan only — do not write code until it is picked up.**
 
-**Source facts.** The news tab is **Google News RSS**, not agentic search:
-[`packages/sources/news/src/google-news.ts`](packages/sources/news/src/google-news.ts)
-fetches `news.google.com/rss/search` (one request per company, 10 items / 30
-days, link-only, no article bodies). [`packages/ingest/src/news.ts`](packages/ingest/src/news.ts)
-writes `documents(doc_type='news')` + one chunk + one source row and indexes
-the chunk. The UI reads
-[`listEvents`](packages/db/src/repositories/insights.ts) from Postgres.
+**State table `global_news_last_update`** — the per-company lease and
+incremental cursor. One row per company; the key uses the same canonical target
+string as the worker and pg-boss (`US:AAPL`, `A:600519`, `HK:00700`,
+`NAME:<slug>`), so the table, job keys and logs line up. `company_id` is the
+real reference; `ticker`/`name` are for debugging and the dock. Companies
+without a ticker (AI watchlist / private) use `NAME:<slug>`, which satisfies the
+“ticker or company name” key requirement.
 
-**Task 1 — persistence + worker pool.**
+```sql
+create table if not exists global_news_last_update (
+  key                  text primary key,          -- US:AAPL | A:600519 | HK:00700 | NAME:openai
+  company_id           text not null references companies(id) on delete cascade,
+  ticker               text,
+  name                 text,
+  last_update_at       timestamptz,               -- last successful fetch (incl. empty check)
+  newest_published_at  timestamptz,               -- newest article pubDate seen; incremental hint
+  last_run_id          text,
+  last_status          text not null default 'never', -- never | ok | empty | failed | paused
+  last_inserted        integer not null default 0,
+  last_skipped         integer not null default 0,
+  consecutive_failures integer not null default 0,
+  last_enqueued_at     timestamptz,
+  next_due_at          timestamptz,               -- lease until claim timeout, then schedule
+  updated_at           timestamptz not null default now()
+);
+create unique index if not exists global_news_company_uq
+  on global_news_last_update (company_id);
+create index if not exists global_news_due_idx
+  on global_news_last_update (next_due_at);
+```
 
-1. Migration `0008_news_refresh_state.sql`: add `companies.news_updated_at
-   timestamptz` (nullable) and `companies.news_last_refresh_run_id text`.
-   **There is no `is_placeholder` column** — placeholders are
-   `companies.coverage_tier='stub'`, fixtures are `is_fixture=true`. Do not add
-   a new table unless the run columns are insufficient.
-2. `apps/worker/src/jobs/news.ts`: on success (including a valid empty check)
-   stamp `news_updated_at = now()` and the run id; keep the existing
-   `inserted/updated/skipped` log and return it in the run so the dock can say
-   “已更新 N 条 / 已是最新”. A failed job must not stamp the timestamp.
-3. Sweep producer (worker side, pg-boss schedule, e.g. every 15 min): select
-   companies with `news_updated_at IS NULL OR news_updated_at < now() - ttl`,
-   exclude `is_fixture` and `coverage_tier='stub'`, cap at
-   `OCC_NEWS_REFRESH_BATCH` (default 50), and create **one** `news` run with one
-   job per stale company. Server owns dedupe (advisory lock / unique run key) so
-   multiple tabs and overlapping schedules cannot fan out. `OCC_NEWS_REFRESH_TTL_MS`
-   default 24 h; reuse `OCC_NEWS_CONCURRENCY` and polite RSS rate limits.
-4. Keep `occ-backfill enqueue news` working for operator batches.
+- This is **state, not a registry**: the sweep source is `companies` LEFT JOIN
+  this table, so a company with no row is due immediately. No data backfill is
+  needed; rows are created on the first attempt (upsert). Fixtures
+  (`is_fixture=true`) and stubs (`coverage_tier='stub'`) never get a row.
+- `last_update_at` means “the last successful check”, including a valid empty
+  result. A failed fetch never advances it.
+- `newest_published_at` is the newest article date actually seen. It lets the
+  next run widen its window when the feed lags, so late-indexed articles are not
+  skipped.
+- The name is kept exactly as requested. In code comments call it the
+  “news refresh state” table; one row per company, not one global timestamp.
 
-**Task 2 — API.**
+**Scheduling — one producer, pg-boss schedule**
 
-1. `POST /v1/companies/:ref/news/refresh` → `202 { runId, status, deduped }`.
-   Resolve the company; reject fixtures / stubs (no profile → no news); if a
-   run for this company is queued/active/recent, return it instead of
-   enqueueing (this is the “two clicks / two tabs = one job” rule). Enqueue one
-   `news.company` job through pg-boss (`createRun("news", …)`, like
-   `ResearchService.enqueue` in
-   [`apps/api/src/services/research.ts`](apps/api/src/services/research.ts)).
-   Do **not** pass `force=true`; unchanged articles must not re-embed.
-2. `POST /v1/news/refresh` (cheap, idempotent page-entry nudge): delegates to
-   the sweep producer / advisory lock; returns
-   `{ runId | null, stale, enqueued }`. Before the TTL it does nothing.
-3. Add both to `apps/api/src/openapi.ts`; expose a small `getRun` helper in
-   `apps/web/src/api.ts` for polling.
-4. The API only enqueues — workers do the fetch. If no worker is running, the
-   refresh stays `queued`; say so in the UI (`排队中`) instead of spinning.
+1. Register a fixed schedule `news-sweep` on worker/API boot (idempotent, same
+   schedule name): every `OCC_NEWS_SWEEP_INTERVAL_MIN` (default **15**, cron `*/N * * * *`).
+   The schedule job uses a pg-boss `singletonKey: "news-sweep"` so a worker that
+   was offline does not process a backlog of sweeps — at most one pending sweep
+   exists.
+2. The sweep job **only selects and enqueues**. All fetching stays in the
+   existing `news.company` queue (`apps/worker/src/jobs/news.ts`). The API
+   never fetches news.
+3. Advisory lock `pg_try_advisory_lock(hashtext('occ:news:sweep'))` around the
+   selection; a second producer (two API instances, overlapping cron, operator
+   CLI) returns `{ skipped: true }`.
+4. **Operational requirement:** automatic updates progress only while a worker
+   with the news queue is running. Document in §0.1 and `docs/NEWS.md`:
+   `node apps/worker/dist/cli.js work --queues research,ingest,review,f10,financials,news`
+   (or a news-only pool). With no worker, sweep jobs stay queued; that is not an
+   error and the UI shows “排队中”.
+5. No page-entry nudge and no public trigger. The operator keeps
+   `occ-backfill enqueue news` for backfills; it leases the same rows so it
+   cannot double-run with a sweep.
+6. **Job payload:** include `companyId`, `ticker`, `name`, `market` and
+   `sinceDays`. The sweep reads `market` from the company's security (reuse the
+   `pickListing` logic in `apps/api/src/services/research.ts`), not from the key
+   prefix alone, so the zh-CN / en-US locale is right. The worker must resolve
+   **`companyId` first** and only fall back to `resolveCompanyId(ticker)`:
+   `NAME:<slug>` targets (AI watchlist / private) have no ticker.
 
-**Task 3 — News tab UI.**
+**Selection, lease and backoff**
 
-1. Add a **刷新新闻** button to the News tab header in
-   [`CompanyNews.tsx`](apps/web/src/components/CompanyNews.tsx):
-   `idle → refreshing → done (“已更新 N 条” / “已是最新”) → error`, disabled
-   while active. Poll `GET /v1/runs/:runId` every ~1 s while visible; on
-   completion invalidate the company query so the list re-renders without a
-   reload. Do not pass `force`.
-2. Add the i18n keys (zh/en) and a small inline status line; reuse the existing
-   toast/notice pattern rather than adding a new global toast system.
+For each sweep:
 
-**Task 4 — production TaskDock (port the prototype).**
+1. Select `companies` LEFT JOIN `global_news_last_update` where the company is
+   not a fixture, `coverage_tier <> 'stub'`, and
+   `COALESCE(next_due_at, '-infinity') <= now()`. Order by
+   `COALESCE(next_due_at, companies.created_at)` and limit to
+   `OCC_NEWS_SWEEP_BATCH` (default **50**).
+2. TTL: `OCC_NEWS_TTL_MS` default **6 h** (≈ 4 checks/day/company). Add jitter
+   of 0–10% of the TTL to the next due time so 235 companies do not all fall
+   due in the same minute.
+3. **Lease before enqueue:** set `last_enqueued_at = now()` and
+   `next_due_at = now() + OCC_NEWS_CLAIM_TIMEOUT_MS` (default **30 min**). This
+   is the dedupe guard for overlapping sweeps and multiple tabs/instances. A job
+   lost with the worker crash becomes due again when the lease expires — self
+   healing, no manual reset. A rare duplicate caused by a slow job completing
+   after its lease is harmless: article ingestion is idempotent and the second
+   run reports `empty`.
+4. Create one `news` run per sweep (`kind='news'`, options
+   `{ source: 'auto', ttlMs, batch, sweepId }`) with one `news.company` job per
+   due company; job key `${runId}:${key}` (existing scheme).
+5. **On success** the worker stamps `last_update_at = now()`,
+   `newest_published_at = max(seen pubDate)`,
+   `next_due_at = last_update_at + ttl + jitter`, `last_status = 'ok'` (or
+   `'empty'` when the feed returned no items), `last_inserted` /
+   `last_skipped`, and resets `consecutive_failures`.
+6. **On failure** do not touch `last_update_at`; increment
+   `consecutive_failures`; `next_due_at = now() + min(15 min × 2^n, ttl)`. After
+   5 consecutive failures set `last_status='paused'` and
+   `next_due_at = now() + 24 h`; a later success resets it. Never hammer Google
+   News.
+7. Automatic runs never pass `force=true`; unchanged items must not re-embed.
+   `force` remains operator-only.
 
-1. Port [`docs/prototypes/task-dock.html`](docs/prototypes/task-dock.html) into
-   `apps/web/src/components/TaskDock.tsx` + styles:
-   - collapsed button: 46×46 ring with aggregate progress, count badge when
-     active; `aria-expanded`, `aria-controls`, `aria-label="任务进度，15/48"`;
-   - expanded card: header `任务` + subline, overall `15/48 · 31%` with
-     `role="progressbar"` (`aria-valuemin/max/now`), one group row per news run
-     (“更新新闻 · 42 家公司”), status line (`更新中 12/42 · 28%` /
-     `已完成 — 128 条` / `2 家需要重试`), progress bar, elapsed, chevron;
-     expanded body lists per-company subtasks with state dot, name + ticker,
-     detail (`8 条` / `抓取中` / `RSS 超时`), and a link to `/c/:ticker`.
-   - **Production differences:** no `公司数据` tab and no `company_research`
-     rows (decision 33); remove the prototype note; keep 全部/更新新闻 only if
-     a filter is kept — preferred: no tabs at all (one kind).
-2. Mount `<TaskDock />` in [`TopNav.tsx`](apps/web/src/components/TopNav.tsx)
-   as the last control after `EN` / `深色`; it must be global across routes.
-3. Polling: one manager per active run, `GET /v1/runs/:runId` every 1–2 s while
-   expanded, slower when collapsed; stop when the run is terminal. Closing the
-   dock does not cancel anything.
+**Incremental fetch — what “precise” means here**
+
+Google News RSS has no reliable `since` cursor: it returns the newest ~N items
+for a query. Precise incrementality therefore has three layers:
+
+- **Schedule layer** — only companies whose `next_due_at` is in the past are
+  fetched: exactly one request per company per TTL, no full-corpus sweep.
+- **Window layer** — each job computes
+  `sinceDays = clamp(ceil((now − min(last_update_at, newest_published_at)) / 1 d) + 1, 1, 30)`
+  (cold start 30, steady state 1–2) and passes it to `fetchGoogleNews`
+  (`packages/sources/news/src/google-news.ts` already exposes `sinceDays`; add
+  `when:<N>d` to the query only if the adapter supports it). Taking the older
+  of run time and newest article time widens the window when the feed lags.
+  **The cursor is a hint, never a filter:** an article older than the window is
+  still accepted if it is new to the database.
+- **Article layer** — the existing title+snippet sha256 makes ingestion
+  idempotent; unchanged articles skip embedding. If duplicate stories appear
+  (Google News title suffixes / tracking params), add a normalized-URL second
+  key — do not replace the hash key.
+- `maxItems`: **20 on the cold start**, **10 steady state**. News remains a
+  coverage layer of the newest items, not an archive; do not page backwards.
+
+**Volume estimate.** 235 real companies (NDX 100 + HSI 85 + CYB50 50) at 6 h →
+≈ 940 RSS requests/day, **0 LLM tokens**; embedding only for new articles
+(local BGE-M3). At 24 h it is ≈ 235/day. `OCC_NEWS_CONCURRENCY=2` stays; the
+sweep batch cap bounds the burst.
+
+**UI — observe only, no refresh control**
+
+1. **News tab** ([`CompanyNews.tsx`](apps/web/src/components/CompanyNews.tsx)):
+   header line “更新于 12 分钟前 · 自动更新”; while this company's job is active,
+   “正在更新…”. Read from `GET /v1/news/status?company=<ref>` (do not bloat the
+   company card). No refresh button, no CTA. The empty state for a never-updated
+   company says “新闻将自动更新” instead of promising an instant result.
+2. **TaskDock** (`apps/web/src/components/TaskDock.tsx`, port of the
+   prototype): global, mounted in
+   [`TopNav.tsx`](apps/web/src/components/TopNav.tsx) as the last control after
+   `EN` / `深色`.
+   - Collapsed: 46×46 ring with the active sweep's progress, count badge when
+     active; idle is muted. `aria-expanded` / `aria-controls` /
+     `aria-label="任务进度，15/48"`.
+   - Expanded: one group per sweep (“更新新闻 · 42 家公司”), status line
+     (`更新中 12/42 · 28%` / `已完成 — 128 条` / `2 家需要重试`), progress bar
+     with `role="progressbar"` + `aria-valuemin/max/now`, elapsed, chevron;
+     expanded body lists per-company subtasks (state dot, name + ticker,
+     `8 条` / `抓取中` / `RSS 超时`, link to `/c/:ticker`).
+   - When idle, show the **last sweep** summary and the next due time
+     (“最近更新：4 分钟前 · 已更新 128 条”; “下次自动更新约 2 小时后”). This is
+     how a user learns updates happen without a button.
+   - **Remove from the prototype:** the `公司数据` tab, filter tabs, retry and
+     review buttons (no public action; failures retry automatically), and the
+     “原型 · 模拟数据” footer (decision 33).
+3. Polling: `GET /v1/news/status` every 5 s while a run is active and the dock
+   is open, every 60 s when idle; the News tab polls only while its company's
+   job is active. No SSE needed. Closing the dock never cancels anything.
 4. States: `queued`, `running`, `completed`, `partial`, `failed`; colour **and**
    text encode state; polite live region on completion; respect
    `prefers-reduced-motion`; mobile becomes a full-width sheet under the header
    and never causes horizontal scroll.
 
-**Acceptance**
+**API (read-only)**
 
-- Manual refresh shows new items without a reload; an unchanged refresh says
-  “已是最新”; two clicks / two tabs produce one job.
-- The dock appears on every route after `EN` / `深色`, shows the news run with
-  per-company progress, and stays consistent while collapsed/expanded.
-- Stage 2 enqueues each stale company once after the TTL; a second page entry
-  before the TTL does nothing; fixtures/stubs are never swept.
-- No LLM API call anywhere in the refresh path (embeddings are local); tests
-  cover dedupe, TTL selection and the dock’s pure view helpers.
-- `docs/UI.md` §7.5 and the §11 handoff checklist are updated.
+- `GET /v1/news/status` → `{ active: { runId, status, total, done, failed, startedAt } | null, lastSweep: {...} | null, dueCount, nextDueAt, ttlMs, sweepIntervalMin }`.
+- `GET /v1/news/status?company=<ref>` → the global block plus
+  `{ company: { key, lastUpdateAt, lastStatus, nextDueAt, lastInserted }, run?: {...} }`;
+  404 for an unknown company.
+- `GET /v1/runs/:id` (exists) supplies per-company subtasks for the dock; the
+  job payload already carries `ticker` / `name`.
+- **No** `POST /v1/news/refresh`, no `POST /v1/companies/:ref/news/refresh`, no
+  client-triggered sweep.
+- CLI: `occ-backfill news status` (due count, last sweep, failures, paused
+  companies) and `occ-backfill news sweep --now` (operator-forced, still
+  advisory-locked).
+
+**Migration and rollout**
+
+- Migration `0008_global_news_last_update.sql` (table + indexes, `IF NOT
+  EXISTS`), applied by `node apps/cli/dist/occ.js migrate`.
+- **Phase A — backend, no UI:** migration, state read/write helpers, sweep
+  producer, schedule registration, worker stamping, CLI status. Extend
+  `NewsJobData` with `companyId` + `sinceDays` and resolve `companyId` before
+  the ticker. Verify from psql/CLI and logs; the News tab is unchanged.
+- **Phase B — API + UI:** status endpoints, News tab line, `TaskDock` port and
+  mount. Remove the refresh-button plan from the docs.
+- **Phase C:** tests, `docs/NEWS.md`, `docs/UI.md` §7.5, §0 monitor commands and
+  the §11 checklist.
+
+**Tests and acceptance**
+
+- Unit (fake clock): due / not-due selection, lease expiry reclaims a lost job,
+  backoff after failures, paused after 5, jitter bounds, `sinceDays` clamp,
+  second concurrent sweep is skipped by the advisory lock.
+- Worker (fixture RSS, no network): success stamps `last_update_at` and next
+  due; an empty check still stamps and reports `empty`; a failure does not
+  advance the cursor and backs off; fixtures/stubs are never selected.
+- API: status response shapes; unknown company → 404; the refresh routes do not
+  exist.
+- Web: dock view helpers (grouping, status text, elapsed, idle summary) unit
+  tested; manual check against a fake/real run.
+- Live: start a worker, wait for a sweep, confirm a company page shows new
+  items without a reload and `last_update_at` advances; run a second sweep
+  inside the TTL → 0 due; kill the worker mid-run → the lease expires and the
+  company is retried; no LLM tokens anywhere.
+- Acceptance: **no user-facing refresh control**; updates happen on the
+  automatic cadence; `global_news_last_update` is the only per-company cursor;
+  unchanged runs report `empty`; failures retried with backoff; the News tab
+  timestamp matches the table; the dock shows active and last-completed sweeps
+  with per-company detail.
+
+**Superseded / non-goals**
+
+- Manual 刷新新闻 button, `POST /v1/companies/:ref/news/refresh`, page-entry
+  nudge — **cancelled**.
+- `companies.news_updated_at` — superseded by `global_news_last_update`.
+- AI summaries, full-text article fetch/redistribution — out of scope
+  (decision 28).
+- Archiving or paging beyond the newest 10–20 items — out of scope.
 
 ### Next 2 — A500 + S&P 500 placeholders + local research/reviewer worker pool
 
@@ -1845,13 +1999,13 @@ profile is never overwritten.
 are **cancelled**. Placeholders are filled only when the operator runs a local
 batch through the worker pool (NIM + Parallel). There is still **no full
 constituent sweep**: A500/SPX batches are explicit, capped and operator-started.
-On-demand **news refresh** stays (§10 “Next — News refresh UI + worker
-pool”, 0 LLM tokens).
+On-demand **news refresh is cancelled** (2026-11-01): news updates are
+fully automatic (§10 “Next — Automatic news refresh”, 0 LLM tokens).
 
 Placeholder row:
 
-- `companies.coverage_tier='stub'`, `is_placeholder=true`, market,
-  `display_name`, `name_en` / `name_zh` (or aliases when one language is
+- `companies.coverage_tier='stub'` (there is no `is_placeholder` column),
+  market, `display_name`, `name_en` / `name_zh` (or aliases when one language is
   unknown), `profile={}`.
 - `index_memberships` rows for `A500` / `SPX` with `as_of`.
 - **No** documents, chunks, financials, embeddings or profile sections.
@@ -1917,31 +2071,36 @@ Shared task dock (top nav, last control after `EN` / `深色`):
 - One global `<TaskDock>` mounted in the **top navigation**, as the last control
   after `EN` and `深色`, visible across routes; modeled on the browser download
   bubble. It is **not** a per-page widget and there is only one of it.
-- **News is the only producer** (`news_refresh`, badge “更新新闻”): one group
-  per sweep, “更新新闻 · 42 家公司”, completion “已更新 128 条 · 3 家失败”.
+- **News is the only producer** (badge “更新新闻”): one group per **automatic
+  sweep**, “更新新闻 · 42 家公司”, completion “已更新 128 条 · 3 家失败”.
   There is **no `company_research` producer** (decision 2026-10-31): operator
-  batches are local-only and are not mirrored into the dock.
+  batches are local-only and are not mirrored into the dock. There is also no
+  user-triggered news action (decision 34, 2026-11-01).
 - Collapsed button: ring shows aggregate progress; a count badge appears when
   tasks are active. Expanded card header: overall `12/37 · 32%` and a
-  “查看全部任务” footer. With one task kind, no filter tabs.
+  “查看全部任务” footer. With one task kind, no filter tabs. When idle, the card
+  shows the last sweep summary and the next due time.
 - Each row: badge, title, status line (`更新中 12/42 · 28%`, `已完成 — 128 条`,
   `2 家需要重试`), determinate or step-based progress bar, elapsed time, and a
-  chevron for subtasks. A failed/needs-review row keeps its error reason;
-  clicking a company row navigates to `/c/:ticker`.
-- States: `queued`, `running`, `completed`, `partial`, `failed`,
-  `needs_review`. Color encodes state (semantic, not accent-only); text always
-  names the state too. Use `role="progressbar"` with `aria-valuenow` and a
-  polite live region for completion; respect `prefers-reduced-motion`.
-- Data source: one polling manager per active run (`GET /v1/runs/:runId` every
-  1–2 s while the dock is open; slower when collapsed). Polling is DB/API only —
-  no LLM. Closing/minimizing the dock does not cancel.
+  chevron for subtasks. A failed row keeps its error reason; clicking a company
+  row navigates to `/c/:ticker`. **No retry/review buttons** — failures retry
+  automatically with backoff.
+- States: `queued`, `running`, `completed`, `partial`, `failed`. Color encodes
+  state (semantic, not accent-only); text always names the state too. Use
+  `role="progressbar"` with `aria-valuenow` and a polite live region for
+  completion; respect `prefers-reduced-motion`.
+- Data source: `GET /v1/news/status` for the active/last sweep (poll every 5 s
+  while active, 60 s when idle) and `GET /v1/runs/:runId` for per-company
+  subtasks. Polling is DB/API only — no LLM. Closing/minimizing the dock does
+  not cancel.
 - Mobile: the card becomes a full-width sheet under the header; never causes
   horizontal scroll.
 
 **Prototype status.** The standalone dock prototype was approved and placed in
 the top nav on 2026-10-30 (commit `dd465fc`). It renders both task kinds, but
-the production component wires **only `news_refresh`**; the
-`company_research` kind is not built (decision 2026-10-31).
+the production component observes **only the automatic news sweep**; the
+`company_research` kind, filter tabs and retry/review controls are not built
+(decisions 33 and 34).
 
 Acceptance:
 
@@ -2243,12 +2402,21 @@ and a UI smoke suite.
       replay of the same id shows 2 turns; history shows 1 row.
 - [ ] Resume failure shows the yellow `agent.resume.failed` notice between the
       question and the answer, then answers normally (do not fail the prompt).
-- [ ] News stage 1: “刷新新闻” updates the tab without a reload; unchanged run
-      says “已是最新”; two clicks/tabs produce one job; no LLM tokens; the
-      worker stamps `companies.news_updated_at` on success only.
-- [ ] News stage 2: entering a page after the TTL enqueues each stale company
-      once; before the TTL it does nothing; fixtures (`is_fixture`) and stubs
-      (`coverage_tier='stub'`) are never swept.
+- [ ] Automatic news refresh (design in §10): `global_news_last_update` exists
+      and is the only per-company cursor; the pg-boss `news-sweep` schedule
+      selects only due companies (advisory-locked, batch-capped, TTL + jitter);
+      the worker stamps `last_update_at` / `next_due_at` on success (including
+      an empty check) and backs off on failure; fixtures (`is_fixture`) and
+      stubs (`coverage_tier='stub'`) never get a row; **no manual refresh
+      button or client-triggered endpoint exists**; 0 LLM tokens.
+- [ ] News UI: the News tab shows “更新于 … · 自动更新” from
+      `GET /v1/news/status?company=<ref>`; no refresh control.
+- [ ] Shared task dock prototype (commit `dd465fc`,
+      `docs/prototypes/task-dock.html`) ported to
+      `apps/web/src/components/TaskDock.tsx`, mounted in `TopNav.tsx` as the
+      last control after `EN` / `深色`; it observes the automatic sweeps, shows
+      the active and last-completed run, and keeps **no** `公司数据` tab, filter
+      tabs, retry/review buttons or “原型 · 模拟数据” footer.
 - [ ] A500 + SPX placeholders: constituent counts match minus existing
       companies; no documents/embeddings; default search excludes them; index
       pages and direct `/c/:ticker` show the 未收录 state.
@@ -2257,11 +2425,6 @@ and a UI smoke suite.
 - [ ] Local capped research batch (operator CLI) runs through the worker pool on
       NIM/Parallel; reviewer pass flips the page to the full profile,
       `revise` is capped at 2 cycles.
-- [ ] Shared task dock prototype approved (commit `dd465fc`,
-      `docs/prototypes/task-dock.html`); port it to
-      `apps/web/src/components/TaskDock.tsx`, mount it in `TopNav.tsx` as the
-      last control after `EN` / `深色`, and wire **only** `news_refresh` — no
-      `company_research` rows, no filter tabs, no “原型 · 模拟数据” footer.
 - [ ] A/HK **bulk backfill** plan is STAR 50 + ChiNext 50 + HSI; ChiNext 50 is
       done and STAR 50 is deferred to P2 priority; **A500 and
       SPX stay placeholder-only** (filled by explicit, capped operator batches),
