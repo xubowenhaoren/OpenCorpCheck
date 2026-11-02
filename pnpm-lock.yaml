@@ -232,6 +232,9 @@ importers:
       '@occ/sources-eastmoney-f10':
         specifier: workspace:*
         version: link:../../packages/sources/eastmoney-f10
+      '@occ/sources-entity':
+        specifier: workspace:*
+        version: link:../../packages/sources/entity
       '@occ/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -526,6 +529,22 @@ importers:
         version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1))
 
   packages/sources/eastmoney-f10:
+    dependencies:
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: 24.19.2
+        version: 24.19.2
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1))
+
+  packages/sources/entity:
     dependencies:
       zod:
         specifier: ^4.6.7

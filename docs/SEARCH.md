@@ -198,7 +198,7 @@ full-corpus score. Full method and comparisons: [EVAL.md](EVAL.md).
 ## Known limits / next
 
 - The visible corpus is **real research plus searchable stubs**: 236 researched
-  companies (NDX 100, HSI 85, CYB50 50, plus the discovered set) and **862
+  companies (NDX 100, HSI 85, CYB50 50, plus the discovered set) and **850
   A500/SPX stubs**; the 11 fixture companies and all 31 fixture documents are
   hidden by default (`include_fixtures=true` restores them for E2E). Old
   corpora need one `occ sync-fixtures` run.
@@ -206,7 +206,9 @@ full-corpus score. Full method and comparisons: [EVAL.md](EVAL.md).
   documents, chunks or embeddings, so dense/BM25 retrieval never returns them.
   Exact identifier, alias, pinyin and fuzzy-name matches do. The sync command
   resolves existing companies by ticker+exchange → CIK → ticker id → exact
-  name/alias; fuzzy entity merging is P1.2.
+  name/alias; **no fuzzy merge**. P1.2 resolves dual-listed A/HK stubs through
+  the structured `H股代码` and exact identifiers only (see
+  [ENTITY.md](ENTITY.md)).
 - News documents (`doc_type='news'`) are ingested per company from Google News
   RSS; they are searchable through `/v1/search/documents?doc_type=news` and
   appear in the company card's `events`. See [NEWS.md](NEWS.md).

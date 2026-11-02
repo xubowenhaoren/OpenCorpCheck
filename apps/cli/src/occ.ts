@@ -7,6 +7,10 @@ import {
   USAGE_OPTIONS as ALIASES_OPTIONS,
 } from "./aliases-command.js";
 import { extractCommand, USAGE_OPTIONS as EXTRACT_OPTIONS } from "./extract-command.js";
+import {
+  entitiesCommand,
+  USAGE_OPTIONS as ENTITIES_OPTIONS,
+} from "./entities-command.js";
 import { ingestCommand, USAGE_OPTIONS as INGEST_OPTIONS } from "./ingest-command.js";
 import {
   indicesCommand,
@@ -28,6 +32,11 @@ Usage:
   occ sync-fixtures [--dry-run]
   occ aliases sync [options]
   occ indices sync [--index A500|SPX|all] [--file <path>] [--dry-run] [--json]
+  occ entities enrich [--dry-run] [--force] [--skip-index] [--markets A,HK,US] [--limit N] [--json]
+  occ entities resolve [--apply] [--limit N] [--json]
+  occ entities gleif [--apply] [--limit N] [--json]
+  occ entities wikidata [--apply] [--limit N] [--json]
+  occ entities coverage [--json]
   occ snapshots upload|check|list [options]
   occ search <query> [--mode hybrid|keyword|semantic] [--limit N] [--explain] [--json]
   occ documents <query> [--mode ...] [--limit N] [--company ID] [--json]
@@ -45,6 +54,7 @@ ${INGEST_OPTIONS}
 ${EXTRACT_OPTIONS}
 ${ALIASES_OPTIONS}
 ${INDICES_OPTIONS}
+${ENTITIES_OPTIONS}
 ${SNAPSHOTS_OPTIONS}
 Environment:
   OCC_API_URL           default http://127.0.0.1:8787
@@ -97,6 +107,9 @@ async function main(): Promise<void> {
       return;
     case "indices":
       await indicesCommand(rest);
+      return;
+    case "entities":
+      await entitiesCommand(rest);
       return;
     case "snapshots":
       await snapshotsCommand(rest);

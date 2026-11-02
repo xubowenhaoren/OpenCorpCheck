@@ -32,6 +32,12 @@ function intEnv(name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function pathEnv(name: string, fallback: string): string {
+  const raw = process.env[name];
+  if (!raw) return path.join(repoRoot, fallback);
+  return path.isAbsolute(raw) ? raw : path.join(repoRoot, raw);
+}
+
 /** Read a secret from env, or from an explicitly named file (never auto-guess). */
 function secretEnv(name: string, fileEnv: string): string | undefined {
   const direct = process.env[name]?.trim();
@@ -62,6 +68,16 @@ export const config = {
   ndxFile: path.join(repoRoot, "config", "indices", "ndx.yaml"),
   a500File: path.join(repoRoot, "config", "indices", "a500.yaml"),
   sp500File: path.join(repoRoot, "config", "indices", "sp500.yaml"),
+  /** F10 page JSON snapshots (also written by the worker/backfill). */
+  f10Dir: pathEnv("OCC_F10_DIR", ".occ/f10"),
+  /** SEC EDGAR cache (ticker map, submissions, companyfacts). */
+  edgarDir: pathEnv("OCC_EDGAR_DIR", ".occ/edgar"),
+  financeAnalystUrl:
+    process.env.OCC_FINANCE_ANALYST_URL ?? "http://127.0.0.1:8090",
+  gleifBaseUrl:
+    process.env.OCC_GLEIF_BASE_URL ?? "https://api.gleif.org/api/v1",
+  wikidataApiUrl:
+    process.env.OCC_WIKIDATA_API_URL ?? "https://www.wikidata.org/w/api.php",
   collections: {
     companies: process.env.OCC_QDRANT_COMPANIES ?? "occ_companies",
     documents: process.env.OCC_QDRANT_DOCUMENTS ?? "occ_documents",

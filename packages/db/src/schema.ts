@@ -497,6 +497,37 @@ export const globalNewsLastUpdate = pgTable(
   ],
 );
 
+/**
+ * Audit trail for deterministic entity merges (P1.2).
+ *
+ * The merged company row is deleted, so both ids are stored as plain text and
+ * the pre-merge snapshot is kept in `snapshot`. A merge is never silent.
+ */
+export const entityMergeLog = pgTable(
+  "entity_merge_log",
+  {
+    id: text("id").primaryKey(),
+    survivorId: text("survivor_id").notNull(),
+    mergedId: text("merged_id").notNull(),
+    reason: text("reason").notNull(),
+    evidence: jsonb("evidence")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    snapshot: jsonb("snapshot")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("entity_merge_survivor_idx").on(table.survivorId),
+    index("entity_merge_created_idx").on(table.createdAt),
+  ],
+);
+
 export const schema = {
   companies,
   companyIds,
@@ -514,4 +545,5 @@ export const schema = {
   reviewQueue,
   outbox,
   globalNewsLastUpdate,
+  entityMergeLog,
 };

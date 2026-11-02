@@ -5,9 +5,10 @@
 > Status: 2026-11-01 — search, company pages (profile / financials / relationship
 > graph / news / sources), automatic news refresh + task dock, all five index
 > pages (NDX/SPX/A500/HSI/CYB50), `occ` CLI, MCP server, and the DeepSeek
-> Harness ACP sidebar. **P1.1 A500/SPX placeholder pages are shipped** (862
-> searchable stubs). The active roadmap (sector/entity resolution, ownership
-> graph, official filing adapters, daily refresh) is in
+> Harness ACP sidebar. **P1.1 A500/SPX placeholder pages and P1.2 sector +
+> entity resolution are shipped** (850 searchable stubs; 235/236 researched
+> companies have a canonical sector). The active roadmap (ownership graph,
+> official filing adapters, daily refresh) is in
 > [`CONTEXT_TRANSFER.md`](CONTEXT_TRANSFER.md) §10.
 
 OpenCorpCheck is an open-source, AI-native alternative to commercial company-intelligence
@@ -39,12 +40,16 @@ sub-agent card is **permanently deferred**.
 
 ## What
 
-- **Universe**: 1,098 non-fixture companies — 236 researched (NASDAQ-100 100,
-  Hang Seng Index 85, ChiNext 50 50, plus the discovered set) and 862 A500/SPX
+- **Universe**: 1,086 non-fixture companies — 236 researched (NASDAQ-100 100,
+  Hang Seng Index 85, ChiNext 50 50, plus the discovered set) and 850 A500/SPX
   searchable stubs — plus a curated AI watchlist (OpenAI, Anthropic, DeepSeek,
   Kimi/Moonshot, ...). A500 (500) and S&P 500 (500 companies / 503 securities)
   are placeholder pages with `未收录` badges, not bulk research targets. STAR 50
   is deferred backfill and is not in the current plan.
+- **Entity spine (P1.2)**: 11 canonical sectors (235/236 researched companies),
+  ticker/CIK/domain/ISIN/USCC/EIN/LEI/Wikidata identifiers, audited A/HK
+  dual-listing merges, and GLEIF parent edges with source + review queue. See
+  [docs/ENTITY.md](docs/ENTITY.md).
 - **Providers**: official **DeepSeek** is the default for headless research, the
   reviewer, and the ACP sidebar. NVIDIA NIM + Parallel Search is opt-in with
   `OCC_LLM_PROVIDER=nvidia` (after per-model 429s it is not the default).

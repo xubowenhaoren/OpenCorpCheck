@@ -22,6 +22,7 @@
     "@occ/ingest": "workspace:*",
     "@occ/retrieval": "workspace:*",
     "@occ/sources-eastmoney-f10": "workspace:*",
+    "@occ/sources-entity": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "zod": "^4.6.7",
     "@occ/extract": "workspace:*",

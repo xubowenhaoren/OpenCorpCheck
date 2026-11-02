@@ -38,6 +38,8 @@ export const SearchCompaniesQuerySchema = z.object({
   market: z.string().trim().optional(),
   index: z.string().trim().optional(),
   sector: z.string().trim().optional(),
+  /** Alias for `sector` (P1.2 acceptance uses `search?industry=`). */
+  industry: z.string().trim().optional(),
   coverage: CoverageTierSchema.optional(),
   /** Include the synthetic development corpus (default: hidden). */
   include_fixtures: queryBoolean.default(false),

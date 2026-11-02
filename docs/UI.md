@@ -669,10 +669,10 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 
 - `GET /v1/graph?company=&depth=&types=&status=` — 2 层图谱、全局 `/graph`。
 - `GET /v1/indices/:code` — 指数成分；已加载 NDX 100 / SPX 500 / A500 500 /
-  HSI 85 / CYB50 50（A500/SPX 为 placeholder 成分，含 862 个 stub）。
+  HSI 85 / CYB50 50（A500/SPX 为 placeholder 成分，含 850 个 stub）。
   STAR50 暂无快照。
 - `GET /v1/sectors` — 搜索行业过滤。
-- `GET /v1/search/companies?sector=` — Qdrant + Postgres 双侧过滤。
+- `GET /v1/search/companies?sector=` — Qdrant + Postgres 双侧过滤（`industry` 为同义参数）。
 - 开发期用 Vite proxy（5173 → 8787），不需要 CORS。
 
 仍缺：

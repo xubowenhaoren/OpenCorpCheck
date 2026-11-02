@@ -2,15 +2,15 @@
 
 > Handoff: **2026-11-01**. Current state: foundations through the web UI are
 > complete; automatic news refresh, US EDGAR-only structured financials, the
-> Financials tab, HSI, ChiNext 50 and **P1.1 A500/SPX placeholders** are
-> shipped. **The only active TODO list is §10 (P1.2–P1.5); P2 is deferred.**
-> Backfill is out of scope for the current plan.
+> Financials tab, HSI, ChiNext 50, **P1.1 A500/SPX placeholders** and **P1.2
+> sector + entity resolution** are shipped. **The only active TODO list is §10
+> (P1.3–P1.5); P2 is deferred.** Backfill is out of scope for the current plan.
 >
 > The old 1,394-line document is preserved verbatim in
 > [`context_transfer_history.md`](context_transfer_history.md).
 >
-> **Current P1:** sector + entity resolution, US 13F/HKEX DION ownership,
-> official filing adapters, and daily financial-report refresh. See §10.
+> **Current P1:** US 13F/HKEX DION ownership, official filing adapters, and
+> daily financial-report refresh. See §10.
 >
 > **Machine constraint:** macOS VM, no Docker. P2 delivery/packaging
 > (Docker/Electron/hosted demo/CI/observability) is deferred. Development uses
@@ -28,16 +28,21 @@
 
 > **Current state:** foundations through the web UI are complete. Automatic
 > news refresh, structured financials (US EDGAR-only), the Financials tab,
-> HSI, ChiNext 50 and the **A500/SPX placeholder layer** are shipped.
-> **The only active TODO list is §10.** Backfill and delivery/engineering
-> quality are out of scope for the current P1 plan.
+> HSI, ChiNext 50, the **A500/SPX placeholder layer** and **P1.2 sector +
+> entity resolution** are shipped. **The only active TODO list is §10.**
+> Backfill and delivery/engineering quality are out of scope for the current P1
+> plan.
 >
-> **Corpus:** 1,098 non-fixture companies — 236 researched (NDX 100, HSI
-> 85, CYB50 50, plus the discovered set) and **862 A500/SPX searchable
-> stubs** (447 A500 + 415 SPX; 0 fixture stubs). NDX profiles predate the
+> **Corpus:** 1,086 non-fixture companies — 236 researched (NDX 100, HSI
+> 85, CYB50 50, plus the discovered set) and **850 A500/SPX searchable
+> stubs** (435 A500 + 415 SPX; 0 fixture stubs). NDX profiles predate the
 > reviewer; HSI/CYB50 `company_research_state` is 104 `ready` / 31
 > `needs_review` (all revision cap, not parse failures; `needs_review` is the
 > quality gate working). 10 AI-watchlist fixtures (plus SMIC) remain hidden.
+> **P1.2:** 235/236 researched companies have a canonical sector (the only gap
+> is `HK:00823` 领展房地产投资信托基金, F10 `EmptyRender`); 12 dual-listed
+> A/HK stubs were merged into their researched HK company with an audited
+> merge log.
 >
 > | Index | Constituents | Memberships | Structured financials | Status |
 > |---|---|---|---|---|
@@ -50,13 +55,15 @@
 >
 > **Data:** `financial_facts` 46,880 (29,683 `xbrl`, 15,767 `f10`, 1,430
 > profile); financials cache 234 ok / 1 failed; 3,245 news documents (last
-> sweep: 232 `ok` / 4 `empty` companies); relations 22 `reported` + 64
-> `inferred`; 1,109 companies (1,098 non-fixture + 11 fixtures), 1,257
-> index memberships, 1,109 securities, 4,896 aliases, 1,551 identifiers.
-> **Known content gaps:** 223/236 researched companies have `sector = null`;
-> no US ownership edges; no CNINFO/HKEXnews/13F/DION adapters; **no daily
-> filing/earnings refresh yet** — all P1 (§10). Stubs intentionally have no
-> profile, documents, financials, chunks or embeddings.
+> sweep: 232 `ok` / 4 `empty` companies); relations 87 (22 `reported` F10 +
+> 64 `inferred` + 1 GLEIF `parent_of`); 1,097 companies (1,086 non-fixture +
+> 11 fixtures), 1,257 index memberships, 1,109 securities, 4,888 aliases,
+> 2,491 identifiers (incl 183 LEI, 64 USCC, 184 ISIN, 98 Wikidata QID).
+> **Known content gaps:** 1 researched company has `sector = null`
+> (`HK:00823` 领展, F10 `EmptyRender`); no US ownership edges; no
+> CNINFO/HKEXnews/13F/DION adapters; **no daily filing/earnings refresh yet** —
+> P1.3–P1.5 (§10). P1.2 GLEIF parent coverage is sparse (see §5). Stubs
+> intentionally have no profile, documents, financials, chunks or embeddings.
 >
 > **Running (2026-11-01, rebuilt for P1.1):**
 > - API `node apps/api/dist/server.js` on `:8787`
@@ -72,7 +79,8 @@
 >
 > **Tests/build:** all green — API 33, web 33, worker 40, extract 42, ingest
 > 46, agent 17, CLI 7, retrieval 10, db 9, storage 5, sources 18 (F10 9 +
-> news 9). Web bundle 425.39 KB (gzip 130.72 KB). Run tests serially:
+> news 9), **entity 29** (289 total). Web bundle 425.39 KB (gzip 130.72 KB).
+> Run tests serially:
 > `corepack pnpm -r --workspace-concurrency=1 test`.
 >
 > **Recent commits:** `8f795d5` P1.1 A500/SPX placeholder layer; `0eec66f`
@@ -134,12 +142,12 @@ OpenCorpCheck is an open, agentic, provenance-first company intelligence store.
 Every number/relation should link back to a source; the agent can propose facts
 but cannot write verified data directly.
 
-**v1 universe** (1,098 non-fixture companies today: 236 researched + 862
+**v1 universe** (1,086 non-fixture companies today: 236 researched + 850
 A500/SPX stubs; plus the AI watchlist):
 
 | Index | Code | Market | Status |
 |---|---|---|---|
-| CSI A500 / 中证A500 | `000510` | A | **done 2026-11-01**: 500 constituents, 447 stubs (53 already covered) |
+| CSI A500 / 中证A500 | `000510` | A | **done 2026-11-01**: 500 constituents, 435 stubs (65 already covered, incl 12 merged dual-listed HK companies) |
 | S&P 500 | `SPX` | US | **done 2026-11-01**: 500 companies / 503 securities, 415 stubs (85 already covered) |
 | STAR 50 / 科创50 | `000688` | A (SSE) | **deferred backfill**, not in the current P1/P2 plan |
 | ChiNext 50 / 创业板50 | `399673` | A (SZSE) | **done 2026-10-31**: 50 constituents, 45 ready / 5 needs_review |
@@ -189,6 +197,14 @@ A500/SPX stubs; plus the AI watchlist):
 - **Phase 0**: 7 MAG7 profiles generated by dsh headless with
   **`deepseek-flash`** (not Pro). Validation PASS; deliverables under
   [`phase0/out/`](phase0/out/). Historical detail in the archive.
+- **P1.2 (2026-11-01)**: deterministic sector taxonomy + entity spine.
+  `packages/sources/entity` maps Eastmoney F10 industry labels (A/HK/US) and SEC
+  SIC to 11 canonical sectors; `occ entities enrich` records ISIN/USCC/domain/
+  CIK/EIN/ticker identifiers; `occ entities gleif` resolves LEI + parent edges;
+  `occ entities wikidata` resolves QIDs; `occ entities resolve` merges
+  dual-listed A/HK stubs through the structured `H股代码`. Migration
+  `0009_entity_merge_log.sql` records every merge. See
+  [docs/ENTITY.md](docs/ENTITY.md).
 - **P1**: F10 sidecar (`services/finance-analyst`, uv + Python 3.12 +
   Playwright), worker with pg-boss, parallel backfill, A/HK/US verified
   (AAPL / 600519 / 00700). Details in the archive §6 P1.
@@ -246,9 +262,10 @@ A500/SPX stubs; plus the AI watchlist):
 
 Verified numbers worth keeping:
 
-- Visible corpus: **102 real profiles**, NDX 100 + 600519/00700; 11 fixture
-  companies / 31 fixture documents remain in the DB but hidden. Search also
-  returns **862 A500/SPX stubs** with a `未收录` badge.
+- Visible corpus: **236 researched profiles** (NDX 100, HSI 85 + 4
+  discovered, CYB50 50, A500 overlaps); 11 fixture companies / 31 fixture
+  documents remain in the DB but hidden. Search also returns **850 A500/SPX
+  stubs** with a `未收录` badge.
 - Agent regression question (“goog 今天股价大跌，是什么原因？”): **57 s /
   15 tool calls / 7 sources** with a cited Markdown answer after the budget
   fix. The old failure was 32 distinct calls in 95 s with no repeats.
@@ -259,8 +276,9 @@ Verified numbers worth keeping:
 
 Verified 2026-11-01:
 
-- **P1.1:** `/v1/indices/A500` 500 members (447 stubs, `as_of 2026-10-30`);
-  `/v1/indices/SPX` 500 members (415 stubs, `as_of 2026-10-29`); exact search
+- **P1.1:** `/v1/indices/A500` 500 members (435 stubs now; 447 at P1.1,
+  `as_of 2026-10-30`); `/v1/indices/SPX` 500 members (415 stubs, `as_of
+  2026-10-29`); exact search
   for `000001` / `平安银行` / `BRK.B` returns the stub with `未收录`; stub
   cards expose `indexMemberships` incl. weight (平安银行 0.398%, AAPL SPX
   7.653269%); all 247 pre-existing company rows are byte-identical after sync;
@@ -294,7 +312,7 @@ OpenCorpCheck/
     aliases/zh.yaml                # curated Chinese aliases
   docs/
     ARCHITECTURE.md  SEARCH.md  EVAL.md  DATA_SOURCES.md  PRIOR_ART.md
-    UI.md  EXTRACT.md  AGENT.md  NEWS.md
+    UI.md  EXTRACT.md  AGENT.md  NEWS.md  ENTITY.md
   apps/
     web/                           # React 19 + Vite 8 consumer UI
     api/                           # Hono + Zod API, SSE agent, OpenAPI
@@ -310,6 +328,7 @@ OpenCorpCheck/
     retrieval/                     # tokenizer/BM25/BGE-M3/Qdrant/RRF-DBSF
     storage/                       # S3/MinIO snapshots
     sources/eastmoney-f10/         # F10 adapter
+    sources/entity/                # sector taxonomy, F10/EDGAR profiles, GLEIF, Wikidata
     sources/news/                  # Google News RSS adapter
   services/
     finance-analyst/               # Python sidecar: A/HK/US F10 (uv + Playwright)
@@ -343,6 +362,13 @@ scripts/dev-news-worker.sh start    # status | stop | restart | logs
 uv run scripts/snapshot-indices.py
 node apps/cli/dist/occ.js indices sync [--index A500|SPX|all] [--dry-run] [--json]
 
+# P1.2 sector + identifier enrichment (uses cached F10/EDGAR; reindexes sectors)
+node apps/cli/dist/occ.js entities enrich [--dry-run] [--force] [--skip-index]
+node apps/cli/dist/occ.js entities coverage [--json]
+node apps/cli/dist/occ.js entities resolve [--apply]      # dual-listed A/HK stubs
+node apps/cli/dist/occ.js entities gleif [--apply]        # LEI + parent edges
+node apps/cli/dist/occ.js entities wikidata [--apply]     # QIDs
+
 # optional F10 sidecar
 cd services/finance-analyst && uv run occ-f10 serve --port 8090
 
@@ -374,6 +400,8 @@ Key env:
 | `OCC_EDGAR_DIR` | `.occ/edgar` (ticker map, companyfacts, submissions) |
 | `OCC_EDGAR_CACHE_TTL_MS` | `86400000` (24 h) |
 | `OCC_EDGAR_USER_AGENT` | `OpenCorpCheck/0.1 (Bowen Xu; xubowenhaoren@gmail.com)`; SEC requires a contact and ≤10 req/s |
+| `OCC_GLEIF_BASE_URL` | `https://api.gleif.org/api/v1` (P1.2) |
+| `OCC_WIKIDATA_API_URL` | `https://www.wikidata.org/w/api.php` (P1.2) |
 | `OCC_NEWS_SWEEP` | on; `none` disables the automatic sweep (no public refresh control) |
 | `OCC_NEWS_SWEEP_CRON` / `_TZ` | `0 7 * * *` / machine timezone |
 | `OCC_NEWS_TTL_MS` | `82800000` (23 h; keep shorter than the sweep period) |
@@ -459,7 +487,7 @@ Backend endpoints added with the UI:
 - `GET /v1/indices/:code` — constituents (NDX/SPX/A500/HSI/CYB50 loaded),
   with ticker/sector/markets/as_of and `coverageTier`.
 - `GET /v1/sectors` — industry filter values (fixtures hidden).
-- `GET /v1/search/companies` — new `sector` filter.
+- `GET /v1/search/companies` — `sector` filter (and `industry` as an alias).
 - `GET /v1/agent/sessions` — persisted dsh sessions for the history menu
   (title, prompt count, updated time; subagent children excluded).
 - `GET /v1/agent/sessions/:id/replay` — persisted turns + tool calls from
@@ -481,17 +509,26 @@ Known limitations:
 
 - **Ownership coverage is thin:** 22 `reported` edges (15 `invests_in`, 7
   `owns`) + 64 `inferred`. A/HK edges come from F10 shareholder tables; **US has
-  no ownership edges**. US 13F, HKEX DION and broader `parent_of` are P1.3. Do
-  not fake edges in the UI.
-- **Industry classification is missing:** 223/236 researched companies have
-  `sector = null`; the index/company header shows `—` and the search sector
-  filter is mostly empty. P1.2.
-- **Stub entity resolution is ticker-based (P1.2):** an issuer already in the
-  corpus under a different exact name/ticker can appear as a separate stub
-  (e.g. the 中国平安 A-share line vs its HK profile). `occ indices sync` does
-  exact ticker/CIK/name matching only and never fuzzy-merges; P1.2 identifiers
-  (LEI/USCC/ISIN/Wikidata) resolve these. Do not hide or merge them in the UI
-  by hand.
+  no ownership edges**. P1.3 adds US 13F and HKEX DION. P1.2's GLEIF pass adds
+  LEI identifiers but found no in-universe parent edges (see below). Do not fake
+  edges in the UI.
+- **Sector coverage is complete except one HK REIT:** 235/236 researched
+  companies have a canonical 11-sector value (`信息技术` … `房地产`); the only
+  gap is `HK:00823` 领展房地产投资信托基金 (F10 `EmptyRender`, same documented
+  gap as its financials). Stubs intentionally stay `sector = null`.
+- **Entity resolution is exact-only:** ticker/CIK/LEI/USCC/ISIN/Wikidata and
+  the F10 `H股代码` are deterministic keys; there is no fuzzy merge. 12
+  dual-listed A/HK stubs were merged into their researched HK company (e.g.
+  中国平安 601318 → 02318, 中国移动 600941 → 00941) and `entity_merge_log`
+  records each one. A stub that cannot be confirmed by an exact identifier stays
+  separate; do not merge it in the UI by hand.
+- **GLEIF parent coverage is sparse for this universe:** 182/236 researched
+  companies have an LEI; one real parent edge was written: **Las Vegas Sands
+  (SPX stub) → 金沙中国**, with the GLEIF source URL, evidence quote and a
+  pending review item. Four other issuers report parents outside the corpus
+  (Arm→SoftBank, T-Mobile US→Deutsche Telekom, 中国人寿→中国人寿保险（集团）,
+  联想集团→联想控股). The command reports out-of-universe parents instead of
+  inventing edges; 13F/DION ownership is P1.3.
 - English mode translates UI chrome only; company descriptions stay as sourced.
 - Hot companies are a static front-end list; there is no admin backend.
 - **News updates are automatic** (2026-11-01): daily `news.sweep` schedule +
@@ -746,6 +783,14 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
   used for structured financials), per-domain rate limits, table/XHR
   extraction, 2 MB cap, retries + jitter. Eastmoney data is for internal demo
   + attribution.
+- **Entity resolution (P1.2, 2026-11-01)**:
+  `packages/sources/entity/src/sectors.ts` is the deterministic sector
+  taxonomy; `f10-profile.ts` / `edgar-profile.ts` parse identifiers; `gleif.ts`
+  and `wikidata.ts` are polite public-API clients with exact-match rules.
+  `occ entities enrich` writes sectors + local identifiers; `resolve` merges
+  dual-listed A/HK stubs through the F10 `H股代码`; `gleif` / `wikidata` are
+  separate, explicit commands. `entity_merge_log` audits every merge. See
+  [docs/ENTITY.md](docs/ENTITY.md).
 - **Structured financial statements** (`apps/worker/src/financials/` +
   `packages/extract/src/financials/`): `financials.company` fetches F10
   `cwfx` (HK `NewFinancialAnalysis`) for **A/HK only** and SEC EDGAR
@@ -991,6 +1036,31 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     name/alias, and **never updates an existing company row**. Fuzzy entity
     resolution is P1.2, not the sync command. SPX share-class weights are
     summed into one company-level membership weight.
+48. **One coarse sector taxonomy, vendor labels as provenance** (decision
+    2026-11-01): `companies.sector` holds one of 11 GICS-like Chinese sectors
+    (`gics-like-11@1`). The vendor's granular label and the deterministic rule
+    live in `companies.profile.industry` / `sectorSource`. A/HK use Eastmoney
+    F10 `所属东财行业` / `所属行业`; US uses F10 `所属行业` then SEC SIC.
+    Unknown labels stay null and are reported; stubs stay sector-null. Do not
+    add a second competing taxonomy without a migration plan.
+49. **Identifiers are exact entity keys, never fuzzy** (decision 2026-11-01):
+    `company_ids` uses `(id_type, id_value)` as a global key. P1.2 adds
+    ISIN/USCC/LEI/EIN/Wikidata + normalized domains; an identifier owned by
+    another company is a conflict, not an overwrite. A merge requires a
+    structured proof (F10 `H股代码` pointing at a researched HK security) and
+    writes `entity_merge_log`; name similarity is only a candidate filter.
+50. **GLEIF edges are additive and universe-bounded** (decision 2026-11-01):
+    resolve LEI by exact legal/other name (active, general category only),
+    follow `direct-parent` then `ultimate-parent`, and create `parent_of` only
+    when the parent already exists in `companies`. Every edge is `reported`
+    with a GLEIF source URL + quote and a review-queue item; out-of-universe
+    parents are counted and listed, never fabricated. GLEIF parent data is
+    sparse, so zero in-universe edges is a valid outcome.
+51. **Wikidata is a conservative QID enrichment** (decision 2026-11-01):
+    accept a QID only for an exact normalized label whose description is
+    company-like; ambiguity is reported, not guessed. It is a separate
+    `occ entities wikidata` command so deterministic daily paths never depend
+    on it.
 
 ---
 
@@ -1014,7 +1084,7 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 | MinIO `dl.min.io` returns 410 | `brew install minio` or set `MINIO_BIN`. |
 | Snapshot hash mismatch | Re-run `occ ingest --force` before `occ snapshots upload`; don’t upload different content. |
 | Review accept/reject semantics | Only `pending` moves; accept relation → verified, accept fact → `facts` row + proposal source, reject relation → rejected. Batch needs `--ids/--kind/--company/--all --yes`. |
-| `deep_research` returns 400 for private companies | It requires a recognized exchange listing. Private companies go through CLI/backfill until P1.2 entity resolution. |
+| `deep_research` returns 400 for private companies | It requires a recognized exchange listing. Private companies go through CLI/backfill; P1.2 identifier resolution covers listed entities, not private ones. |
 | `deep_research` is async | Poll `get_run`; research completion automatically enqueues `ingest.company`. |
 | News ingestion says `company not found` | Ingest the company profile first. |
 | Google News RSS is link-only, ~10/company | Don’t fetch/redistribute full text; add a separate adapter for bodies. |
@@ -1082,24 +1152,44 @@ Shipped end-to-end; no migration:
 - Known follow-up: stub entity resolution is exact-only; P1.2 identifiers
   will merge cross-listed duplicates (e.g. 中国平安 A-share vs HK profile).
 
-### P1.2 — Industry classification + entity resolution
+### P1.2 — Industry classification + entity resolution ✅ done 2026-11-01
 
-**Goal:** make the company header, search sector filter and ownership
-matching trustworthy.
+Shipped end-to-end; migration `0009_entity_merge_log.sql`:
 
-- Fill `companies.sector` for the **236 researched companies** (current:
-  **223/236 null**). Stubs stay sector-null by design — do not try to fill
-  862 placeholders. Use a deterministic mapping from index snapshots/vendor
-  industry codes first; only fall back to an LLM/manual pass with a recorded
-  source.
-- Identifier coverage: keep ticker/domain/CIK and add LEI, USCC, ISIN and
-  Wikidata QID where available; use GLEIF for LEI ↔ legal-entity/parent
-  relationships. Store them in `company_ids` with `id_type`; no fabricated
-  values.
-- Acceptance: sector coverage report (≥95% of the **236 researched
-  companies**, or an explicit unmatched list; stubs excluded); identifier
-  coverage report; `search?industry=` returns sensible results; company pages
-  show the sector; GLEIF edges carry a source.
+- New `packages/sources/entity`: `gics-like-11@1` sector taxonomy, Eastmoney
+  F10 A/HK/US industry mapping + SEC SIC fallback, F10 profile parser
+  (ISIN/USCC/`H股代码`/domain), EDGAR submissions parser (SIC/LEI/EIN),
+  GLEIF LEI client + exact-name matcher, Wikidata exact-label matcher, and
+  text/identifier normalization. 27 unit tests.
+- `occ entities enrich`: **235/236 researched companies** now have a canonical
+  sector (99.6%). The only gap is `HK:00823` 领展房地产投资信托基金 (F10
+  `EmptyRender`). Vendor label, rule, URL and timestamp are stored in
+  `companies.profile.sectorSource`; 235 Qdrant company points were reindexed;
+  240 F10 profile pages are cached under `.occ/f10/`.
+- Identifiers inserted with 0 conflicts: ticker 236/236, CIK 100 (US only),
+  domain 229, ISIN 184, USCC 64 (A-share; two red-chip A listings have no USCC
+  by source), EIN 91. A-share F10 pages do not expose ISIN, so 52 ISINs are
+  absent by source. See `occ entities coverage`.
+- `occ entities resolve --apply`: 46 candidate stubs, **12 confirmed merges**
+  through the structured `H股代码`: 中国人寿, 招商银行, 中国移动, 中国石化,
+  中国神华, 海尔智家, 工商银行, 美的集团, 中国石油, 中国平安, 药明康德,
+  紫金矿业. Survivors keep both listings + index memberships (e.g. 中国平安
+  HKEX:02318 + SSE:601318, HSI + A500); 850 stubs remain; `entity_merge_log`
+  has 12 audited rows. Exact A-share tickers now resolve to the real profile.
+- `occ entities gleif --apply`: **182/236 researched LEIs** (54 unmatched, 0
+  ambiguous) plus 1 stub parent LEI. **1 in-universe `parent_of` edge written:
+  Las Vegas Sands (SPX stub) → 金沙中国**, with the GLEIF source URL, evidence
+  quote and a pending review-queue item. Four other issuers report parents
+  outside the corpus (SoftBank, Deutsche Telekom, 中国人寿保险（集团）,
+  联想控股); those are reported, never fabricated.
+- `occ entities wikidata --apply`: **98/236 QIDs** resolved (138 unmatched,
+  0 ambiguous, 0 request errors) with conservative exact-label matching after
+  corporate suffixes; ambiguity is reported, never guessed. The client retries
+  429/5xx with backoff.
+- UI/API: `GET /v1/sectors` now returns the 11 canonical values;
+  `search?sector=` filters sensibly; company pages show the sector. `/c/601318`
+  resolves to 中国平安 with both tickers and HSI + A500.
+- Stubs stay sector-null; no stub was researched or given fake metrics.
 
 ### P1.3 — Investment/ownership graph depth
 
@@ -1229,8 +1319,12 @@ is per process.
 
 ### Done index (details live in the linked docs)
 
-- 2026-11-01 — P1.1 A500/SPX placeholder layer (500 + 500 members, 862
-  stubs, `occ indices sync`, searchable `未收录` pages).
+- 2026-11-01 — P1.2 sector + entity resolution (235/236 sectors, 12 A/HK
+  stub merges, 183 LEIs, 1 GLEIF parent edge, 98 QIDs) →
+  [docs/ENTITY.md](docs/ENTITY.md).
+- 2026-11-01 — P1.1 A500/SPX placeholder layer (500 + 500 members, 862 stubs
+  at P1.1; 850 after the 12 P1.2 merges, `occ indices sync`, searchable
+  `未收录` pages).
 - 2026-11-01 — automatic news refresh + TaskDock → [docs/NEWS.md](docs/NEWS.md),
   [docs/UI.md](docs/UI.md) §7.5/§7.9.
 - 2026-11-01 — US EDGAR-only + Financials tab → [docs/EXTRACT.md](docs/EXTRACT.md).
@@ -1245,9 +1339,15 @@ Current invariants (verify before a demo):
   the only documented structured-financials gap.
 - [x] HSI 85/85 and CYB50 50/50 memberships; `/v1/indices/HSI|CYB50` returns
   the members.
-- [x] A500/SPX: 500/500 memberships (`as_of 2026-10-30` / `2026-10-29`), 862
-  stubs; `/v1/indices/A500|SPX` returns 500; stub search + placeholder page
-  verified; rerunning `occ indices sync` inserts 0 rows.
+- [x] A500/SPX: 500/500 memberships (`as_of 2026-10-30` / `2026-10-29`),
+  850 stubs after P1.2 (435 A500 + 415 SPX); `/v1/indices/A500|SPX` returns
+  500; stub search + placeholder page verified; rerunning `occ indices sync`
+  inserts 0 rows (merged A-share lines now belong to their HK company).
+- [x] P1.2: 235/236 researched companies have a canonical sector (only
+  `HK:00823` lacks one); 12 A/HK stub merges are audited in
+  `entity_merge_log`; `company_ids` has 0 duplicates; 183 LEI / 64 USCC /
+  184 ISIN / 98 QID; 1 GLEIF `parent_of` edge with source + review item;
+  `search?sector=` returns the 11 canonical values.
 - [x] `company_research_state`: 104 `ready` / 31 `needs_review`; review is
   operator work, not a bug.
 - [x] Automatic news refresh: `global_news_last_update` is the only cursor;
@@ -1259,10 +1359,13 @@ Current invariants (verify before a demo):
 
 P1 (active; see §10):
 
-- [x] P1.1 A500 + SPX placeholders: 500 + 500 memberships, 862 stubs,
-  `occ indices sync` idempotent, searchable `未收录` pages; existing company
-  rows untouched; no migration.
-- [ ] P1.2 sector + entity resolution (LEI/USCC/ISIN/Wikidata/GLEIF).
+- [x] P1.1 A500 + SPX placeholders: 500 + 500 memberships, 862 stubs at
+  P1.1, `occ indices sync` idempotent, searchable `未收录` pages; existing
+  company rows untouched; no migration.
+- [x] P1.2 sector + entity resolution: 235/236 sectors; 12 A/HK stub merges
+  audited; 183 LEI / 64 USCC / 184 ISIN / 98 QID; 1 GLEIF `parent_of` edge
+  with source + review item; `occ entities coverage` reports every missing
+  company. Migration `0009_entity_merge_log.sql`.
 - [ ] P1.3 US 13F + HKEX DION ownership graph.
 - [ ] P1.4 CNINFO/SSE/SZSE/HKEXnews/IR RSS/GDELT adapters + PDF.
 - [ ] P1.5 daily company-data/financial-report refresh (`data.sweep`,
@@ -1292,6 +1395,7 @@ Active docs:
 - [`docs/EVAL.md`](docs/EVAL.md)
 - [`docs/EXTRACT.md`](docs/EXTRACT.md)
 - [`docs/NEWS.md`](docs/NEWS.md)
+- [`docs/ENTITY.md`](docs/ENTITY.md)
 - [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)
 - [`docs/PRIOR_ART.md`](docs/PRIOR_ART.md)
 - [`docs/NVIDIA_NIM_MIGRATION.md`](docs/NVIDIA_NIM_MIGRATION.md) — P0

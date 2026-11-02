@@ -142,7 +142,7 @@ export class SearchService {
             entry.bundle!,
             markets,
             indices,
-            query.sector,
+            query.sector ?? query.industry,
             query.coverage,
             query.include_fixtures,
           ),
@@ -395,8 +395,9 @@ function buildCompanyFilter(
   if (indices.length > 0) {
     must.push({ key: "indices", match: { any: indices } });
   }
-  if (query.sector) {
-    must.push({ key: "sector", match: { value: query.sector } });
+  const sector = query.sector ?? query.industry;
+  if (sector) {
+    must.push({ key: "sector", match: { value: sector } });
   }
   if (query.coverage) {
     must.push({ key: "coverage_tier", match: { value: query.coverage } });

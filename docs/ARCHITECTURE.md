@@ -75,9 +75,10 @@ Twelve decisions define the architecture:
 ### 1.2 v1 scope
 
 - **Universe**: NASDAQ-100 + HSI + ChiNext 50 snapshots (236 researched
-  companies after dedupe), plus 862 searchable A500/SPX stubs (`as_of`
-  2026-10-30 / 2026-10-29). A500/SPX placeholders are never bulk-researched;
-  STAR 50 is deferred backfill.
+  companies after dedupe), plus 850 searchable A500/SPX stubs (`as_of`
+  2026-10-30 / 2026-10-29; 862 before the 12 P1.2 cross-listing merges).
+  A500/SPX placeholders are never bulk-researched; STAR 50 is deferred
+  backfill.
 - **AI watchlist**: a curated seed of hot private/listed AI companies that are not necessarily
   index members — OpenAI, Anthropic, xAI, Mistral, Perplexity, DeepSeek, Moonshot/Kimi,
   Zhipu, MiniMax, Baichuan, StepFun, 01.AI, ByteDance, Huawei, SenseTime, iFlytek,
