@@ -83,12 +83,12 @@
 > Run tests serially:
 > `corepack pnpm -r --workspace-concurrency=1 test`.
 >
-> **Recent commits:** `8f795d5` P1.1 A500/SPX placeholder layer; `0eec66f`
-> automatic news refresh + TaskDock; `75864fb` US EDGAR-only + Financials tab;
-> `771490c` news sweep daily. Migration
-> `0008_global_news_last_update.sql` is applied; run
-> `node apps/cli/dist/occ.js migrate` after pulling schema changes. P1.1 adds
-> **no migration**.
+> **Recent commits:** `e6217ab` P1.2 sector + entity resolution; `8f795d5`
+> P1.1 A500/SPX placeholder layer; `0eec66f` automatic news refresh +
+> TaskDock; `75864fb` US EDGAR-only + Financials tab; `771490c` news sweep
+> daily. Migrations `0008_global_news_last_update.sql` and
+> `0009_entity_merge_log.sql` are applied; run
+> `node apps/cli/dist/occ.js migrate` after pulling schema changes.
 
 ### 0.1 Monitor commands
 
