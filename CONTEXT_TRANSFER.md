@@ -58,7 +58,7 @@
 > sweep: 232 `ok` / 4 `empty` companies); relations 87 (22 `reported` F10 +
 > 64 `inferred` + 1 GLEIF `parent_of`); 1,097 companies (1,086 non-fixture +
 > 11 fixtures), 1,257 index memberships, 1,109 securities, 4,888 aliases,
-> 2,491 identifiers (incl 183 LEI, 64 USCC, 184 ISIN, 98 Wikidata QID).
+> 2,491 identifiers (incl 183 LEI, 186 ISIN, 64 USCC, 98 Wikidata QID).
 > **Known content gaps:** 1 researched company has `sector = null`
 > (`HK:00823` 领展, F10 `EmptyRender`); no US ownership edges; no
 > CNINFO/HKEXnews/13F/DION adapters; **no daily filing/earnings refresh yet** —
