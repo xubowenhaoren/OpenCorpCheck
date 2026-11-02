@@ -28,9 +28,9 @@
 
 > **Current state:** foundations through the web UI are complete. Automatic
 > news refresh, structured financials (US EDGAR-only), the Financials tab,
-> HSI and ChiNext 50 are shipped. **The only active TODO list is §10.**
-> Backfill and delivery/engineering quality are out of scope for the current
-> P1 plan.
+> HSI, ChiNext 50 and the **A500/SPX placeholder layer** are shipped.
+> **The only active TODO list is §10.** Backfill and delivery/engineering
+> quality are out of scope for the current P1 plan.
 >
 > **Corpus:** 1,098 non-fixture companies — 236 researched (NDX 100, HSI
 > 85, CYB50 50, plus the discovered set) and **862 A500/SPX searchable
@@ -75,7 +75,7 @@
 > news 9). Web bundle 425.39 KB (gzip 130.72 KB). Run tests serially:
 > `corepack pnpm -r --workspace-concurrency=1 test`.
 >
-> **Recent commits:** P1.1 A500/SPX placeholder layer (this change); `0eec66f`
+> **Recent commits:** `8f795d5` P1.1 A500/SPX placeholder layer; `0eec66f`
 > automatic news refresh + TaskDock; `75864fb` US EDGAR-only + Financials tab;
 > `771490c` news sweep daily. Migration
 > `0008_global_news_last_update.sql` is applied; run
@@ -100,6 +100,11 @@ psql postgres://occ@127.0.0.1:5432/occdb -c \
      from global_news_last_update order by last_update_at nulls first limit 20;"
 psql postgres://occ@127.0.0.1:5432/occdb -c \
   "select method,count(*) from financial_facts group by 1;"
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select coverage_tier,count(*) from companies group by 1 order by 1;"
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select index_code,as_of,count(*) from index_memberships
+     where index_code in ('A500','SPX') group by 1,2 order by 1,2;"
 psql postgres://occ@127.0.0.1:5432/occdb -c \
   "select status,count(*) from company_research_state group by 1;"
 ```
@@ -1082,16 +1087,19 @@ Shipped end-to-end; no migration:
 **Goal:** make the company header, search sector filter and ownership
 matching trustworthy.
 
-- Fill `companies.sector` for all index members (current: **223/236 null**).
-  Use a deterministic mapping from index snapshots/vendor industry codes
-  first; only fall back to an LLM/manual pass with a recorded source.
+- Fill `companies.sector` for the **236 researched companies** (current:
+  **223/236 null**). Stubs stay sector-null by design — do not try to fill
+  862 placeholders. Use a deterministic mapping from index snapshots/vendor
+  industry codes first; only fall back to an LLM/manual pass with a recorded
+  source.
 - Identifier coverage: keep ticker/domain/CIK and add LEI, USCC, ISIN and
   Wikidata QID where available; use GLEIF for LEI ↔ legal-entity/parent
   relationships. Store them in `company_ids` with `id_type`; no fabricated
   values.
-- Acceptance: sector coverage report (≥95% of index members, or an explicit
-  unmatched list); identifier coverage report; `search?industry=` returns
-  sensible results; company pages show the sector; GLEIF edges carry a source.
+- Acceptance: sector coverage report (≥95% of the **236 researched
+  companies**, or an explicit unmatched list; stubs excluded); identifier
+  coverage report; `search?industry=` returns sensible results; company pages
+  show the sector; GLEIF edges carry a source.
 
 ### P1.3 — Investment/ownership graph depth
 
