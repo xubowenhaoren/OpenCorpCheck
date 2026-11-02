@@ -40,6 +40,12 @@ Unknown vendor labels fall through a keyword rule and then to `null`; nothing is
 invented. The old free-form seed labels (`白酒`, `大模型`, …) are normalized only
 when no vendor profile exists.
 
+Fixtures (hidden from search) also get their legacy thematic labels mapped to the
+canonical set. They can be A500/SPX index members, and the index-page sector
+filter is built from membership rows; without this step `AI 芯片`, `半导体代工`
+etc. leaked into the filter. This does not create profiles, fetch sources or
+fill stubs.
+
 ## 3. Identifiers
 
 `company_ids` is the entity spine. P1.2 adds/refreshes:

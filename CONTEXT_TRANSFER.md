@@ -1190,7 +1190,8 @@ Shipped end-to-end; migration `0009_entity_merge_log.sql`:
 - UI/API: `GET /v1/sectors` now returns the 11 canonical values;
   `search?sector=` (with `industry` as an alias) filters sensibly; company
   pages show the sector. `/c/601318` resolves to 中国平安 with both tickers and
-  HSI + A500.
+  HSI + A500. Fixture index members were also normalized to canonical sectors,
+  so the A500 index-page filter no longer shows `AI 芯片`/`半导体代工` labels.
 - Stubs stay sector-null; no stub was researched or given fake metrics.
 
 ### P1.3 — Investment/ownership graph depth

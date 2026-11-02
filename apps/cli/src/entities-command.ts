@@ -110,6 +110,9 @@ export interface EnrichReport {
   };
   identifiers: Record<string, { covered: number; missing: string[] }>;
   changed: number;
+  /** Fixture rows whose legacy thematic sector was normalized. */
+  fixturesNormalized: number;
+  fixtureSectorUnmatched: string[];
   sectorReindexed: number;
   reindexFailures: Array<{ companyId: string; error: string }>;
   identifierInserted: number;
@@ -200,6 +203,11 @@ export async function enrichEntities(
           skip: Boolean(options.skipIndex),
         });
 
+    // Fixtures keep their legacy thematic labels until now; the A500 index
+    // page builds its sector filter from membership rows, so normalize them
+    // too (no vendor fetch, no research, no stub fill).
+    const fixtureNormalization = await normalizeFixtureSectors(db, dryRun);
+
     const sectorCoverage = summarizeSectors(
       results.map((result) => ({
         slug: result.company.slug,
@@ -226,6 +234,8 @@ export async function enrichEntities(
           },
       identifiers: coverage ? coverage.identifiers : {},
       changed: results.filter((result) => result.changed).length,
+      fixturesNormalized: fixtureNormalization.changed,
+      fixtureSectorUnmatched: fixtureNormalization.unmatched,
       sectorReindexed: reindex.reindexed,
       reindexFailures: reindex.failures,
       identifierInserted,
@@ -680,6 +690,48 @@ function summarizeSectors(
     }
   }
   return { covered, missing, bySector };
+}
+
+/**
+ * Fixtures still carry the old thematic sector labels (`AI 芯片`, `大模型`,
+ * …). They are hidden from search, but A500/SPX index pages build their sector
+ * filter from membership rows, so a fixture member would leak a non-canonical
+ * value into the filter. Map those labels deterministically; never fetch a
+ * profile and never touch stubs.
+ */
+async function normalizeFixtureSectors(
+  db: Db,
+  dryRun: boolean,
+): Promise<{ changed: number; unmatched: string[] }> {
+  const companies = await listEntityCompanies(db, { includeFixtures: true });
+  const unmatched: string[] = [];
+  let changed = 0;
+  for (const company of companies) {
+    if (!company.isFixture || company.coverageTier === "stub") continue;
+    if (!company.sector) continue;
+    const decision = sectorFromLegacyLabel(company.sector);
+    if (!decision) {
+      unmatched.push(`${company.slug}:${company.sector}`);
+      continue;
+    }
+    if (decision.sector === company.sector) continue;
+    changed += 1;
+    if (dryRun) continue;
+    await updateEntityProfile(db, {
+      companyId: company.id,
+      sector: decision.sector,
+      profilePatch: {
+        sectorTaxonomy: SECTOR_TAXONOMY_VERSION,
+        sectorSource: {
+          taxonomy: SECTOR_TAXONOMY_VERSION,
+          rule: decision.rule,
+          label: decision.label,
+          market: securityTargets(company)[0]?.market ?? "US",
+        },
+      },
+    });
+  }
+  return { changed, unmatched };
 }
 
 // ---------------------------------------------------------------------------
@@ -1547,6 +1599,14 @@ function printEnrich(report: EnrichReport): void {
         ? ` · reindex failures ${report.reindexFailures.length}`
         : ""),
   );
+  if (report.fixturesNormalized > 0 || report.fixtureSectorUnmatched.length > 0) {
+    console.log(
+      `  fixture sectors normalized ${report.fixturesNormalized}` +
+        (report.fixtureSectorUnmatched.length
+          ? ` · unmatched ${report.fixtureSectorUnmatched.join(", ")}`
+          : ""),
+    );
+  }
   if (report.sectors.missing.length > 0) {
     console.log(`  sector missing: ${report.sectors.missing.join(", ")}`);
   }
