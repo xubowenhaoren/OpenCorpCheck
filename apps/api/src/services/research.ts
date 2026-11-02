@@ -27,6 +27,7 @@ const MARKET_BY_EXCHANGE: Record<string, "A" | "HK" | "US"> = {
   NASDAQ: "US",
   NYSE: "US",
   AMEX: "US",
+  CBOE: "US",
 };
 
 export interface ResearchServiceDeps {

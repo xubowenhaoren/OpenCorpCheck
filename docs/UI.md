@@ -418,16 +418,18 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 - 视觉参考：[`docs/prototypes/task-dock.html`](prototypes/task-dock.html)
   （去掉原型控制条、筛选 tab 和手动按钮）。
 
-### 7.10 Placeholder 公司页（P1.1，未实现）
+### 7.10 Placeholder 公司页（P1.1，已实现）
 
 - 用于 CSI A500 / S&P 500 中尚未收录的公司。`coverage_tier='stub'`，只有
   ticker、中文/英文名、市场、指数/权重。
 - 页头显示名称、代码、市场、指数标签和 `未收录` 状态；正文显示中性说明
   “数据由运营侧批量补充”，**没有 CTA、没有假进度条、没有研究按钮**。
-- 其他 tab（财务、图谱、新闻、来源）保持空状态，不编造数据。
-- 搜索必须能返回该页（精确 ticker/名称优先；语义结果排在真实公司之后），
-  并在结果行显示 `未收录`。
-- 不新增后端端点；页面只读。
+- 不渲染财务、图谱、新闻、来源四个 tab（直接显示占位页），不编造数据；
+  搜索结果行也不显示 `图谱` 动作。
+- 搜索必须能返回该页（精确 ticker/名称优先；语义结果不会返回 stub，因为
+  它们没有 Qdrant 点），并在结果行显示 `未收录`。
+- 不新增后端端点；页面只读。指数/权重来自
+  `CompanyProfileView.indexMemberships`（`公司页` API 新增的可选字段）。
 
 ---
 
@@ -666,8 +668,9 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 已补齐：
 
 - `GET /v1/graph?company=&depth=&types=&status=` — 2 层图谱、全局 `/graph`。
-- `GET /v1/indices/:code` — 指数成分；已加载 NDX 100 / HSI 85 / CYB50 50。
-  A500/SPX（P1.1）只加载 placeholder 成分；STAR50 暂无快照。
+- `GET /v1/indices/:code` — 指数成分；已加载 NDX 100 / SPX 500 / A500 500 /
+  HSI 85 / CYB50 50（A500/SPX 为 placeholder 成分，含 862 个 stub）。
+  STAR50 暂无快照。
 - `GET /v1/sectors` — 搜索行业过滤。
 - `GET /v1/search/companies?sector=` — Qdrant + Postgres 双侧过滤。
 - 开发期用 Vite proxy（5173 → 8787），不需要 CORS。

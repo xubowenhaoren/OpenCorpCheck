@@ -1,31 +1,32 @@
 # OpenCorpCheck
 
-**Open, agentic company intelligence for NASDAQ-100 · Hang Seng Index · ChiNext 50.**
+**Open, agentic company intelligence for NASDAQ-100 · S&P 500 · CSI A500 · Hang Seng Index · ChiNext 50.**
 
 > Status: 2026-11-01 — search, company pages (profile / financials / relationship
-> graph / news / sources), automatic news refresh + task dock, NDX/HSI/CYB50
-> index pages, `occ` CLI, MCP server, and the DeepSeek Harness ACP sidebar.
-> The active P1 roadmap (A500/SPX placeholders, sector/entity resolution,
-> ownership graph, official filing adapters) is in
+> graph / news / sources), automatic news refresh + task dock, all five index
+> pages (NDX/SPX/A500/HSI/CYB50), `occ` CLI, MCP server, and the DeepSeek
+> Harness ACP sidebar. **P1.1 A500/SPX placeholder pages are shipped** (862
+> searchable stubs). The active roadmap (sector/entity resolution, ownership
+> graph, official filing adapters, daily refresh) is in
 > [`CONTEXT_TRANSFER.md`](CONTEXT_TRANSFER.md) §10.
 
 OpenCorpCheck is an open-source, AI-native alternative to commercial company-intelligence
 products (the "企查查" category). It builds a cited, queryable profile for every company in
-three indices — NASDAQ-100, Hang Seng Index and ChiNext 50 — plus a curated AI watchlist,
-and exposes it through a web UI, a CLI, an MCP server, and a DeepSeek Harness agent sidebar.
-CSI A500 and S&P 500 are planned as **searchable placeholder pages** (P1.1), not bulk
-research targets.
+five indices — NASDAQ-100, S&P 500, CSI A500, Hang Seng Index and ChiNext 50 — plus a
+curated AI watchlist, and exposes it through a web UI, a CLI, an MCP server, and a DeepSeek
+Harness agent sidebar. CSI A500 and S&P 500 are **searchable placeholder pages**
+(ticker/name/market/index only), not bulk research targets.
 
 Phase 0 is a narrow spike: a minimal DeepSeek Harness headless run + a distilled BFS/DFS
 skill that produces cited company profiles. No UI, no database. See
 [phase0/README.md](phase0/README.md).
 
 The web UI is implemented in [`apps/web`](apps/web/README.md): search, company pages with
-financials / relationship graph / news / sources, NDX/HSI/CYB50 index pages, an automatic
-news task dock, and the live ACP assistant sidebar. Tool-use trajectory (live activity panel
-+ grouped static trace) and GFM Markdown are built; the sidebar replays dsh's persisted
-session log and resumes the same session after a restart. A first-class sub-agent card is
-**permanently deferred**.
+financials / relationship graph / news / sources, NDX/SPX/A500/HSI/CYB50 index pages, an
+automatic news task dock, and the live ACP assistant sidebar. Tool-use trajectory (live
+activity panel + grouped static trace) and GFM Markdown are built; the sidebar replays
+dsh's persisted session log and resumes the same session after a restart. A first-class
+sub-agent card is **permanently deferred**.
 
 ## Why
 
@@ -38,11 +39,12 @@ session log and resumes the same session after a restart. A first-class sub-agen
 
 ## What
 
-- **Universe**: 236 real companies — NASDAQ-100 (100), Hang Seng Index (85),
-  ChiNext 50 (50), plus one discovered — and a curated AI watchlist (OpenAI,
-  Anthropic, DeepSeek, Kimi/Moonshot, ...). CSI A500 and S&P 500 are P1
-  placeholder pages (searchable `未收录` pages, no bulk research). STAR 50 is
-  deferred backfill and is not in the current plan.
+- **Universe**: 1,098 non-fixture companies — 236 researched (NASDAQ-100 100,
+  Hang Seng Index 85, ChiNext 50 50, plus the discovered set) and 862 A500/SPX
+  searchable stubs — plus a curated AI watchlist (OpenAI, Anthropic, DeepSeek,
+  Kimi/Moonshot, ...). A500 (500) and S&P 500 (500 companies / 503 securities)
+  are placeholder pages with `未收录` badges, not bulk research targets. STAR 50
+  is deferred backfill and is not in the current plan.
 - **Providers**: official **DeepSeek** is the default for headless research, the
   reviewer, and the ACP sidebar. NVIDIA NIM + Parallel Search is opt-in with
   `OCC_LLM_PROVIDER=nvidia` (after per-model 429s it is not the default).
@@ -81,8 +83,9 @@ session log and resumes the same session after a restart. A first-class sub-agen
 
 ## Non-goals (v1)
 
-- All 200M+ legal entities worldwide. We start with NDX + HSI + ChiNext 50, the
-  AI watchlist, and A500/SPX placeholder pages; private companies are added on demand.
+- All 200M+ legal entities worldwide. We start with NDX + S&P 500 + CSI A500 +
+  HSI + ChiNext 50 (the last two indices as placeholders), the AI watchlist, and
+  on-demand private companies.
 - Bypassing paywalls, logins, CAPTCHAs, or robots.txt.
 - Investment advice or trading signals.
 - Moomoo/OpenD integration; it needs a local daemon and is post-v1.

@@ -36,6 +36,7 @@ const EXCHANGE_MARKET: Record<string, Market> = {
   NASDAQ: "US",
   NYSE: "US",
   AMEX: "US",
+  CBOE: "US",
 };
 
 interface NeutralHit {
@@ -490,7 +491,7 @@ function toCompanyHit(
       exchange: security.exchange,
       currency: security.currency ?? undefined,
     })),
-    indices: bundle.indices.map((entry) => entry.indexCode),
+    indices: [...new Set(bundle.indices.map((entry) => entry.indexCode))],
     markets,
     matchType,
     score: Number(score.toFixed(6)),

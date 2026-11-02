@@ -9,6 +9,7 @@ import { CompanyHeader } from "../components/CompanyHeader";
 import { CompanyNews } from "../components/CompanyNews";
 import { CompanyOverview } from "../components/CompanyOverview";
 import { CompanySources } from "../components/CompanySources";
+import { CompanyStub } from "../components/CompanyStub";
 import {
   CompanyTabs,
   type CompanyTab,
@@ -109,6 +110,10 @@ export function CompanyPage() {
   const relations =
     (card.counts?.relationsOutgoing ?? 0) +
     (card.counts?.relationsIncoming ?? 0);
+
+  if (card.company.coverageTier === "stub") {
+    return <CompanyStub company={card.company} />;
+  }
 
   return (
     <>

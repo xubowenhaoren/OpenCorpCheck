@@ -78,8 +78,7 @@ curl 'http://127.0.0.1:8787/openapi.json'
 ```
 
 Response envelope (legacy seed fixtures still carry old A500/SPX index labels;
-real memberships are loaded for NDX / HSI / ChiNext 50, and A500/SPX are P1
-placeholder pages):
+real memberships are loaded for NDX / SPX / A500 / HSI / ChiNext 50):
 
 ```json
 {
@@ -198,12 +197,16 @@ full-corpus score. Full method and comparisons: [EVAL.md](EVAL.md).
 
 ## Known limits / next
 
-- The visible corpus is **real research only**: 236 companies (NDX 100,
-  HSI 85, CYB50 50, plus one discovered); the 14 fixture-only companies and
-  all 31 fixture documents are hidden by default (`include_fixtures=true`
-  restores them for E2E). Old corpora need one `occ sync-fixtures` run.
-- A500/SPX placeholders (P1.1) will be searchable with a `未收录` badge; they
-  carry no documents, chunks or embeddings.
+- The visible corpus is **real research plus searchable stubs**: 236 researched
+  companies (NDX 100, HSI 85, CYB50 50, plus the discovered set) and **862
+  A500/SPX stubs**; the 11 fixture companies and all 31 fixture documents are
+  hidden by default (`include_fixtures=true` restores them for E2E). Old
+  corpora need one `occ sync-fixtures` run.
+- A500/SPX placeholders are searchable with a `未收录` badge; they carry no
+  documents, chunks or embeddings, so dense/BM25 retrieval never returns them.
+  Exact identifier, alias, pinyin and fuzzy-name matches do. The sync command
+  resolves existing companies by ticker+exchange → CIK → ticker id → exact
+  name/alias; fuzzy entity merging is P1.2.
 - News documents (`doc_type='news'`) are ingested per company from Google News
   RSS; they are searchable through `/v1/search/documents?doc_type=news` and
   appear in the company card's `events`. See [NEWS.md](NEWS.md).
@@ -223,10 +226,11 @@ full-corpus score. Full method and comparisons: [EVAL.md](EVAL.md).
   so it does not download the second model.
 - The `occ` CLI calls the API for search; entity resolution, graph queries and
   MCP search tools are implemented (P3).
-- Index snapshots are loaded for NDX / HSI / ChiNext 50 and write real
-  `index_memberships`. P1.1 adds CSI A500 + S&P 500 **searchable placeholder**
-  rows (`coverage_tier='stub'`); STAR 50 is deferred backfill. Legacy
-  `A500`/`SPX` seed fixtures remain for E2E compatibility only.
+- Index snapshots are loaded for NDX / SPX / A500 / HSI / ChiNext 50 and write
+  real `index_memberships`. A500 (500) and SPX (500 companies / 503 securities)
+  are **searchable placeholder** rows (`coverage_tier='stub'`); STAR 50 is
+  deferred backfill. Legacy `A500`/`SPX` seed fixtures remain for E2E
+  compatibility only.
 - Placeholder rows are searchable with a `未收录` badge (decision 30 revised
   2026-11-01); rank them below real profiles and never render fake metrics.
 - `scripts/e2e-search.sh` runs `occ seed --reset`, which **truncates the target

@@ -69,6 +69,7 @@ const MARKET_BY_EXCHANGE: Record<string, "A" | "HK" | "US"> = {
   NASDAQ: "US",
   NYSE: "US",
   AMEX: "US",
+  CBOE: "US",
 };
 
 /** The primary listing: A > HK > US, preferring the ticker in `company_ids`. */

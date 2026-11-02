@@ -363,6 +363,7 @@ function marketForExchange(exchange: string): string | undefined {
     case "NASDAQ":
     case "NYSE":
     case "AMEX":
+    case "CBOE":
       return "US";
     default:
       return undefined;

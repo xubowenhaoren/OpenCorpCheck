@@ -60,6 +60,8 @@ export const config = {
   sectionsDir:
     process.env.OCC_SECTIONS_DIR ?? path.join(repoRoot, "phase0", "out", "sections"),
   ndxFile: path.join(repoRoot, "config", "indices", "ndx.yaml"),
+  a500File: path.join(repoRoot, "config", "indices", "a500.yaml"),
+  sp500File: path.join(repoRoot, "config", "indices", "sp500.yaml"),
   collections: {
     companies: process.env.OCC_QDRANT_COMPANIES ?? "occ_companies",
     documents: process.env.OCC_QDRANT_DOCUMENTS ?? "occ_documents",

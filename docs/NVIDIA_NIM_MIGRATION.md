@@ -121,9 +121,9 @@ From `phase0/runs/*.jsonl` (102 companies) and `backfill_jobs` (102 completed
 
 **Decision 2026-10-31: no full A500/SPX backfill and no in-app research.** Both
 indices stay placeholder-only; data is filled by an explicit, capped **operator
-batch** run locally through the worker pool. The placeholder feature plan lives
-in [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §10 P1.1 — this doc only
-covers the provider/cost side. The numbers below are kept as the *reason*: they
+batch** run locally through the worker pool. The placeholder feature is
+implemented ([`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §10 P1.1) — this
+doc only covers the provider/cost side. The numbers below are kept as the *reason*: they
 describe the sweep we are **not** running. A capped batch is ~18 requests and
 ~3–8 minutes per company on NIM (see §1.1); the **research** step costs **¥0**
 (NIM + Parallel free tiers). Reviewer and relation extraction stay on the paid

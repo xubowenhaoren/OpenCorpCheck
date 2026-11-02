@@ -16,7 +16,7 @@ const MARKETS = [
   { value: "US", key: "search.stockUS" },
 ];
 
-const INDICES = ["NDX", "STAR50", "CYB50", "HSI"];
+const INDICES = ["A500", "SPX", "NDX", "HSI", "CYB50"];
 
 export function SearchPage() {
   const [params, setParams] = useSearchParams();

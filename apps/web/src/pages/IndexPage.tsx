@@ -7,7 +7,7 @@ import { EmptyState, ErrorView, Loading } from "../components/States";
 import { formatDate } from "../format";
 import { useLang } from "../i18n";
 
-const INDEX_CODES = ["NDX", "STAR50", "CYB50", "HSI"];
+const INDEX_CODES = ["NDX", "SPX", "A500", "HSI", "CYB50"];
 
 export function IndexPage() {
   const { code: rawCode } = useParams<{ code: string }>();
@@ -161,6 +161,9 @@ export function IndexPage() {
                   <td className="muted">{indexNumber + 1}</td>
                   <td>
                     <Link to={base}>{member.displayName}</Link>
+                    {member.coverageTier === "stub" ? (
+                      <span className="tag stub-badge">{t("company.stubBadge")}</span>
+                    ) : null}
                     {member.legalName && member.legalName !== member.displayName ? (
                       <div className="source-meta">{member.legalName}</div>
                     ) : null}

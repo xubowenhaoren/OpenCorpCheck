@@ -22,6 +22,7 @@
     "dev:embeddings": "scripts/dev-embeddings.sh start",
     "dev:minio": "scripts/dev-minio.sh start",
     "aliases:sync": "node apps/cli/dist/occ.js aliases sync",
+    "indices:sync": "node apps/cli/dist/occ.js indices sync",
     "snapshots:upload": "node apps/cli/dist/occ.js snapshots upload",
     "e2e:search": "scripts/e2e-search.sh",
     "eval:search": "node scripts/eval-search.mjs",

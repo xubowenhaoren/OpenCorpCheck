@@ -2,14 +2,14 @@
 
 > Handoff: **2026-11-01**. Current state: foundations through the web UI are
 > complete; automatic news refresh, US EDGAR-only structured financials, the
-> Financials tab, HSI and ChiNext 50 are shipped. **The only active TODO list
-> is §10 (P1); P2 is deferred.** Backfill is out of scope for the current plan.
+> Financials tab, HSI, ChiNext 50 and **P1.1 A500/SPX placeholders** are
+> shipped. **The only active TODO list is §10 (P1.2–P1.5); P2 is deferred.**
+> Backfill is out of scope for the current plan.
 >
 > The old 1,394-line document is preserved verbatim in
 > [`context_transfer_history.md`](context_transfer_history.md).
 >
-> **Current P1:** A500/SPX placeholders (`occ indices sync`, searchable
-> `未收录` pages), sector + entity resolution, US 13F/HKEX DION ownership,
+> **Current P1:** sector + entity resolution, US 13F/HKEX DION ownership,
 > official filing adapters, and daily financial-report refresh. See §10.
 >
 > **Machine constraint:** macOS VM, no Docker. P2 delivery/packaging
@@ -32,28 +32,33 @@
 > Backfill and delivery/engineering quality are out of scope for the current
 > P1 plan.
 >
-> **Corpus:** 236 non-fixture companies — NDX 100, HSI 85, CYB50 50, plus one
-> discovered. NDX profiles predate the reviewer; HSI/CYB50
-> `company_research_state` is 104 `ready` / 31 `needs_review` (all revision
-> cap, not parse failures; `needs_review` is the quality gate working). 10
-> AI-watchlist fixtures remain hidden.
+> **Corpus:** 1,098 non-fixture companies — 236 researched (NDX 100, HSI
+> 85, CYB50 50, plus the discovered set) and **862 A500/SPX searchable
+> stubs** (447 A500 + 415 SPX; 0 fixture stubs). NDX profiles predate the
+> reviewer; HSI/CYB50 `company_research_state` is 104 `ready` / 31
+> `needs_review` (all revision cap, not parse failures; `needs_review` is the
+> quality gate working). 10 AI-watchlist fixtures (plus SMIC) remain hidden.
 >
 > | Index | Constituents | Memberships | Structured financials | Status |
 > |---|---|---|---|---|
 > | NDX | 100 | 100 | **100 `xbrl`, 0 `f10`** | done |
 > | HSI | 85 | 85 | **84 `f10`** | done; `HK:00823` F10 EmptyRender |
 > | CYB50 | 50 | 50 | **50 `f10`** | done; 45 ready / 5 needs_review |
-> | A500 / SPX | — | — | — | **P1.1 placeholder layer, not built** |
+> | A500 | 500 | 500 (`as_of 2026-10-30`) | **0 (stubs)** | **P1.1 done** |
+> | SPX | 500 companies / 503 securities | 500 (`as_of 2026-10-29`) | **0 (stubs)** | **P1.1 done** |
 > | STAR50 | — | — | — | deferred backfill, not in the current plan |
 >
 > **Data:** `financial_facts` 46,880 (29,683 `xbrl`, 15,767 `f10`, 1,430
 > profile); financials cache 234 ok / 1 failed; 3,245 news documents (last
 > sweep: 232 `ok` / 4 `empty` companies); relations 22 `reported` + 64
-> `inferred`. **Known content gaps:** 223/236 companies have `sector = null`;
+> `inferred`; 1,109 companies (1,098 non-fixture + 11 fixtures), 1,257
+> index memberships, 1,109 securities, 4,896 aliases, 1,551 identifiers.
+> **Known content gaps:** 223/236 researched companies have `sector = null`;
 > no US ownership edges; no CNINFO/HKEXnews/13F/DION adapters; **no daily
-> filing/earnings refresh yet** — all P1 (§10).
+> filing/earnings refresh yet** — all P1 (§10). Stubs intentionally have no
+> profile, documents, financials, chunks or embeddings.
 >
-> **Running (2026-11-01):**
+> **Running (2026-11-01, rebuilt for P1.1):**
 > - API `node apps/api/dist/server.js` on `:8787`
 > - Vite `corepack pnpm --filter @occ/web dev` on `:5173`
 > - persistent news worker: `scripts/dev-news-worker.sh start` (pid in
@@ -66,14 +71,16 @@
 > history kept 3 days; next due ≈ +23 h.
 >
 > **Tests/build:** all green — API 33, web 33, worker 40, extract 42, ingest
-> 39, agent 17, CLI 7, retrieval 10, db 9, storage 5, sources 18. Web bundle
-> 421.7 KB (gzip 129.8 KB). Run tests serially:
+> 46, agent 17, CLI 7, retrieval 10, db 9, storage 5, sources 18 (F10 9 +
+> news 9). Web bundle 425.39 KB (gzip 130.72 KB). Run tests serially:
 > `corepack pnpm -r --workspace-concurrency=1 test`.
 >
-> **Recent commits:** `0eec66f` automatic news refresh + TaskDock; `75864fb`
-> US EDGAR-only + Financials tab; `771490c` news sweep daily. Migration
+> **Recent commits:** P1.1 A500/SPX placeholder layer (this change); `0eec66f`
+> automatic news refresh + TaskDock; `75864fb` US EDGAR-only + Financials tab;
+> `771490c` news sweep daily. Migration
 > `0008_global_news_last_update.sql` is applied; run
-> `node apps/cli/dist/occ.js migrate` after pulling schema changes.
+> `node apps/cli/dist/occ.js migrate` after pulling schema changes. P1.1 adds
+> **no migration**.
 
 ### 0.1 Monitor commands
 
@@ -122,23 +129,32 @@ OpenCorpCheck is an open, agentic, provenance-first company intelligence store.
 Every number/relation should link back to a source; the agent can propose facts
 but cannot write verified data directly.
 
-**v1 universe** (236 real companies today; A500/SPX add ~1,000 placeholder
-rows in P1; plus the AI watchlist):
+**v1 universe** (1,098 non-fixture companies today: 236 researched + 862
+A500/SPX stubs; plus the AI watchlist):
 
 | Index | Code | Market | Status |
 |---|---|---|---|
-| CSI A500 / 中证A500 | `000510` | A | **P1.1 placeholder layer**: searchable stub pages, no bulk research |
-| S&P 500 | `SPX` | US | **P1.1 placeholder layer**: searchable stub pages, no bulk research |
+| CSI A500 / 中证A500 | `000510` | A | **done 2026-11-01**: 500 constituents, 447 stubs (53 already covered) |
+| S&P 500 | `SPX` | US | **done 2026-11-01**: 500 companies / 503 securities, 415 stubs (85 already covered) |
 | STAR 50 / 科创50 | `000688` | A (SSE) | **deferred backfill**, not in the current P1/P2 plan |
 | ChiNext 50 / 创业板50 | `399673` | A (SZSE) | **done 2026-10-31**: 50 constituents, 45 ready / 5 needs_review |
 | Hang Seng Index | `HSI` | HK | **done 2026-10-31**: 85 constituents, 85/85 memberships |
 | NASDAQ-100 | `NDX` | US | **done**: 100 companies backfilled |
 
-- **A500 and S&P 500 get placeholders, not research.** P1.1 adds index
-  snapshots and `occ indices sync`; stub rows carry ticker + names + index
-  membership only. They are **searchable** with a `未收录` badge and open a
-  read-only placeholder page. An operator may later fill a company through an
-  explicit, capped local batch; there is no in-app research.
+- **A500 and S&P 500 are placeholders, not research.** `occ indices sync`
+  loads `config/indices/a500.yaml` and `sp500.yaml` (generated by
+  [`scripts/snapshot-indices.py`](scripts/snapshot-indices.py)) and creates
+  `coverage_tier='stub'` rows with ticker + names + market + index/weight
+  only. They are **searchable** with a `未收录` badge and open a read-only
+  placeholder page with no tabs/CTA. A constituent that already resolves to a
+  real company (e.g. AAPL, 茅台) only gains the membership; its profile is
+  never modified. An operator may later fill a company through an explicit,
+  capped local batch; there is no in-app research.
+- **Sources:** A500 = official CSI constituent/weight workbooks; SPX = SPDR
+  S&P 500 ETF (SPY) daily holdings (documented fallback, same precedent as
+  HSI) plus the SEC ticker→exchange/CIK file. A500 weights are `as_of
+  2026-09-30`; the membership snapshot is `2026-10-30`. SPX share-class
+  weights are summed to one company-level membership weight.
 - Placeholder rows are intentionally minimal: no profile, documents,
   financials, chunks or embeddings until an operator-run batch fills them.
 - AI watchlist (~24 names: OpenAI, Anthropic, DeepSeek, Moonshot/Kimi, Zhipu,
@@ -225,18 +241,26 @@ rows in P1; plus the AI watchlist):
 
 Verified numbers worth keeping:
 
-- Visible corpus: **102 real profiles**, NDX 100 + 600519/00700; 14 synthetic
-  companies / 31 fixture documents remain in the DB but hidden.
+- Visible corpus: **102 real profiles**, NDX 100 + 600519/00700; 11 fixture
+  companies / 31 fixture documents remain in the DB but hidden. Search also
+  returns **862 A500/SPX stubs** with a `未收录` badge.
 - Agent regression question (“goog 今天股价大跌，是什么原因？”): **57 s /
   15 tool calls / 7 sources** with a cited Markdown answer after the budget
   fix. The old failure was 32 distinct calls in 95 s with no repeats.
 - Graph: AAPL 3 edges, ARM 8, NVDA 14; 2-hop NVDA 26 nodes.
 - Search p95 (no rerank): companies 218–300 ms, documents 366–473 ms.
-- Build: web main JS 421.7 KB (gzip 129.8 KB), lazy Markdown chunk 162.7 KB
-  (gzip 49.1 KB), CSS 52.4 KB (gzip 10.4 KB).
+- Build: web main JS 425.39 KB (gzip 130.72 KB), lazy Markdown chunk 162.66 KB
+  (gzip 49.05 KB), CSS 53.37 KB (gzip 10.52 KB).
 
 Verified 2026-11-01:
 
+- **P1.1:** `/v1/indices/A500` 500 members (447 stubs, `as_of 2026-10-30`);
+  `/v1/indices/SPX` 500 members (415 stubs, `as_of 2026-10-29`); exact search
+  for `000001` / `平安银行` / `BRK.B` returns the stub with `未收录`; stub
+  cards expose `indexMemberships` incl. weight (平安银行 0.398%, AAPL SPX
+  7.653269%); all 247 pre-existing company rows are byte-identical after sync;
+  rerunning `occ indices sync` inserts 0 rows. Headless Chrome verified the
+  search row, both index pages and the placeholder page.
 - News sweep `b892648d-…` completed 236/236; AAPL 20/19; 600519 News tab 28
   items; TaskDock active/completed states verified on desktop/mobile/dark.
 - Structured financials: AAPL FY2025 416.161B USD (10-K); CCEP FY2025 EUR
@@ -247,7 +271,7 @@ Verified 2026-11-01:
 
 Tests (serial, because parallel vitest workers collide on
 `node_modules/.vitest-cache`): `corepack pnpm -r --workspace-concurrency=1 test`.
-Current counts: API 33, agent 17, web 33, ingest 39, extract 42, worker 40,
+Current counts: API 33, agent 17, web 33, ingest 46, extract 42, worker 40,
 CLI 7, retrieval 10, db 9, storage 5, sources 18 (F10 9 + news 9). All green.
 
 ---
@@ -287,6 +311,7 @@ OpenCorpCheck/
     embeddings/                    # local BGE-M3 / reranker sidecar
   scripts/
     dev-db.sh dev-qdrant.sh dev-embeddings.sh dev-minio.sh e2e-search.sh
+    snapshot-indices.py             # generate A500/SPX YAML from official sources
   phase0/                          # historical proof-of-concept harness + outputs
 ```
 
@@ -308,6 +333,10 @@ corepack pnpm dev:web               # http://127.0.0.1:5173 (proxy /v1 → 8787)
 
 # persistent automatic-news worker (separate process)
 scripts/dev-news-worker.sh start    # status | stop | restart | logs
+
+# refresh index snapshots, then create/update A500/SPX stubs + memberships
+uv run scripts/snapshot-indices.py
+node apps/cli/dist/occ.js indices sync [--index A500|SPX|all] [--dry-run] [--json]
 
 # optional F10 sidecar
 cd services/finance-analyst && uv run occ-f10 serve --port 8090
@@ -368,14 +397,15 @@ Pages:
   recent views (`localStorage`).
 - `/search?q=` — company hybrid search with market/index/sector filters. Rows
   show name, ticker, country, sector, indices and a two-line description; no
-  score/matchType. **A500/SPX stubs (P1.1) are searchable with a `未收录`
-  badge** and open the placeholder page. Short Chinese queries with no
-  exact/alias/fuzzy hit and a low dense score show “没找到 + 问助手” instead
+  score/matchType. **A500/SPX stubs are searchable with a `未收录` badge**
+  and open the placeholder page (no graph action). Short Chinese queries with
+  no exact/alias/fuzzy hit and a low dense score show “没找到 + 问助手” instead
   of unrelated vector neighbours.
 - `/c/:ref` — ticker, slug, Chinese alias or ULID. Five tabs:
   基本资料 / 财务数据 / 关系图谱 / 新闻动态 / 资料来源. A `stub` company
-  renders the read-only placeholder state (names/ticker/market/indices, no
-  fake data, no CTA).
+  returns a **dedicated read-only placeholder page** (no tabs, no follow/agent
+  CTA): names, ticker/exchange, market, index membership + weight, and a
+  neutral “尚未收录 / 数据由运营侧批量补充” note.
   - Overview: one-line summary, segment bars, key numbers, recent events, and
     right-column shareholders/investments/related companies.
   - Financials: metric cards (derived values carry a `推导` marker), a
@@ -399,10 +429,11 @@ Pages:
   `更新于 … · 自动更新` / `正在更新…` and refetches the card when the cursor
   advances.
 - `/graph?company=` — global ego network with company picker.
-- `/indices/NDX` / `/indices/HSI` / `/indices/CYB50` — loaded constituent
-  pages. The UI filter codes are currently
-  `["NDX", "STAR50", "CYB50", "HSI"]`; **P1.1 adds `A500` and `SPX`** to the
-  picker and index pages. STAR50 has no snapshot (deferred backfill).
+- `/indices/NDX` / `/indices/SPX` / `/indices/A500` / `/indices/HSI` /
+  `/indices/CYB50` — loaded constituent pages. Search index chips are
+  `["A500", "SPX", "NDX", "HSI", "CYB50"]`; the index-page switcher is
+  `["NDX", "SPX", "A500", "HSI", "CYB50"]`. Stub rows show a `未收录` badge.
+  STAR50 has no snapshot (deferred backfill).
 - AI sidebar — 35% of page width on desktop (hardcoded `35vw`; was 420 px),
   full-screen on mobile; real
   `POST /v1/agent/sessions` + SSE prompt/cancel; company context; suggestions;
@@ -420,8 +451,8 @@ Backend endpoints added with the UI:
 
 - `GET /v1/graph?company=&depth=1|2&status=&types=&limit=` — ego network
   (`center`, `nodes`, `edges`, `truncated`); depth 2 expands up to 40 neighbours.
-- `GET /v1/indices/:code` — constituents (NDX works; other codes 404 until
-  loaded), with ticker/sector/markets/as_of.
+- `GET /v1/indices/:code` — constituents (NDX/SPX/A500/HSI/CYB50 loaded),
+  with ticker/sector/markets/as_of and `coverageTier`.
 - `GET /v1/sectors` — industry filter values (fixtures hidden).
 - `GET /v1/search/companies` — new `sector` filter.
 - `GET /v1/agent/sessions` — persisted dsh sessions for the history menu
@@ -438,8 +469,8 @@ Backend endpoints added with the UI:
   (`listDueNewsCompanies`, `leaseNewsCompany`, `markNewsSuccess`,
   `markNewsFailure`, `getNewsCompanyKey`, `getNewsDueSummary`).
 - `@occ/core` — `CompanyGraphQuerySchema`, `CompanyGraphView`,
-  `IndexMemberView`, `IndexView`; `SearchCompaniesQuery.sector`;
-  `ResearchJobView.payload/meta`.
+  `IndexMemberView`, `IndexView`, `CompanyProfileView.indexMemberships`;
+  `SearchCompaniesQuery.sector`; `ResearchJobView.payload/meta`.
 
 Known limitations:
 
@@ -447,9 +478,15 @@ Known limitations:
   `owns`) + 64 `inferred`. A/HK edges come from F10 shareholder tables; **US has
   no ownership edges**. US 13F, HKEX DION and broader `parent_of` are P1.3. Do
   not fake edges in the UI.
-- **Industry classification is missing:** 223/236 non-fixture companies have
+- **Industry classification is missing:** 223/236 researched companies have
   `sector = null`; the index/company header shows `—` and the search sector
   filter is mostly empty. P1.2.
+- **Stub entity resolution is ticker-based (P1.2):** an issuer already in the
+  corpus under a different exact name/ticker can appear as a separate stub
+  (e.g. the 中国平安 A-share line vs its HK profile). `occ indices sync` does
+  exact ticker/CIK/name matching only and never fuzzy-merges; P1.2 identifiers
+  (LEI/USCC/ISIN/Wikidata) resolve these. Do not hide or merge them in the UI
+  by hand.
 - English mode translates UI chrome only; company descriptions stay as sourced.
 - Hot companies are a static front-end list; there is no admin backend.
 - **News updates are automatic** (2026-11-01): daily `news.sweep` schedule +
@@ -673,9 +710,10 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 - **Fixture isolation**: `companies.is_fixture` / `documents.is_fixture` and
   Qdrant payload flags. Search excludes fixtures unless `include_fixtures=true`.
   `occ sync-fixtures` is idempotent and also backfills pinyin aliases.
-- **Stubs are not fixtures**: `coverage_tier='stub'` rows (A500/SPX, P1.1) are
+- **Stubs are not fixtures**: `coverage_tier='stub'` rows (A500/SPX) are
   included in search with a `未收录` badge; they have no embeddings/documents,
-  so semantic search must not pretend they have a profile.
+  so semantic search never returns them. Exact identifier/alias/fuzzy matches
+  do (ticker, Chinese/English name, pinyin).
 - **Chinese aliases** are curated in `config/aliases/zh.yaml`; run
   `occ aliases sync` (inserts aliases + pinyin forms and reindexes company
   points). Do not hardcode names.
@@ -738,10 +776,10 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
    own copy.
 5. **No Docker on this machine**; use native services. Cross-platform support
    (macOS + WSL2/Linux) is still required; Docker/Electron are **P2**.
-6. **Universe scope**: ChiNext 50 + HSI + NDX are done; **A500 + S&P 500 get
-   searchable placeholder pages in P1.1** with no bulk research; STAR 50 and
-   remaining HSI/CYB50 coverage are **backfill, out of the current plan**.
-   NDX is done; A/HK profiles are done.
+6. **Universe scope**: ChiNext 50 + HSI + NDX are done; **A500 + S&P 500 are
+   searchable placeholder pages (done 2026-11-01)** with no bulk research;
+   STAR 50 and remaining HSI/CYB50 coverage are **backfill, out of the current
+   plan**. NDX is done; A/HK profiles are done.
 7. **F10 reuse** (Apache-2.0 attribution); do not bulk redistribute Eastmoney.
 8. No full port of `opportunity-radar`; keep the distilled BFS/DFS + citation
    discipline.
@@ -939,6 +977,15 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     without growing forever. The cursor table itself is not pruned; it is the
     scheduling truth. Per-job `inserted`/`skipped` live in
     `backfill_jobs.meta`.
+47. **Index snapshots are generated, not hand-edited** (decision 2026-11-01):
+    `scripts/snapshot-indices.py` downloads official CSI A500 constituent +
+    weight workbooks and, for SPX, SPDR S&P 500 ETF (SPY) daily holdings plus
+    the SEC ticker→exchange/CIK file. The committed YAML records `as_of`,
+    source URLs and license; refresh by rerunning the script. `occ indices
+    sync` resolves a constituent by ticker+exchange → CIK → ticker id → exact
+    name/alias, and **never updates an existing company row**. Fuzzy entity
+    resolution is P1.2, not the sync command. SPX share-class weights are
+    summed into one company-level membership weight.
 
 ---
 
@@ -1001,32 +1048,34 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 > AI news summaries/full-text fetch, account system, K-line/portfolio, graph
 > editing, financial trend charts, Docker/Electron (P2).
 
-### P1.1 — A500 + S&P 500 placeholder layer
+### P1.1 — A500 + S&P 500 placeholder layer ✅ done 2026-11-01
 
-**Goal:** every constituent of CSI A500 (000510) and S&P 500 (SPX) has a
-read-only, **searchable** placeholder page — names, ticker, market,
-index/weight — without inventing profile data. **No bulk research/backfill.**
+Shipped end-to-end; no migration:
 
-- `config/indices/a500.yaml` and `config/indices/sp500.yaml`: `as_of`,
-  optional weights, source/license. Use official constituent lists and record
-  the source.
-- `occ indices sync` (new CLI command): for every constituent not already
-  resolvable by ticker+exchange/name, insert a `coverage_tier='stub'` row:
-  `market`, `display_name`, `name_en`/`name_zh` (aliases when one language is
-  unknown), `profile={}`; add `index_memberships` rows. Idempotent by
-  ticker+exchange; never overwrite a real profile.
-- **Searchable (revised 2026-11-01):** placeholder rows MUST be returned by
-  search with a `未收录` badge. Exact ticker/name matches always include them;
-  semantic results may include them but rank below real profiles. Never show
-  fake scores or metrics. Clicking a result opens `/c/:ticker`.
-- Placeholder page: names, ticker, market, indices/weights and a neutral
-  “尚未收录 / 数据由运营侧批量补充” note. **No CTA**, no fake progress, no
-  `/research` endpoint. Other tabs stay empty (no fake data).
-- No documents, chunks, financials, embeddings or profile sections for stubs.
-- Acceptance: constituent count minus existing companies; no duplicate
-  slugs/tickers; real profiles untouched; a stub appears in search with the
-  badge and opens the placeholder page; index pages list all members; no route
-  or UI action can enqueue research.
+- `config/indices/a500.yaml` — 500 CSI A500 constituents (official CSI
+  constituent + weight workbooks, `as_of 2026-10-30`, weights `2026-09-30`;
+  Chinese + English names, SSE/SZSE, weight).
+- `config/indices/sp500.yaml` — 503 securities / 500 companies (`as_of
+  2026-10-29`; SPY daily holdings fallback + SEC ticker→exchange/CIK; the 3
+  dual-class issuers are one company with `primary: false` on the lighter
+  class; share-class weights summed per company).
+- Both files are generated by
+  [`scripts/snapshot-indices.py`](scripts/snapshot-indices.py) (`uv run …`);
+  the script records source URLs and license notes.
+- `occ indices sync [--index A500|SPX|all] [--file path] [--dry-run]
+  [--json]` creates `coverage_tier='stub'` rows for unresolved primaries
+  (447 A500 + 415 SPX), inserts ticker/CIK identifiers, names + pinyin
+  aliases, securities and index memberships/weights; an existing company
+  only gains a missing security and the membership. Idempotent (second run
+  inserts 0); all 247 pre-existing company rows verified byte-identical.
+- UI: search/index filter codes include A500/SPX; results and index rows show
+  `未收录`; `/c/:ref` returns a dedicated read-only placeholder page (names,
+  ticker, market, index + weight, neutral note; no tabs/CTA/graph link).
+- Verified: `/v1/indices/A500|SPX` 500 members; `000001`/`平安银行`/`BRK.B`
+  exact search returns the stub; 平安银行 weight 0.398%; headless Chrome
+  checked search, both index pages and the placeholder page; tests green.
+- Known follow-up: stub entity resolution is exact-only; P1.2 identifiers
+  will merge cross-listed duplicates (e.g. 中国平安 A-share vs HK profile).
 
 ### P1.2 — Industry classification + entity resolution
 
@@ -1172,6 +1221,8 @@ is per process.
 
 ### Done index (details live in the linked docs)
 
+- 2026-11-01 — P1.1 A500/SPX placeholder layer (500 + 500 members, 862
+  stubs, `occ indices sync`, searchable `未收录` pages).
 - 2026-11-01 — automatic news refresh + TaskDock → [docs/NEWS.md](docs/NEWS.md),
   [docs/UI.md](docs/UI.md) §7.5/§7.9.
 - 2026-11-01 — US EDGAR-only + Financials tab → [docs/EXTRACT.md](docs/EXTRACT.md).
@@ -1186,6 +1237,9 @@ Current invariants (verify before a demo):
   the only documented structured-financials gap.
 - [x] HSI 85/85 and CYB50 50/50 memberships; `/v1/indices/HSI|CYB50` returns
   the members.
+- [x] A500/SPX: 500/500 memberships (`as_of 2026-10-30` / `2026-10-29`), 862
+  stubs; `/v1/indices/A500|SPX` returns 500; stub search + placeholder page
+  verified; rerunning `occ indices sync` inserts 0 rows.
 - [x] `company_research_state`: 104 `ready` / 31 `needs_review`; review is
   operator work, not a bug.
 - [x] Automatic news refresh: `global_news_last_update` is the only cursor;
@@ -1197,8 +1251,9 @@ Current invariants (verify before a demo):
 
 P1 (active; see §10):
 
-- [ ] P1.1 A500 + SPX placeholders (`occ indices sync`, stub rows, searchable
-  `未收录` pages).
+- [x] P1.1 A500 + SPX placeholders: 500 + 500 memberships, 862 stubs,
+  `occ indices sync` idempotent, searchable `未收录` pages; existing company
+  rows untouched; no migration.
 - [ ] P1.2 sector + entity resolution (LEI/USCC/ISIN/Wikidata/GLEIF).
 - [ ] P1.3 US 13F + HKEX DION ownership graph.
 - [ ] P1.4 CNINFO/SSE/SZSE/HKEXnews/IR RSS/GDELT adapters + PDF.

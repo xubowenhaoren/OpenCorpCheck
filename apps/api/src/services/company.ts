@@ -35,6 +35,7 @@ const EXCHANGE_MARKET: Record<string, string> = {
   NASDAQ: "US",
   NYSE: "US",
   AMEX: "US",
+  CBOE: "US",
 };
 
 function summaryOf(bundle: CompanyBundle): CompanySummary {
@@ -100,6 +101,22 @@ export class CompanyService {
         : Promise.resolve(undefined),
     ]);
 
+    const latestIndexMemberships = new Map<
+      string,
+      { code: string; weight?: number; asOf?: string }
+    >();
+    for (const entry of bundle.indices) {
+      const asOf = String(entry.asOf).slice(0, 10);
+      const previous = latestIndexMemberships.get(entry.indexCode);
+      if (!previous || asOf > (previous.asOf ?? "")) {
+        latestIndexMemberships.set(entry.indexCode, {
+          code: entry.indexCode,
+          ...(entry.weight !== null ? { weight: entry.weight } : {}),
+          asOf,
+        });
+      }
+    }
+
     const company: CompanyProfileView = {
       id: bundle.company.id,
       slug: bundle.company.slug,
@@ -117,6 +134,9 @@ export class CompanyService {
         currency: security.currency ?? undefined,
       })),
       indices: [...new Set(bundle.indices.map((entry) => entry.indexCode))],
+      indexMemberships: [...latestIndexMemberships.values()].sort((left, right) =>
+        left.code.localeCompare(right.code),
+      ),
     };
 
     return {

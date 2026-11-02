@@ -177,6 +177,12 @@ export interface NewsEventView {
   source?: SourceRefView;
 }
 
+export interface CompanyIndexView {
+  code: string;
+  weight?: number;
+  asOf?: string;
+}
+
 export interface CompanyProfileView {
   id: string;
   slug: string;
@@ -190,6 +196,7 @@ export interface CompanyProfileView {
   aliases: string[];
   tickers: CompanyTickerView[];
   indices: string[];
+  indexMemberships?: CompanyIndexView[];
 }
 
 export interface CompanyCounts {

@@ -24,6 +24,9 @@ export function CompanyResultRow({
             <Link to={base}>
               <Highlight text={hit.displayName} query={query} />
             </Link>
+            {hit.coverageTier === "stub" ? (
+              <span className="tag stub-badge">{t("company.stubBadge")}</span>
+            ) : null}
           </h2>
           {hit.legalName && hit.legalName !== hit.displayName ? (
             <p className="result-legal">{hit.legalName}</p>
@@ -47,9 +50,11 @@ export function CompanyResultRow({
           <Link className="btn secondary small" to={base}>
             {lang === "zh" ? "资料" : "Profile"}
           </Link>
-          <Link className="btn secondary small" to={`${base}/graph`}>
-            {t("tabs.graph")}
-          </Link>
+          {hit.coverageTier === "stub" ? null : (
+            <Link className="btn secondary small" to={`${base}/graph`}>
+              {t("tabs.graph")}
+            </Link>
+          )}
         </div>
       </div>
       {hit.description ? (

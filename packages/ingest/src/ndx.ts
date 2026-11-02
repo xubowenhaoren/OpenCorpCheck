@@ -14,6 +14,7 @@ const IndexMetaSchema = z.object({
   name: z.string().min(1),
   market: z.enum(["A", "HK", "US"]),
   as_of: z.string().min(1),
+  weights_as_of: z.string().optional(),
   fetched_at: z.string().optional(),
   securities: z.number().int().positive().optional(),
   companies: z.number().int().positive().optional(),
@@ -23,8 +24,12 @@ const IndexMetaSchema = z.object({
 const ConstituentSchema = z.object({
   ticker: z.string().min(1),
   name: z.string().min(1),
+  name_en: z.string().min(1).optional(),
+  name_zh: z.string().min(1).optional(),
   exchange: z.string().min(1),
   primary: z.boolean().default(true),
+  weight: z.number().nonnegative().optional(),
+  cik: z.string().regex(/^\d{10}$/).optional(),
 });
 
 const IndexSnapshotSchema = z.object({
