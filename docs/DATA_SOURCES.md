@@ -34,8 +34,9 @@ must change before it becomes a database source, and the licensing constraints.
 **Current adapter coverage (2026-11-01):** implemented = SEC EDGAR XBRL,
 Eastmoney F10 (A/HK), Google News RSS, and the **P1.2 entity spine**
 (Eastmoney F10 profile sectors + ISIN/USCC, SEC EDGAR SIC/LEI/EIN, GLEIF LEI
-parent lookup, Wikidata exact-label QID). **Planned P1.4** = CNINFO/SSE/SZSE
-announcements, HKEXnews + PDF, HKEX DION, company IR RSS, GDELT. See
+parent lookup, Wikidata exact-label QID). **Next (P1.3)** = US Form 13F data
+sets + HKEX DION ownership. **Planned P1.4** = CNINFO/SSE/SZSE
+announcements, HKEXnews + PDF, company IR RSS, GDELT. See
 [ENTITY.md](ENTITY.md) for the taxonomy, identifier precedence and commands.
 
 ### 2.1 Index constituent snapshots

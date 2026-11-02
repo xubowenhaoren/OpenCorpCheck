@@ -448,8 +448,8 @@ export interface SourceAdapter<T> {
 ```
 
 Adapters to build first (status 2026-11-01: NDX/HSI/CYB50 snapshots,
-`eastmoney-f10`, EDGAR and Google News are implemented; CNINFO/HKEXnews/DION/
-GLEIF/13F are P1):
+`eastmoney-f10`, EDGAR, Google News, GLEIF and the P1.2 entity spine are
+implemented; CNINFO/HKEXnews/DION are P1.4 and 13F/DION ownership is P1.3):
 
 | Adapter | What | Notes |
 |---|---|---|

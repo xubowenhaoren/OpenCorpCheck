@@ -3,14 +3,17 @@
 > Handoff: **2026-11-01**. Current state: foundations through the web UI are
 > complete; automatic news refresh, US EDGAR-only structured financials, the
 > Financials tab, HSI, ChiNext 50, **P1.1 A500/SPX placeholders** and **P1.2
-> sector + entity resolution** are shipped. **The only active TODO list is §10
-> (P1.3–P1.5); P2 is deferred.** Backfill is out of scope for the current plan.
+> sector + entity resolution** are shipped. **The next task is P1.3 (US 13F +
+> HKEX DION ownership graph); P1.4–P1.5 remain in §10 and P2 is deferred.**
+> Backfill is out of scope for the current plan.
 >
 > The old 1,394-line document is preserved verbatim in
 > [`context_transfer_history.md`](context_transfer_history.md).
 >
-> **Current P1:** US 13F/HKEX DION ownership, official filing adapters, and
-> daily financial-report refresh. See §10.
+> **Next agent:** start at **§10 P1.3 — Investment/ownership graph depth**.
+> P1.2 shipped the entity spine and a working GLEIF `parent_of` edge; P1.3
+> reuses that provenance/review pattern for 13F and HKEX DION. Do not start
+> P1.4 or P1.5 before P1.3 is accepted.
 >
 > **Machine constraint:** macOS VM, no Docker. P2 delivery/packaging
 > (Docker/Electron/hosted demo/CI/observability) is deferred. Development uses
@@ -29,9 +32,9 @@
 > **Current state:** foundations through the web UI are complete. Automatic
 > news refresh, structured financials (US EDGAR-only), the Financials tab,
 > HSI, ChiNext 50, the **A500/SPX placeholder layer** and **P1.2 sector +
-> entity resolution** are shipped. **The only active TODO list is §10.**
-> Backfill and delivery/engineering quality are out of scope for the current P1
-> plan.
+> entity resolution** are shipped. **Next: P1.3 US 13F + HKEX DION ownership
+> graph (see §10).** Backfill and delivery/engineering quality are out of scope
+> for the current P1 plan.
 >
 > **Corpus:** 1,086 non-fixture companies — 236 researched (NDX 100, HSI
 > 85, CYB50 50, plus the discovered set) and **850 A500/SPX searchable
@@ -65,7 +68,7 @@
 > P1.3–P1.5 (§10). P1.2 GLEIF parent coverage is sparse (see §5). Stubs
 > intentionally have no profile, documents, financials, chunks or embeddings.
 >
-> **Running (2026-11-01, rebuilt for P1.1):**
+> **Running (2026-11-01, rebuilt for P1.2):**
 > - API `node apps/api/dist/server.js` on `:8787`
 > - Vite `corepack pnpm --filter @occ/web dev` on `:5173`
 > - persistent news worker: `scripts/dev-news-worker.sh start` (pid in
@@ -83,12 +86,14 @@
 > Run tests serially:
 > `corepack pnpm -r --workspace-concurrency=1 test`.
 >
-> **Recent commits:** `e6217ab` P1.2 sector + entity resolution; `8f795d5`
-> P1.1 A500/SPX placeholder layer; `0eec66f` automatic news refresh +
-> TaskDock; `75864fb` US EDGAR-only + Financials tab; `771490c` news sweep
-> daily. Migrations `0008_global_news_last_update.sql` and
-> `0009_entity_merge_log.sql` are applied; run
-> `node apps/cli/dist/occ.js migrate` after pulling schema changes.
+> **Recent commits:** `b19a8ef` fixture sector normalization + P1.2 docs;
+> `e6217ab` P1.2 sector + entity resolution; `8f795d5` P1.1 A500/SPX
+> placeholder layer; `0eec66f` automatic news refresh + TaskDock; `75864fb`
+> US EDGAR-only + Financials tab; `771490c` news sweep daily. Migrations
+> `0008_global_news_last_update.sql` and `0009_entity_merge_log.sql` are
+> applied; run `node apps/cli/dist/occ.js migrate` after pulling schema
+> changes. P1.3 is expected to add `cusip` identifiers and may add a relation
+> metadata column (see §10).
 
 ### 0.1 Monitor commands
 
@@ -507,11 +512,11 @@ Backend endpoints added with the UI:
 
 Known limitations:
 
-- **Ownership coverage is thin:** 22 `reported` edges (15 `invests_in`, 7
-  `owns`) + 64 `inferred`. A/HK edges come from F10 shareholder tables; **US has
-  no ownership edges**. P1.3 adds US 13F and HKEX DION. P1.2's GLEIF pass adds
-  LEI identifiers but found no in-universe parent edges (see below). Do not fake
-  edges in the UI.
+- **Ownership coverage is thin:** 23 `reported` edges (15 `invests_in`, 7
+  `owns`, 1 GLEIF `parent_of`) + 64 `inferred`. A/HK edges come from F10
+  shareholder tables; **US has no ownership edges**. P1.3 adds US 13F and HKEX
+  DION. P1.2's GLEIF pass adds LEI identifiers and one parent edge (see below).
+  Do not fake edges in the UI.
 - **Sector coverage is complete except one HK REIT:** 235/236 researched
   companies have a canonical 11-sector value (`信息技术` … `房地产`); the only
   gap is `HK:00823` 领展房地产投资信托基金 (F10 `EmptyRender`, same documented
@@ -529,6 +534,10 @@ Known limitations:
   (Arm→SoftBank, T-Mobile US→Deutsche Telekom, 中国人寿→中国人寿保险（集团）,
   联想集团→联想控股). The command reports out-of-universe parents instead of
   inventing edges; 13F/DION ownership is P1.3.
+- **`reported` UI copy is misleading for registry/filing edges:** the web
+  renders every `reported` relation as `媒体报道` (F10, GLEIF, and soon
+  13F/DION). P1.3 will make this much more visible; agree on `已报告` /
+  `来源披露` / per-source labels before shipping many edges.
 - English mode translates UI chrome only; company descriptions stay as sourced.
 - Hot companies are a static front-end list; there is no admin backend.
 - **News updates are automatic** (2026-11-01): daily `news.sweep` schedule +
@@ -1113,7 +1122,8 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 
 ## 10. Next tasks — active plan (2026-11-01)
 
-> **Scope rule:** P1 is the only active list. **Backfill is out of scope**
+> **Scope rule:** P1 is the only active list. **Next task is P1.3**; do not
+> start P1.4 or P1.5 before P1.3 is accepted. **Backfill is out of scope**
 > (STAR 50, any remaining HSI/CYB50 gaps, A500/SPX bulk research). Delivery/
 > engineering quality is P2 and explicitly deferred. Do not start P2 before P1
 > is accepted.
@@ -1194,20 +1204,107 @@ Shipped end-to-end; migration `0009_entity_merge_log.sql`:
   so the A500 index-page filter no longer shows `AI 芯片`/`半导体代工` labels.
 - Stubs stay sector-null; no stub was researched or given fake metrics.
 
-### P1.3 — Investment/ownership graph depth
+### P1.3 — Investment/ownership graph depth (NEXT)
 
-**Goal:** the investment graph stops being a stub.
+**Goal:** the investment graph stops being a stub. US 13F institutional
+holdings and HKEX DION substantial-shareholder notices become
+`owns` / `invests_in` / `parent_of` edges when **both sides are already in the
+universe**; broaden A/HK ownership beyond F10 top-10 only where a public source
+exists. Never fabricate companies.
 
-- US 13F institutional holdings and HKEX DION substantial-shareholder notices
-  become `owns` / `invests_in` / `parent_of` edges when the holder is already
-  in the universe (same additive, universe-bounded rule as F10 relations —
-  never fabricate companies). Broaden A/HK ownership beyond F10 top-10 where a
-  public source exists.
-- Every edge keeps `reported` status, evidence quote, source URL and the review
-  queue path; human review is still the only route to `verified`.
-- Acceptance: per-market coverage report (matched vs out-of-universe holder
-  counts); new edges visible in the graph with evidence; no duplicate edges;
-  no fabricated holders.
+**Start here — P1.2 assets to reuse (do not rebuild):**
+
+- `packages/sources/entity` (`@occ/sources-entity`) has the GLEIF client,
+  exact-name matching and normalization; `packages/db/src/repositories/entities.ts`
+  `upsertGleifRelations` is the provenance template: source row +
+  `relation_evidence` + pending `review_queue` item + deterministic
+  `relationId`; status `reported`; additive (never deletes F10/GLEIF/human
+  edges).
+- `company_ids` already has CIK 515, LEI 183, ISIN 186, USCC 64, QID 98. Use
+  exact identifiers for both sides; no fuzzy merge.
+- The 12 merged A/HK companies now carry both listings (e.g. 中国平安
+  HKEX:02318 + SSE:601318), so either ticker identifies them.
+- Graph API/UI already renders `parent_of` / `owns` / `invests_in` with
+  evidence, status pills and source buttons. Expect **no graph UI work** for
+  P1.3.
+- `occ entities` is the CLI/report/idempotency pattern to copy.
+
+**US 13F:**
+
+- Preferred source: SEC's official **Form 13F data sets**
+  (<https://www.sec.gov/data-research/sec-markets-data/form-13f-data-sets>),
+  not per-manager page scraping. Public domain, quarterly. Cache the ZIP/TSV
+  under `.occ/edgar/13f/<quarter>/` with SHA-256; never commit raw files.
+- Match the **filer** to a universe company by CIK first. 13F is filed by the
+  manager entity, not always the parent holding company (e.g. BlackRock
+  subsidiaries); if the filer CIK is not in `company_ids`, count it as
+  unmatched. Exact name/LEI matching is allowed only when exact; never
+  fuzzy-merge and never create a filer company.
+- Match the **issuer** by CUSIP, not ticker. CUSIP is not in `company_ids` yet:
+  add `cusip` ids from a deterministic source (the 13F data set's issuer
+  reference or an official SEC/issuer mapping) and record the source. Check
+  whether the SPY holdings workbook used by `scripts/snapshot-indices.py`
+  already exposes a CUSIP/ISIN column before adding a new vendor. Do not
+  derive or guess a CUSIP. If CUSIP is unavailable, an exact normalized
+  `nameOfIssuer` match is a fallback, reported separately — never fuzzy.
+- Edge: **holder → issuer, type `invests_in`**. 13F is an institutional
+  position, not control; do not use `owns`/`parent_of` from 13F alone. Put
+  shares/value/quarter in the evidence quote; `relations.amount`/`currency` can
+  carry the reported value. A percentage needs a schema decision (prefer a
+  `relations.metadata jsonb` migration or a dedicated ownership table; do not
+  overload `amount`).
+- Dedup: one edge per `(holder, issuer, type)`; a new quarter updates evidence
+  and value, it does not insert a duplicate. `extractorVersion =
+  "sec-13f-v1"`.
+
+**HKEX DION:**
+
+- Substantial-shareholder notices from HKEX DION (title + HTML/PDF link).
+  Reuse `finance_analyst/scripts/hkex_di_scraper.py` if available; respect
+  robots/terms/rate limits; store link + quoted percentage; no bulk
+  redistribution.
+- Holder matching is the hard part: exact normalized name/alias → LEI/CIK.
+  Individuals and funds outside the universe are counted, never created.
+- Edge holder → listed company, `invests_in` (or `owns` only at a documented
+  ≥50% stake if the notice states control). `extractorVersion =
+  "hkex-dion-v1"`.
+
+**A/HK breadth:** keep the F10 `gdyj` / `MajorShareholder` refresher intact and
+add DION as an additive source. Do not delete F10, GLEIF or human-reviewed
+edges.
+
+**Delivery shape:**
+
+- Add `occ ownership sync --market US|HK [--apply] [--limit N] [--json]` and
+  `occ ownership coverage`, following the `occ entities` pattern. Prefer a CLI
+  command over a queue for the first cut; if a queue is needed, add it to
+  `@occ/jobs` first (decision 15). P1.3 is deterministic and **0 LLM tokens**.
+- Reports: matched holder count, out-of-universe holder count, matched issuer
+  count, duplicate-edge count, failures — per market.
+
+**Acceptance:**
+
+- Sample edges resolve (e.g. Berkshire Hathaway → AAPL if its 13F filer CIK is
+  in the universe; 金沙中国 → Las Vegas Sands already exists from GLEIF).
+- Every new edge opens to its source (URL + quote) and has a pending review
+  item; `status='reported'`; reruns are idempotent; no duplicate edges.
+- No holder/issuer outside `companies` is created.
+- `occ ownership coverage` reports matched vs out-of-universe counts per
+  market.
+- Tests/build green; the graph API/UI renders the new edges without UI changes.
+
+**Known pitfalls / product decision:**
+
+- 13F holder coverage will be **low**: the corpus is index companies, not asset
+  managers (BlackRock/Vanguard may be absent or file under subsidiaries).
+  Acceptance is a coverage report, not an edge-count target.
+- The 13F data sets are large (hundreds of MB per quarter); stream/filter and
+  cache, never commit raw files.
+- **UI copy:** `reported` currently renders as `媒体报道` for every reported
+  edge (F10, GLEIF, and soon 13F/DION). That is misleading for registry/filing
+  sources. Decide with the user whether to rename the global label
+  (`已报告` / `来源披露`) or add per-source labels before shipping many
+  ownership edges. P1.2 already ships one GLEIF edge with this wording.
 
 ### P1.4 — Official filing adapters
 
@@ -1324,7 +1421,8 @@ is per process.
 
 - 2026-11-01 — P1.2 sector + entity resolution (235/236 sectors, 12 A/HK
   stub merges, 183 LEIs, 1 GLEIF parent edge, 98 QIDs) →
-  [docs/ENTITY.md](docs/ENTITY.md).
+  [docs/ENTITY.md](docs/ENTITY.md). Follow-up `b19a8ef`: fixture legacy
+  sectors normalized so index-page filters stay canonical.
 - 2026-11-01 — P1.1 A500/SPX placeholder layer (500 + 500 members, 862 stubs
   at P1.1; 850 after the 12 P1.2 merges, `occ indices sync`, searchable
   `未收录` pages).
@@ -1362,6 +1460,15 @@ Current invariants (verify before a demo):
 
 P1 (active; see §10):
 
+**Next agent (P1.3):**
+
+- [ ] Read §10 P1.3 and the GLEIF edge writer
+  (`upsertGleifRelations` in `packages/db/src/repositories/entities.ts`).
+- [ ] Confirm the `reported` UI label decision with the user before shipping
+  many ownership edges (currently “媒体报道”; see §10 P1.3 pitfalls).
+- [ ] Add the 13F/DION adapters, CLI/report, and coverage; do not start P1.4
+  or P1.5.
+
 - [x] P1.1 A500 + SPX placeholders: 500 + 500 memberships, 862 stubs at
   P1.1, `occ indices sync` idempotent, searchable `未收录` pages; existing
   company rows untouched; no migration.
@@ -1369,7 +1476,7 @@ P1 (active; see §10):
   audited; 183 LEI / 64 USCC / 184 ISIN / 98 QID; 1 GLEIF `parent_of` edge
   with source + review item; `occ entities coverage` reports every missing
   company. Migration `0009_entity_merge_log.sql`.
-- [ ] P1.3 US 13F + HKEX DION ownership graph.
+- [ ] **NEXT — P1.3 US 13F + HKEX DION ownership graph.**
 - [ ] P1.4 CNINFO/SSE/SZSE/HKEXnews/IR RSS/GDELT adapters + PDF.
 - [ ] P1.5 daily company-data/financial-report refresh (`data.sweep`,
   `company_filing_state`, `filings`, deterministic detection, 0 LLM tokens).
