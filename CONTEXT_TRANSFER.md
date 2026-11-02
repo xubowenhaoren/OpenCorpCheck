@@ -1150,7 +1150,8 @@ Shipped end-to-end; no migration:
   exact search returns the stub; 平安银行 weight 0.398%; headless Chrome
   checked search, both index pages and the placeholder page; tests green.
 - Known follow-up: stub entity resolution is exact-only; P1.2 identifiers
-  will merge cross-listed duplicates (e.g. 中国平安 A-share vs HK profile).
+  resolved cross-listed duplicates (e.g. 中国平安 A-share vs HK profile) — see
+  below.
 
 ### P1.2 — Industry classification + entity resolution ✅ done 2026-11-01
 
@@ -1160,7 +1161,7 @@ Shipped end-to-end; migration `0009_entity_merge_log.sql`:
   F10 A/HK/US industry mapping + SEC SIC fallback, F10 profile parser
   (ISIN/USCC/`H股代码`/domain), EDGAR submissions parser (SIC/LEI/EIN),
   GLEIF LEI client + exact-name matcher, Wikidata exact-label matcher, and
-  text/identifier normalization. 27 unit tests.
+  text/identifier normalization. 29 unit tests.
 - `occ entities enrich`: **235/236 researched companies** now have a canonical
   sector (99.6%). The only gap is `HK:00823` 领展房地产投资信托基金 (F10
   `EmptyRender`). Vendor label, rule, URL and timestamp are stored in
@@ -1187,8 +1188,9 @@ Shipped end-to-end; migration `0009_entity_merge_log.sql`:
   corporate suffixes; ambiguity is reported, never guessed. The client retries
   429/5xx with backoff.
 - UI/API: `GET /v1/sectors` now returns the 11 canonical values;
-  `search?sector=` filters sensibly; company pages show the sector. `/c/601318`
-  resolves to 中国平安 with both tickers and HSI + A500.
+  `search?sector=` (with `industry` as an alias) filters sensibly; company
+  pages show the sector. `/c/601318` resolves to 中国平安 with both tickers and
+  HSI + A500.
 - Stubs stay sector-null; no stub was researched or given fake metrics.
 
 ### P1.3 — Investment/ownership graph depth
