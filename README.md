@@ -1,30 +1,31 @@
 # OpenCorpCheck
 
-**Open, agentic company intelligence for STAR 50 · ChiNext 50 · Hang Seng Index · NASDAQ-100.**
+**Open, agentic company intelligence for NASDAQ-100 · Hang Seng Index · ChiNext 50.**
 
-> Status: P3 complete + P3.5 web UI — agent research (`deep_research` → pg-boss),
-> a DeepSeek Harness ACP sidebar with the `occ` MCP tools attached, live tool-call
-> trajectory + GFM Markdown, Google News RSS documents across the 102-company corpus,
-> and a React/Vite UI with search, company pages (financials / relationship graph /
-> news / sources), NDX-100 browse and the live assistant sidebar · 2026-10-29
+> Status: 2026-11-01 — search, company pages (profile / financials / relationship
+> graph / news / sources), automatic news refresh + task dock, NDX/HSI/CYB50
+> index pages, `occ` CLI, MCP server, and the DeepSeek Harness ACP sidebar.
+> The active P1 roadmap (A500/SPX placeholders, sector/entity resolution,
+> ownership graph, official filing adapters) is in
+> [`CONTEXT_TRANSFER.md`](CONTEXT_TRANSFER.md) §10.
 
 OpenCorpCheck is an open-source, AI-native alternative to commercial company-intelligence
 products (the "企查查" category). It builds a cited, queryable profile for every company in
-four indices — STAR 50 (科创50), ChiNext 50 (创业板50), Hang Seng Index and NASDAQ-100 —
-plus private companies discovered on demand, and exposes it through a web/desktop UI, a
-CLI, an MCP server, and a DeepSeek Harness agent sidebar. (The S&P 500 backfill was
-cancelled in the 2026-10-29 scope change; NASDAQ-100 is already backfilled.)
+three indices — NASDAQ-100, Hang Seng Index and ChiNext 50 — plus a curated AI watchlist,
+and exposes it through a web UI, a CLI, an MCP server, and a DeepSeek Harness agent sidebar.
+CSI A500 and S&P 500 are planned as **searchable placeholder pages** (P1.1), not bulk
+research targets.
 
 Phase 0 is a narrow spike: a minimal DeepSeek Harness headless run + a distilled BFS/DFS
 skill that produces cited company profiles. No UI, no database. See
 [phase0/README.md](phase0/README.md).
 
 The web UI is implemented in [`apps/web`](apps/web/README.md): search, company pages with
-financials / relationship graph / news / sources, NASDAQ-100 browse, and the live ACP
-assistant sidebar. Tool-use trajectory (live activity panel + grouped static trace) and
-GFM Markdown are built; the sidebar replays dsh's persisted session log into the same
-trajectory cards after a reload and lists past sessions in a history popover. A
-first-class sub-agent card is still reserved.
+financials / relationship graph / news / sources, NDX/HSI/CYB50 index pages, an automatic
+news task dock, and the live ACP assistant sidebar. Tool-use trajectory (live activity panel
++ grouped static trace) and GFM Markdown are built; the sidebar replays dsh's persisted
+session log and resumes the same session after a restart. A first-class sub-agent card is
+**permanently deferred**.
 
 ## Why
 
@@ -37,28 +38,30 @@ first-class sub-agent card is still reserved.
 
 ## What
 
-- **Universe**: ~280 index members (STAR 50, ChiNext 50, Hang Seng, NASDAQ-100),
-  deduplicated across markets, plus a curated AI watchlist (OpenAI, Anthropic, DeepSeek,
-  Kimi/Moonshot, ...) and on-demand private companies. NASDAQ-100 is backfilled; HSI
-  (85 constituents) is the next backfill target. S&P 500 was removed from the v1 plan.
-- **Dual-mode providers**: the interactive sidebar uses the official DeepSeek API; the
-  headless backfill worker uses NVIDIA NIM + Parallel Search MCP (free tiers), with a
-  local retry gateway. `OCC_LLM_PROVIDER=deepseek` rolls the worker back.
-- **BFS coverage**: discover and refresh company basics, products, IR hubs, and news.
+- **Universe**: 236 real companies — NASDAQ-100 (100), Hang Seng Index (85),
+  ChiNext 50 (50), plus one discovered — and a curated AI watchlist (OpenAI,
+  Anthropic, DeepSeek, Kimi/Moonshot, ...). CSI A500 and S&P 500 are P1
+  placeholder pages (searchable `未收录` pages, no bulk research). STAR 50 is
+  deferred backfill and is not in the current plan.
+- **Providers**: official **DeepSeek** is the default for headless research, the
+  reviewer, and the ACP sidebar. NVIDIA NIM + Parallel Search is opt-in with
+  `OCC_LLM_PROVIDER=nvidia` (after per-model 429s it is not the default).
+- **BFS coverage**: discover and refresh company basics, products, IR hubs, and
+  news; automatic news sweeps are RSS-only and cost 0 LLM tokens.
 - **DFS diligence**: follow annual reports, filings, earnings calls, and product docs to
   extract cited financials and relationships.
 - **Hybrid search**: keyword + dense + sparse, fused with RRF/DBSF and reranked; an explain
   view shows exactly why a result ranked where it did.
 - **Agent sidebar**: DeepSeek Harness over ACP, with OpenCorpCheck tools exposed via MCP.
   Web search uses dsh's built-in `web_search`; company facts come from the OpenCorpCheck
-  database and the `finance_analyst` Eastmoney F10 scraper.
-- **Interfaces**: web UI, Electron desktop (Windows/macOS), `occ` CLI, MCP server, REST/OpenAPI.
-  The web UI/API also run natively on macOS and WSL2/Linux; cross-platform support is a v1
-  requirement even where Docker packaging is deferred.
-- **Deploy**: Docker Compose + GHCR images; thin Electron shell; backend local or remote.
+  database and the `finance_analyst` Eastmoney F10 / SEC EDGAR adapters.
+- **Interfaces**: web UI, `occ` CLI, MCP server, REST/OpenAPI. Desktop/Docker
+  packaging is P2 and deferred by the current machine; the web app and API run
+  natively on macOS and WSL2/Linux.
 
 ## Docs
 
+- [Context transfer + active P1/P2 roadmap](CONTEXT_TRANSFER.md)
 - [Phase 0 — minimal headless research harness](phase0/README.md)
 - [Phase 0 output — Magnificent Seven profiles](phase0/out/magnificent-seven.md)
 - [finance-analyst sidecar — Eastmoney F10](services/finance-analyst/README.md)
@@ -78,8 +81,8 @@ first-class sub-agent card is still reserved.
 
 ## Non-goals (v1)
 
-- All 200M+ legal entities worldwide. We start with four indices + the AI watchlist and grow
-  on demand.
+- All 200M+ legal entities worldwide. We start with NDX + HSI + ChiNext 50, the
+  AI watchlist, and A500/SPX placeholder pages; private companies are added on demand.
 - Bypassing paywalls, logins, CAPTCHAs, or robots.txt.
 - Investment advice or trading signals.
 - Moomoo/OpenD integration; it needs a local daemon and is post-v1.

@@ -1,504 +1,90 @@
 # OpenCorpCheck — Context Transfer
 
-> Handoff: **2026-11-01 (this round: US EDGAR-only + Financials-tab UI)**.
+> Handoff: **2026-11-01**. Current state: foundations through the web UI are
+> complete; automatic news refresh, US EDGAR-only structured financials, the
+> Financials tab, HSI and ChiNext 50 are shipped. **The only active TODO list
+> is §10 (P1); P2 is deferred.** Backfill is out of scope for the current plan.
+>
 > The old 1,394-line document is preserved verbatim in
 > [`context_transfer_history.md`](context_transfer_history.md).
 >
-> Current phase: Phase 0 + P1 + P2 + P2.5 + P3.1–P3.5 complete, plus the
-> structured-financials backend, the US EDGAR-only cleanup and the
-> Financials-tab UI.
-> **This round adds**:
-> **(a) US is EDGAR-only** — `apps/worker/src/financials/run.ts` no longer
-> fetches or writes F10 for US; the former US `f10` rows were deleted
-> (**2,053 rows**; the 160 HK-sourced rows for dual-listed 阿里巴巴 were kept);
-> `edgar-xbrl.ts` now parses `us-gaap` **and** `ifrs-full`, so CCEP / Ferrovial /
-> Thomson Reuters are covered. NDX is **100/100 on `xbrl`, 0 `f10`**;
-> **(b) coverage compensation** — `total_liabilities = total_assets -
-> total_equity` and `gross_profit = revenue - cost_of_revenue` (then gross
-> margin) are derived when the taxonomy omits the subtotal; derived facts start
-> their quote with `计算：` and carry confidence < 1;
-> **(c) precedence** — the structured run passes the incoming method's own rank
-> (`xbrl` 30, `f10` 20), so an A/HK F10 pass cannot overwrite EDGAR rows for a
-> dual-listed company; `total_equity` now prefers the NCI-inclusive concept;
-> **(d) Financials-tab UI** — labels/order for all canonical items,
-> per-statement tabs, per-period source badges (`SEC 10-K/10-Q/20-F/40-F` /
-> `东方财富 F10` / `研究资料` / `推导` / `累计`), annual/quarter/half/TTM modes,
-> a coverage + fiscal-year-end line, and per-kind fetching so full statements
-> are not truncated by the 200-row card limit.
-> **Shipped this round: automatic news refresh** — the manual 刷新新闻 button
-> stays cancelled. News updates run from a pg-boss schedule + lazy status
-> trigger with a per-company cursor table `global_news_last_update`; the top-nav
-> TaskDock observes sweeps and keeps the last 3 days of completed records. The
-> approved prototype (`docs/prototypes/task-dock.html`, commit `dd465fc`) is the
-> visual reference, with its manual controls removed. Read §0 and §10 “Done —
-> Automatic news refresh” first. **Next:** the CSI A500 / S&P 500 placeholder
-> layer (§10 Next 2). The previous round's structured-financials backend notes
-> remain below for reference.
+> **Current P1:** A500/SPX placeholders (`occ indices sync`, searchable
+> `未收录` pages), sector + entity resolution, US 13F/HKEX DION ownership,
+> official filing adapters, and daily financial-report refresh. See §10.
 >
-> **Previous round (2026-10-31)** added the headless provider route, HSI, the
-> hidden reviewer and structured F10 shareholder relations:
-> **(a) headless provider route — official DeepSeek by default (revised
-> 14:16)** — the local worker pool runs **official `deepseek-flash` +
-> official `web_search`/`web_fetch`**. The NIM route
-> (`deepseek-ai/deepseek-v4.1-flash` through
-> `apps/worker/src/nim-gateway.ts`, `127.0.0.1:4010`, plus Parallel Search MCP)
-> remains available with `OCC_LLM_PROVIDER=nvidia` but is not the default: it
-> hit sustained per-model 429s during the HSI batch. The ACP sidebar is
-> unchanged and uses the same official DeepSeek + search/fetch;
-> **(b) HSI** — `config/indices/hsi.yaml` (85 constituents, `as_of`
-> 2026-10-31), worker `--universe hsi`, F10 attached by default for A/HK;
-> **(c) hidden reviewer** — `review.company` queue, official DeepSeek with
-> reasoning on, structured `{verdict, issues, fix_instructions}`, bounded
-> revision (`OCC_REVIEW_MAX_CYCLES=2`) then `needs_review`;
-> **(d) structured F10 shareholder relations** — `gdyj` / `MajorShareholder` /
-> `gbgd` tables become `reported`-status `owns` / `invests_in` edges when the
-> shareholder is already in the universe.
-> The HSI pilot/batch and reviewer outcomes are in §0.3; automatic news refresh
-> and A500/SPX placeholders remain §10 Next. The P3.4 first-class sub-agent card
-> is **deferred — not needed for this project**; `deep_research` stays a tool
-> card.
+> **Machine constraint:** macOS VM, no Docker. P2 delivery/packaging
+> (Docker/Electron/hosted demo/CI/observability) is deferred. Development uses
+> native Postgres 17, Qdrant 1.18, uv sidecars and Node 24. Cross-platform
+> macOS + WSL2/Linux remains a v1 requirement.
 >
-> **Scope change (2026-10-30, revised 2026-10-31)**: placeholder coverage
-> expands to **CSI A500 (中证A500, 000510) + S&P 500 (SPX)**. Every constituent
-> not already in the DB gets a stub company page storing only ticker +
-> Chinese/English name + index membership. **Neither index gets a bulk
-> backfill, and there is no in-app on-demand research**: data is filled only by
-> an explicit, capped **local operator batch** through the worker pool. P4 bulk
-> backfill (STAR50 + ChiNext50 + HSI) is unchanged.
->
-> **Scope change (2026-10-29)**: A-share backfill = **STAR 50 (科创50, 000688) +
-> ChiNext 50 (创业板50, 399673)**. Hang Seng backfill unchanged. **S&P 500 (SPX)
-> backfill cancelled.** NASDAQ-100 already backfilled (100 companies).
-> Synthetic seed fixtures still carry legacy A500/SPX memberships
-> (`apps/cli/src/seed-data.ts`); they are E2E fixtures, **not** the v1 plan.
->
-> **Machine constraint**: the current machine is a macOS VM and **cannot run
-> Docker**. P5 (Docker/Electron packaging) is deferred. Development uses native
-> Postgres 17, Qdrant 1.18, uv sidecars and Node 24. Cross-platform macOS +
-> WSL2/Linux remains a v1 requirement: no OS-specific branches, use
-> `node:path`/`URL`, and keep scripts working on Darwin and Linux.
+> **Scope:** placeholders for CSI A500 + S&P 500; no bulk research for them.
+> STAR 50 and remaining HSI/CYB50 coverage are backfill and out of the current
+> plan. Synthetic seed fixtures still carry legacy A500/SPX memberships
+> (`apps/cli/src/seed-data.ts`); they are E2E fixtures, not the plan.
 
 ---
 
-## 0. LIVE STATE — automatic news refresh (2026-11-01, read first)
+## 0. LIVE STATE — 2026-11-01 (read first)
 
-> **Automatic news refresh shipped — 2026-11-01 (this round).**
+> **Current state:** foundations through the web UI are complete. Automatic
+> news refresh, structured financials (US EDGAR-only), the Financials tab,
+> HSI and ChiNext 50 are shipped. **The only active TODO list is §10.**
+> Backfill and delivery/engineering quality are out of scope for the current
+> P1 plan.
 >
-> - **State:** migration `0008_global_news_last_update.sql` (table + indexes,
->   `backfill_jobs.meta`). One cursor/lease row per company; the sweep source is
->   `companies LEFT JOIN global_news_last_update`, so no registry/backfill is
->   needed. Fixtures and `stub` coverage never participate.
-> - **Producer:** queue `news.sweep` (policy `short`) + pg-boss schedule
->   `news-sweep`, `OCC_NEWS_SWEEP_CRON` default `0 7 * * *` in
->   `OCC_NEWS_SWEEP_TZ` (default machine TZ), `missed: "once"`. The handler
->   advisory-locks `occ:news:sweep`, selects due companies
->   (`OCC_NEWS_SWEEP_BATCH=250`), leases each row for
->   `OCC_NEWS_CLAIM_TIMEOUT_MS` (30 min), creates a `news` run and enqueues
->   `news.company` jobs. It never fetches.
-> - **Lazy UI trigger:** `GET /v1/news/status` checks `dueCount` and enqueues
->   the producer when needed (skipped while a sweep is queued or the latest run
->   is still progressing; the response carries `triggered`).
->   There is **no** POST refresh/sweep route. Opening 5173 is enough.
-> - **Worker write-back:** success stamps `last_update_at`, `next_due_at =
->   +23 h` (`OCC_NEWS_TTL_MS`), `ok`/`empty`, resets failures; failure never
->   advances the cursor and backs off `min(15 min × 2^n, TTL)`, pausing after 5.
->   Per-job `inserted`/`skipped`/`articles`/`newestPublishedAt` go to
->   `backfill_jobs.meta`.
-> - **Window:** cold start 30 days / 20 items; steady
->   `clamp(ceil((now − min(last_update_at, newest_published_at))/1d)+1, 1, 30)`
->   with 10 items. The cursor is a hint, never a filter.
-> - **History:** news runs are pruned at `OCC_NEWS_HISTORY_MS` (3 days). The
->   top-nav `TaskDock` shows the active sweep and completed sweeps from the last
->   3 days; idle shows the last sweep + next due. News tab shows
->   `更新于 … · 自动更新` / `正在更新…` and refetches the company card when the
->   cursor advances.
-> - **Live run `b892648d-4537-4b73-8916-aaeca32bfedc`** (source `ui`, started
->   2026-11-01 22:36 UTC): **completed 236/236, 0 failed** in 8m59s; **232
->   `ok` / 4 `empty`**, **3,237 new articles** (3,245 news documents total),
->   38 skipped, 0 LLM tokens. AAPL: 20 articles / 19 inserted, status `ok`,
->   next due ≈ +23 h. Verified in the dock (`已完成 — 新增 3237 条`,
->   `最近更新 · 刚刚`, `下次自动更新约 23 小时后`), the News tab (600519: 28
->   items, `更新于 … · 自动更新`), dark mode, and mobile (390 px, no horizontal
->   scroll). Killing/restarting the worker mid-sweep resumed the queued jobs
->   from pg-boss; the completed run survived API restarts.
-> - **Run it:** `scripts/dev-news-worker.sh start|stop|status|restart|logs`
->   (persistent `node apps/worker/dist/cli.js work --queues news`), or
->   `node apps/worker/dist/cli.js work --queues news`. The API schedules and
->   observes but never fetches. Operator extras:
->   `node apps/worker/dist/cli.js news status` and `news sweep --now`.
-> - Env: `OCC_NEWS_SWEEP` (`none` disables), `OCC_NEWS_SWEEP_CRON`,
->   `OCC_NEWS_SWEEP_TZ`, `OCC_NEWS_TTL_MS=82800000`,
->   `OCC_NEWS_CLAIM_TIMEOUT_MS=1800000`, `OCC_NEWS_SWEEP_BATCH=250`,
->   `OCC_NEWS_HISTORY_MS=259200000`, `OCC_NEWS_PAUSE_AFTER=5`,
->   `OCC_NEWS_CONCURRENCY=2`.
+> **Corpus:** 236 non-fixture companies — NDX 100, HSI 85, CYB50 50, plus one
+> discovered. NDX profiles predate the reviewer; HSI/CYB50
+> `company_research_state` is 104 `ready` / 31 `needs_review` (all revision
+> cap, not parse failures; `needs_review` is the quality gate working). 10
+> AI-watchlist fixtures remain hidden.
 >
-> The US EDGAR-only / Financials-tab round below is complete; its notes remain
-> as reference.
+> | Index | Constituents | Memberships | Structured financials | Status |
+> |---|---|---|---|---|
+> | NDX | 100 | 100 | **100 `xbrl`, 0 `f10`** | done |
+> | HSI | 85 | 85 | **84 `f10`** | done; `HK:00823` F10 EmptyRender |
+> | CYB50 | 50 | 50 | **50 `f10`** | done; 45 ready / 5 needs_review |
+> | A500 / SPX | — | — | — | **P1.1 placeholder layer, not built** |
+> | STAR50 | — | — | — | deferred backfill, not in the current plan |
+>
+> **Data:** `financial_facts` 46,880 (29,683 `xbrl`, 15,767 `f10`, 1,430
+> profile); financials cache 234 ok / 1 failed; 3,245 news documents (last
+> sweep: 232 `ok` / 4 `empty` companies); relations 22 `reported` + 64
+> `inferred`. **Known content gaps:** 223/236 companies have `sector = null`;
+> no US ownership edges; no CNINFO/HKEXnews/13F/DION adapters; **no daily
+> filing/earnings refresh yet** — all P1 (§10).
+>
+> **Running (2026-11-01):**
+> - API `node apps/api/dist/server.js` on `:8787`
+> - Vite `corepack pnpm --filter @occ/web dev` on `:5173`
+> - persistent news worker: `scripts/dev-news-worker.sh start` (pid in
+>   `.occ/news-worker.pid`, log `.occ/news-worker.log`)
+> - F10 sidecar `:8090`, Postgres `:5432`, Qdrant `:6333`, embeddings `:8080`
+> - no research/financials worker, no NIM gateway (official DeepSeek default)
+>
+> **Last news run** `b892648d-4537-4b73-8916-aaeca32bfedc`: completed 236/236,
+> 0 failed, 8m59s; 232 `ok` / 4 `empty`; 3,237 new articles; 0 LLM tokens;
+> history kept 3 days; next due ≈ +23 h.
+>
+> **Tests/build:** all green — API 33, web 33, worker 40, extract 42, ingest
+> 39, agent 17, CLI 7, retrieval 10, db 9, storage 5, sources 18. Web bundle
+> 421.7 KB (gzip 129.8 KB). Run tests serially:
+> `corepack pnpm -r --workspace-concurrency=1 test`.
+>
+> **Recent commits:** `0eec66f` automatic news refresh + TaskDock; `75864fb`
+> US EDGAR-only + Financials tab; `771490c` news sweep daily. Migration
+> `0008_global_news_last_update.sql` is applied; run
+> `node apps/cli/dist/occ.js migrate` after pulling schema changes.
 
-## 0A. PREVIOUS ROUND — US EDGAR-only + Financials UI (2026-11-01)
-
-> **US EDGAR-only cleanup + Financials-tab UI — 2026-11-01 (previous round).**
-> No worker was running and all queues were empty, except four historical dead
-> `financials.company` jobs from earlier runs (`HK:00700`, `HK:00823`,
-> `A:600519`, `US:AAPL` in the `.dead` queue; they are not part of that
-> round's run).
->
-> | Index | Constituents | Any structured | EDGAR `xbrl` | F10 `f10` | Cache ok |
-> |---|---|---|---|---|---|
-> | NDX | 100 | 100 | **100** | **0** | 100 |
-> | HSI | 85 | 84 | 0 | 84 | 84 |
-> | CYB50 | 50 | 50 | 0 | 50 | 50 |
->
-> - **US F10 removed.** 2,053 US-page `f10` rows were deleted, matched on
->   `sources.url LIKE '%PC_USF10%'` (not by company, so the 160 HK-sourced rows
->   for dual-listed **阿里巴巴 / 09988** were kept). The US pipeline no longer
->   touches F10: `F10_PAGE` has no US entry and `loadF10` is only called for
->   A/HK. The generic F10 parser and its tests stay.
-> - **IFRS coverage.** `edgar-xbrl.ts` merges `us-gaap` + `ifrs-full`
->   (us-gaap wins name collisions) and picks one reporting currency taken from
->   `Assets`, so a dual-tagged concept (EUR + USD) cannot mix currencies.
->   CCEP (18 annual items), Ferrovial (15) and Thomson Reuters (17) now parse
->   from their 20-F/40-F filings.
-> - **Derived subtotals.** `computeDerivedFacts` calculates
->   `gross_profit = revenue - cost_of_revenue`, then `gross_margin`, and
->   `total_liabilities = total_assets - total_equity` when missing. Their quote
->   starts with `计算：` and confidence is < 1; the UI shows a `推导` badge.
->   Nothing is derived unless both inputs exist for the same period.
-> - **NDX item coverage after the rerun** (all 100 constituents, `xbrl`):
->   revenue / net income / attributable / assets / equity / liabilities / cash
->   / OCF / investing / financing **100**, eps 99, operating income 98,
->   capex 97, FCF 97, total debt 95, SG&A 90, gross profit + margin 87,
->   cost of revenue 86, R&D 74. Before the cleanup: gross profit 62,
->   liabilities 76, debt 88, eps 96, capex/FCF 95, operating income 95,
->   cost 85.
-> - **Runs:** cleanup fin-replay `7dacfac0-ce2c-4d61-983a-f180a1f1c23b`
->   (NDX 100/100 `completed`, cache-only, p50 76 ms / p95 134 ms, **0 LLM
->   tokens**). The earlier HSI/CYB50/NDX runs are unchanged.
-> - **Verified:** AAPL FY2025 revenue 416.161B / NI 112.010B / OCF 111.482B /
->   capex 12.715B / assets 359.241B / liabilities 285.508B / equity 73.733B
->   USD, SEC 10-K URL; **CCEP FY2025** EUR revenue 20.901B (not USD) /
->   net income 1.979B / equity 8.303B / liabilities 21.569B, 20-F URL;
->   **GOOGL FY2025** gross profit 240.301B (derived), revenue 402.836B;
->   600519 FY2025 1721亿 CNY and 00700 FY2025 7437亿 HKD still come from F10.
-> - Precedence: `xbrl` (`trust_tier='filing'`) > `f10` (`secondary`) >
->   `deterministic_table_v1`. The structured run now passes the incoming
->   method's own rank (`xbrl` 30, `f10` 20), so an A/HK F10 pass cannot
->   overwrite EDGAR rows for a dual-listed company. `total_equity` prefers the
->   NCI-inclusive concept, which makes `assets - equity` exact. Profile rows
->   within ±7 days of a structured period are removed.
-> - Env: `OCC_FINANCIALS`, `OCC_FINANCIALS_CONCURRENCY=2`,
->   `OCC_EDGAR_USER_AGENT` (contact required), `OCC_EDGAR_DIR`,
->   `OCC_EDGAR_CACHE_TTL_MS`. Migration
->   `packages/db/migrations/0007_financials_stage.sql` (apply with
->   `node apps/cli/dist/occ.js migrate`).
-> - **Automatic news refresh shipped in the next round** — no manual 刷新新闻
->   button. A pg-boss schedule + lazy status trigger select due companies from
->   `global_news_last_update` (per-company cursor/lease), enqueue `news.company`,
->   and the worker stamps the cursor. The top-nav `TaskDock` (prototype
->   [`docs/prototypes/task-dock.html`](docs/prototypes/task-dock.html), commit
->   `dd465fc`) observes the sweeps. See §10 “Done — Automatic news refresh”.
->   Next: A500/SP 500 placeholders (§10 Next 2). The US EDGAR-only +
->   Financials-tab round is **done** — see §10 “Done — US EDGAR-only +
->   Financials-tab UI (2026-11-01)”.
->
-> Snapshot: **2026-10-31 (after the HSI batch)**. ChiNext 50 (`399673`, internal
-> code `CYB50`) is backfilled: **45 ready / 5 needs_review** across all 50
-> constituents, **50/50 CYB50 memberships** (`as_of=2026-06-15`), **1 reported
-> F10 edge** (宁德时代 invests_in 天华新能, 16.87%). The 5 `needs_review` rows
-> are operator work.
->
-> **Coverage milestone**: the project now has a minimal A + HK + US corpus —
-> 45 A ready (ChiNext 50), 59 HK ready (HSI), 100 US companies backfilled.
-> **Every index constituent now has structured financials** (NDX 100/100
-> `xbrl`, HSI 84/85, CYB50 50/50; `00823` is the only gap). The 3 IFRS-only
-> NDX issuers are covered by `ifrs-full` as of this round. US has no reviewer
-> state because that backfill predates `review.company`; it is ingested, not
-> review-gated.
->
-> **STAR 50 is deferred to P2 priority** (2026-11-01): do not treat it as the
-> next action. The procedure is kept below for when it is picked up.
-> **Automatic news refresh shipped** (2026-11-01, §10 “Done — Automatic news
-> refresh”) — pg-boss sweep + `global_news_last_update`; no manual refresh
-> button, 3-day history, lazy UI-triggered sweep. **Next:** A500/SPX
-> placeholders (§10 Next 2).
->
-> **ChiNext 50 runs**: pilot `a8511401-a758-4a46-a917-c0aa7954ba2b` (3 targets,
-> `partial` 7/9, 2 revision-cap dead) and full batch
-> `1514f251-5c6f-4eba-81a3-a063bb74732a` (47 targets, `partial` 138/141, 3
-> revision-cap dead). Tokens: 5.03M input / 836k output for the full batch;
-> p50 110 s per job.
->
-> **Why only 1 A-share ownership edge**: A-share `gdyj` top-10 tables are
-> mostly funds below the 0.5% threshold plus out-of-universe groups — 1,073
-> shareholder rows read, 947 unmatched, 1 new edge. This is honest coverage,
-> not a bug; do not fabricate edges.
->
-> **HSI (previous round)**: batch finished as `partial`: **59 ready / 26
-> needs_review** across all 85 constituents, **85/85 HSI memberships**,
-> **21 reported relations** (7 `owns` + 14 `invests_in`). Those 26
-> `needs_review` rows remain operator work. Details in §0.2/§0.3 below.
-
-> **14:16 provider switch (historical).** The 13:49 NIM incident (see §0.3.1)
-> was resolved by switching the research default to the official route. The
-> batch ran on one worker with `OCC_LLM_PROVIDER=deepseek`; there was **no NIM
-> gateway**. Verified on `HK:00669`: 171 s, 51k input / 22k output, 13
-> `web_search` + 16 `web_fetch` calls. Research now defaults to official
-> DeepSeek (`deepseek-flash`) + official search/fetch; the NIM + Parallel route
-> remains opt-in with `OCC_LLM_PROVIDER=nvidia`.
->
-> The working tree still has uncommitted changes in `apps/worker/src/cli.ts`,
-> `config.ts`, `research/profiler.ts`, `research/reviewer.ts`,
-> `jobs/review.ts`, `tests/reviewer.test.ts` and `phase0/dsh.patch.yml`
-> (provider default, low reasoning, reviewer JSON repair, review concurrency
-> 4), **plus this round's structured-financials backend** (see §0.7). They are
-> built and were live; commit only when the user asks.
-
-### 0.1 Running processes
-
-**Live now (2026-11-01, automatic news round):**
-
-- API `node apps/api/dist/server.js` on `:8787` (PID written in `.occ/api.log`).
-- Vite `corepack pnpm --filter @occ/web dev` on `:5173` (proxies `/v1`).
-- **Persistent news worker** `node apps/worker/dist/cli.js work --queues news`
-  started by `scripts/dev-news-worker.sh start`; pid in
-  `.occ/news-worker.pid`, log in `.occ/news-worker.log`. It registers the
-  `news-sweep` schedule and processes `news.sweep` + `news.company`.
-- Native Postgres 17 (`:5432`), Qdrant (`:6333`), embeddings sidecar (`:8080`).
-  No NIM gateway (official DeepSeek is the default); no research/financials
-  worker is running.
-
-The API schedules and lazily triggers sweeps but never fetches. If the news
-worker is stopped, sweep jobs stay queued and the dock shows `排队中`. To run a
-one-off drain instead:
+### 0.1 Monitor commands
 
 ```bash
-cd /Users/bowenxu/Downloads/Projects/OpenCorpCheck
-scripts/dev-news-worker.sh start    # status | stop | restart | logs
-node apps/worker/dist/cli.js work --queues news --drain
-
-# research / financials (previous rounds; not needed for news)
-OCC_LLM_PROVIDER=deepseek \
-node apps/worker/dist/cli.js work --queues research,ingest,review,f10,financials --drain
-OCC_FINANCIALS_CONCURRENCY=2 \
-node apps/worker/dist/cli.js work --queues financials --drain
-```
-
-The last research pool was research 4 / ingest 2 / review 4 (review was raised
-from 1 to 4 at 16:42 to clear the backlog). Financials run at concurrency 2 to
-match the F10 sidecar's browser cap. No gateway is needed on the default path.
-`OCC_LLM_PROVIDER=nvidia` restores the NIM + Parallel route (and then you need
-the gateway on `:4010`), but it is only a fallback: `deepseek-v4.1-flash` hit
-sustained per-model 429s at 13:49.
-
-### 0.2 Runs
-
-| Run id | What | Final status |
-|---|---|---|
-| `1514f251-5c6f-4eba-81a3-a063bb74732a` | **full ChiNext 50 batch**, 47 targets; excludes pilots `300014,300015,300017` | `partial` — 138/141, 3 dead (revision cap: `300408`, `300757`, `300803`) |
-| `a8511401-a758-4a46-a917-c0aa7954ba2b` | ChiNext 50 pilot `300014` / `300015` / `300017` | `partial` — 7/9, 2 dead (revision cap) |
-| `a19a67ba-8739-4361-833b-6887395556ad` | **full HSI batch**, 81 targets; excludes pilots `00700,00001,00006,01038` | `partial` — 217/241, 24 dead (all revision cap) |
-| `5e7da4c4-4aa8-4c28-aa41-7f8604cabc60` | cross-holding pilot `00001` / `00006` / `01038` | `partial` — 7/9, 2 dead |
-| `b9d9b644-58c9-4ee1-b58a-f0401eecbc75` | `HK:00700` pilot | `partial` — `needs_review` after 2 revisions |
-| `cf9fcd03-afa1-4f95-8220-357141796bb2` | `HK:00101` dead-letter retry (1 target) | `completed` — 3/3, now `ready` |
-| `4e989c34-d38a-4820-96ac-559ff57c297a` | `HK:01088` / `HK:00939` parse-failure rerun | `partial` — 4/6, both revision cap |
-
-### 0.3 Final counts
-
-**ChiNext 50 (2026-10-31, current):**
-
-- `company_research_state` for the 50 CYB50 companies: **`ready=45`**,
-  **`needs_review=5`** (`300014` 亿纬锂能, `300015` 爱尔眼科, `300408` 三环集团,
-  `300757` 罗博特科, `300803` 指南针). All 5 are **revision cap**
-  (`reviewer requested revisions 3 time(s)`), not parse/transport failures.
-- `index_memberships` CYB50 `as_of=2026-06-15`: **50/50**.
-- `relations` for CYB50 targets: **`reported=1`** (宁德时代 → 天华新能,
-  `invests_in`, 16.87%). 1,073 shareholder rows read by the post-batch
-  `relations f10 --universe cyb50` pass; 947 outside the universe (not
-  fabricated). A-share tables are mostly funds under 0.5%.
-- `/v1/indices/CYB50` returned **50 members** (API started temporarily for the
-  check, then stopped).
-- Full batch token use: 5.03M input / 836k output; p50 110 s, p95 229 s.
-
-**HSI (previous round, 17:25):**
-
-- research queue: `completed=299`, `failed=1` (historical `HK:00101` row);
-  no active/created/retry. ingest `completed=291`; review `completed=187`.
-- `company_research_state`: **`ready=59`**, **`needs_review=26`** (85 total,
-  all HSI constituents). No `running`/`queued`/`failed` rows.
-- All 26 `needs_review` are **revision cap** (`reviewer requested revisions 3
-  time(s)`), not parse failures:
-  `00001, 00003, 00005, 00016, 00066, 00175, 00241, 00285, 00700, 00939,
-  00981, 00992, 01038, 01088, 01093, 01113, 01299, 01378, 01398, 01810,
-  01876, 02319, 02382, 02899, 06618, 09633`.
-- `relations`: **`reported=21`** (7 `owns` + 14 `invests_in`),
-  `inferred=64`. The post-batch `relations f10 --universe hsi` pass read 640
-  shareholder rows; 560 names were outside the universe (not fabricated).
-  One F10 error: `HK:00823` SPA rendered empty (not fatal).
-- `index_memberships` HSI `as_of=2026-10-31`: **85/85**. The last four
-  (`00001`, `00006`, `01038`, `00101`) were inserted directly because their
-  pilot/retry jobs were enqueued with `--tickers`, which carries no index
-  metadata.
-
-**Structured financials (2026-11-01, current):**
-
-- `financial_facts`: **29,683 `xbrl` + 15,767 `f10` + 1,430 profile**. The
-  profile rows fill older periods the structured sources do not cover; the
-  cleanup also removed profile counterparts of newly derived cells.
-- Coverage: **NDX 100/100** (all `xbrl`, 0 `f10`), **HSI 84/85** (all `f10`),
-  **CYB50 50/50** (all `f10`); `extraction_cache` 234 ok / 1 failed.
-- NDX item coverage (100 constituents, `xbrl`): revenue / net income /
-  attributable / assets / equity / liabilities / cash / OCF / investing /
-  financing **100**, eps 99, operating income 98, capex 97, FCF 97, total debt
-  95, SG&A 90, gross profit + margin 87, cost of revenue 86, R&D 74.
-- HSI item coverage: revenue / attributable 84, assets / equity 83, liabilities
-  82, EPS 79, gross profit / margin 73, operating income 69, total debt 61,
-  cash 60, OCF / investing / financing 54–55, capex 45, FCF 43, R&D 22,
-  SG&A 19, cost 10. Banks/insurers/REITs legitimately omit some lines.
-- CYB50 item coverage: **20/20 items on all 50 companies**.
-- Only failure: `HK:00823` 领展 REIT — F10 SPA renders 0 chars
-  (`EmptyRender`), no structured facts. Known F10 breakage; operator work.
-
-### 0.3.1 RESOLVED — NIM 429 incident (2026-10-31 13:49–14:16, historical)
-
-> **Resolved 14:16** by switching the research default to official DeepSeek
-> (see the snapshot). The 429 long-backoff / RPM-20 fix below is committed
-> (`d982e73`) and still applies if the NIM route is re-enabled with
-> `OCC_LLM_PROVIDER=nvidia`.
-
-The two-worker fan-out (6 research turns) hit NIM **HTTP 429**. Three outcomes:
-
-- `HK:00101` dead-lettered after 3 attempts (`RATE_LIMIT: 429`).
-- `HK:00300` / `HK:00316` failed once with the same 429; pg-boss will retry.
-- The running gateway was started with the old **36 RPM** bucket and the old
-  short retry (0.5–2 s), so it forwards 429 to dsh after 3 quick attempts.
-
-**Code fix is committed/built but NOT active in the running processes**
-(`openCorpCheck` commit for `nim-gateway.ts`):
-- 429 now honours `Retry-After` and otherwise waits **15 s / 30 s** before
-  retry; other 5xx keep fast backoff.
-- `OCC_NIM_RPM` default lowered to **20**.
-
-**Required remediation (do this before letting the batch continue):**
-
-Preferred order: wait until `research.company.active` is `0` (poll
-`status --json`), then restart. Killing workers mid-turn makes in-flight
-research fail and retry (not fatal, but it burns tokens). If 429 keeps the
-cycle alive and active never reaches 0, kill **only the gateway owner
-`86264`**: the waiter `89118` then binds the new gateway on :4010, worker
-`88701` keeps running and retries its failed turns. Cross-pilot jobs owned by
-`86264` may need a single-ticker requeue.
-
-```bash
-# 1) stop both workers (pg-boss keeps queued/retry jobs)
-kill 86264 88701
-# stop the old waiter too; it would bind the old gateway
-kill 89118 2>/dev/null || true
-
-# 2) make sure nothing owns :4010
-lsof -nP -iTCP:4010 -sTCP:LISTEN
-
-# 3) start the standalone gateway with the lower bucket
-OCC_NIM_RPM=20 node apps/worker/dist/nim-gateway-server.js &
-
-# 4) resume ONE worker with reduced concurrency (no re-enqueue)
-OCC_RESEARCH_CONCURRENCY=2 OCC_INGEST_CONCURRENCY=2 OCC_REVIEW_CONCURRENCY=1 \
-  node apps/worker/dist/cli.js work --queues research,ingest,review,f10,financials --drain
-```
-
-Then requeue only the dead company (not the universe):
-
-```bash
-node apps/worker/dist/cli.js enqueue research --tickers 00101:HK --force
-```
-
-`00300` / `00316` are still `failed` with a pg-boss retry pending; they should
-recover on their own after the 429 window. If they dead-letter, requeue those
-two tickers the same way.
-
-Do **not** restart with 6 concurrent research turns; that is what triggered 429.
-
-### 0.3.2 Reviewer JSON parse failures (fixed 15:20, activate on restart)
-
-`HK:01088` and `HK:00939` were routed to `needs_review` with
-`reviewer output invalid`, not a content verdict:
-
-- `01088`: raw ASCII quotes inside a JSON string (`"资本开支上行是主因"`).
-- `00939`: unterminated string at EOF (missing closing quote/brace).
-
-Fix (built, worker tests 40 green):
-
-- `parseReviewOutput` escapes raw quotes inside string values before parsing
-  (`repairUnescapedQuotes`), then retries `JSON.parse`.
-- `review.company` re-runs the reviewer up to
-  `OCC_REVIEW_PARSE_ATTEMPTS` (default 2) on invalid output, then
-  `needs_review`. It never re-runs research for a malformed review.
-- `review_passed` / `review_revise_enqueued` / `review_needs_review` now log
-  `inputTokens` / `outputTokens`.
-- The review prompt explicitly requires escaped quotes and a complete object.
-
-`01088` / `00939` were requeued at 15:28 as run
-`4e989c34-d38a-4820-96ac-559ff57c297a` (2 targets) on the fixed parser:
-
-```bash
-node apps/worker/dist/cli.js enqueue research --tickers 01088:HK,00939:HK --force
-```
-
-### 0.3.3 Operator follow-up
-
-1. The 26 `needs_review` rows are genuine quality-gate outcomes. Each
-   `last_error` carries the reviewer's fix instructions; fix the section and
-   re-review, or leave it as an honest gap. Do not raise
-   `OCC_REVIEW_MAX_CYCLES` in production.
-2. `/indices/HSI` now lists **85 members**; the graph has **21 reported**
-   ownership/investment edges (CK group: `00001` owns 75.67% of `01038`,
-   `00001`/`01038` each invest in `00006`; 恒基兆业地产→香港中华煤气).
-   Spot-check a few banks/insurers in the UI.
-3. The batch is `partial` only because of the 26 revision-cap dead jobs; no
-   transport/provider errors remain. The old `research.company` `failed` row
-   for `HK:00101` is historical (its rerun is `ready`).
-4. The provider-switch / low-reasoning / reviewer-repair changes are built but
-   **uncommitted**. Commit only on the user's instruction.
-
-### 0.4 Monitor commands
-
-```bash
-cd /Users/bowenxu/Downloads/Projects/OpenCorpCheck
-
-node apps/worker/dist/cli.js status --run 50b9d079-50cc-4490-8e6c-9dad0e7bf19c
+node apps/worker/dist/cli.js status
 node apps/worker/dist/cli.js states --limit 100
-
-# queue depth / pending jobs
-node apps/worker/dist/cli.js status --json | jq '.counts'
-
-# is the worker still alive? (expect exactly one node process)
-ps -axo pid,command | grep '^ *[0-9]* node apps/worker/dist/cli.js work' | grep -v grep
-
-# HSI members and reported edges
-psql postgres://occ@127.0.0.1:5432/occdb -c \
-  "select count(*) from index_memberships where index_code='HSI' and as_of='2026-10-31';"
-psql postgres://occ@127.0.0.1:5432/occdb -c \
-  "select status,count(*) from relations group by 1;"
-
-# structured financials: methods, cache status, per-index coverage
-psql postgres://occ@127.0.0.1:5432/occdb -c \
-  "select method,count(*) from financial_facts group by 1 order by 1;"
-psql postgres://occ@127.0.0.1:5432/occdb -c \
-  "select status,count(*) from extraction_cache where stage='financials' group by 1;"
-psql postgres://occ@127.0.0.1:5432/occdb -c \
-  "select c.display_name, e.status, left(e.error,100)
-     from extraction_cache e join companies c on c.id=e.company_id
-    where e.stage='financials' and e.status<>'ok';"
-
-# US is EDGAR-only: this must return 0 (the 160 rows left are 阿里巴巴's HK page)
-psql postgres://occ@127.0.0.1:5432/occdb -c \
-  "select count(*) from financial_facts f join sources s on s.id=f.source_id
-    where f.method='f10' and s.url like '%PC_USF10%';"
-
-# Automatic news refresh: cursor state, sweep progress, worker log
 node apps/worker/dist/cli.js news status
 scripts/dev-news-worker.sh status
 tail -n 20 .occ/news-worker.log
 curl -s 'http://127.0.0.1:8787/v1/news/status?company=AAPL'
+
 psql postgres://occ@127.0.0.1:5432/occdb -c \
   "select count(*) filter (where next_due_at <= now()) due, count(*) total
      from global_news_last_update;"
@@ -506,120 +92,29 @@ psql postgres://occ@127.0.0.1:5432/occdb -c \
   "select key,last_status,last_update_at,next_due_at,consecutive_failures
      from global_news_last_update order by last_update_at nulls first limit 20;"
 psql postgres://occ@127.0.0.1:5432/occdb -c \
-  "select id,status,total_jobs,completed_jobs,failed_jobs,created_at
-     from backfill_runs where kind='news' order by created_at desc limit 5;"
-```
-
-### 0.5 What “normal” looks like
-
-- **Official DeepSeek is the default.** `deepseek-flash` research calls take
-  ~30–180 s; one company takes a few minutes. Transient API errors are retried
-  by dsh and by pg-boss.
-- **Research reasoning effort is `low`**, set explicitly in
-  `phase0/dsh-deepseek.patch.yml` (`llm-deepseek.reasoningEffort: low`); the
-  shipped headless default was `high` and produced ~22k output tokens per
-  company. The reviewer keeps `high` in `reviewer.patch.yml`. Verified with
-  `dsh --dump-config`. Jobs already running when the patch changed keep the
-  old effort; new jobs pick up `low` without a worker restart.
-- **NIM per-model 429 is not normal.** At 13:49 `deepseek-v4.1-flash` stayed
-  429 while `glm-5.3-flash` returned 200. Do not switch back to
-  `OCC_LLM_PROVIDER=nvidia` without checking the NIM quota.
-- **`needs_review` is success of the gate**, not a bug. The reviewer is strict
-  and finds real numeric/citation issues. Do not flip `needs_review` to
-  `ready`, and do not raise `OCC_REVIEW_MAX_CYCLES` in production.
-- **`backfill_runs.total_jobs` grows** when the reviewer enqueues another
-  research/ingest/review cycle. Use `status`/`states`, not the original 81.
-- A single worker with research 4 / review 4 is the current shape. Do **not**
-  fan out research to 6 concurrent turns (that triggered the NIM 429); review
-  was raised from 1 to 4 on 2026-10-31 16:42 to clear the reviewer backlog.
-- The cross-pilot revisions (`5e7da4c4-…`, priority 30) are queued behind the
-  full batch; they are not stuck — they run when batch slots free.
-- F10 page JSON under `.occ/f10/` is the source for the post-batch relations
-  pass; do not delete it.
-- **Structured financials are deterministic and LLM-free** (0 tokens; NDX
-  p50 ≈7 s / p95 ≈19 s). F10 pages are cached under
-  `.occ/f10/<market>/<code>/<page>.json`; EDGAR `companyfacts`/`submissions`
-  under `.occ/edgar/<cik>/`; the ticker→CIK map is
-  `.occ/edgar/company_tickers.json`. `--force` refreshes both source caches.
-  An F10 `EmptyRender` affects A/HK (US no longer uses F10); `00823` is the
-  one hard failure.
-- **Automatic news refresh is normal** (2026-11-01). Opening 5173 with
-  `scripts/dev-news-worker.sh start` running triggers a due sweep; the dock
-  shows progress and keeps completed sweeps for 3 days. The first cold sweep
-  fetched 20 items/company (236 companies → 3,237 new articles, 3,245 news
-  documents) and took **~9 min** at `OCC_NEWS_CONCURRENCY=2`; steady-state
-  sweeps fetch 10 items, skip unchanged articles and make no embedding call.
-  **0 LLM tokens.** A dock stuck on `排队中` means the news worker is not
-  running; it is not a data error. The global `nextDueAt` during an active
-  sweep is the 30 min lease, not the next cron time.
-- Do not edit `financial_facts` by hand to fake a value. Rerun
-  `enqueue financials`; precedence (`xbrl` > `f10` > profile) is enforced by
-  rank-guarded upserts, and profile rows are cleaned within ±7 days of a
-  structured period.
-
-### 0.6 When the batch is done
-
-```bash
-node apps/worker/dist/cli.js status --run a19a67ba-8739-4361-833b-6887395556ad
-# expect status completed|partial, research created/active/retry = 0
-
-node apps/worker/dist/cli.js states --limit 100
-# expect ready / needs_review / failed counts; needs_review is operator work
-
-node apps/worker/dist/cli.js relations f10 --universe hsi
-# re-resolve cached F10 pages now that all HSI companies exist
-
-# structured financials after a research/ingest batch
-node apps/worker/dist/cli.js status --run <financials-run-id>
-# expect completed|partial, created/active/retry = 0
-psql postgres://occ@127.0.0.1:5432/occdb -c \
   "select method,count(*) from financial_facts group by 1;"
 psql postgres://occ@127.0.0.1:5432/occdb -c \
-  "select status,count(*) from extraction_cache where stage='financials' group by 1;"
+  "select status,count(*) from company_research_state group by 1;"
 ```
 
-Then verify `/v1/indices/:code` / `/indices/HSI` shows the members and spot-check
-the graph for the CK group (`00001` / `00006` / `01038`) and a few bank/insurer
-names. Report the final counts, not a claim that every company passed review.
+### 0.2 What “normal” looks like
 
-### 0.7 Commits / working tree
-
-- **2026-11-01 (uncommitted, this round)**: automatic news refresh —
-  `packages/db/migrations/0008_global_news_last_update.sql`,
-  `packages/db/src/repositories/news.ts` (+ schema export),
-  `packages/sources/news/src/window.ts` (+ test), `packages/jobs/src/queues.ts`
-  (`news.sweep`, `registerNewsSweepSchedule`), `packages/jobs/src/runs.ts`
-  (`backfill_jobs.meta`, news sweep history/prune), `apps/worker/src/news-sweep.ts`,
-  `jobs/news.ts` cursor write-back, `worker.ts`, `cli.ts` (`news status` /
-  `news sweep --now`), `backfill.ts` (leases operator news jobs), worker config;
-  `apps/api/src/services/news.ts`, `app.ts` (`GET /v1/news/status`),
-  `server.ts` (schedule registration), API config, `apps/api/tests/app.test.ts`;
-  `apps/web/src/components/TaskDock.tsx`, `TopNav.tsx`, `CompanyNews.tsx`,
-  `api.ts`, `i18n.tsx`, `styles.css`, `lib/news-dock.ts` (+ test);
-  `scripts/dev-news-worker.sh`; `docs/NEWS.md`. The user has not asked for a
-  commit; leave the tree as-is unless told.
-- **2026-11-01 (committed `75864fb`)**: US EDGAR-only + Financials-tab UI —
-  `apps/worker/src/financials/run.ts`, `edgar-xbrl.ts`, `canonical.ts`, the US
-  F10 row cleanup (DB only, not code), `edgar-ifrs-*` fixtures + tests,
-  `format.ts`, `CompanyFinancials.tsx`, `CompanyPage.tsx`, docs.
-- **2026-11-01 (uncommitted from earlier rounds)**: structured financials backend —
-  `financials.company` queue + CLI, `packages/extract/src/financials/`
-  parsers, `apps/worker/src/financials/` fetch/store, EDGAR client, migration
-  `0007_financials_stage.sql`, `financial_period_kind` API filter, docs and
-  tests.
-- `039a38c` HSI pipeline / NIM + Parallel / reviewer / F10 relations
-- `81260bd` standalone NIM gateway + shared-port health recheck
-- `76aa5c2` research prompt: verify cited URLs / strip process residue
-- `51caabf` handoff: HSI cross-holding edges and batch run
-- `5358580` jobs: reset research state counters on a new queued run
-- `95395a0` handoff: live HSI batch supervision state
-- `d982e73` worker: NIM 429 long backoff + lower default RPM to 20
-- `cc224b8` / `e9dfafb` / `fef736f` handoff: 429 incident + paused state
-- `69c2a3a` worker: official DeepSeek default, low research reasoning,
-  reviewer JSON repair, review concurrency 4; HSI final handoff (pushed to
-  `origin/main`)
-
----
+- **Official DeepSeek is the default** for headless research and the reviewer;
+  NIM + Parallel is opt-in (`OCC_LLM_PROVIDER=nvidia`) and was retired as the
+  default after per-model 429s. Do not switch back without checking quota.
+- **`needs_review` is success of the gate**, not a bug. Do not flip it to
+  `ready` or raise `OCC_REVIEW_MAX_CYCLES` in production.
+- **Structured financials are deterministic and LLM-free.** US = SEC EDGAR
+  XBRL only; A/HK = F10. Derived cells (`计算：`) are marked `推导` and must
+  not be rendered as reported lines.
+- **News is automatic and LLM-free.** A daily sweep + the lazy
+  `/v1/news/status` trigger keep the corpus fresh; the UI has no refresh
+  control. If the dock shows `排队中`, the news worker is not running. The
+  first cold sweep is 20 items/company (~9 min for 236); steady state is 10.
+- **No Docker on this machine.** Native Postgres/Qdrant/uv sidecars/Node 24;
+  keep scripts working on macOS and WSL2/Linux.
+- **No secret is tracked.** `DEEPSEEK_API_KEY.txt` / `NVIDIA_API_KEY.txt` and
+  `.env` stay gitignored; the coding session key is outside the repo.
 
 ## 1. What this is
 
@@ -627,25 +122,25 @@ OpenCorpCheck is an open, agentic, provenance-first company intelligence store.
 Every number/relation should link back to a source; the agent can propose facts
 but cannot write verified data directly.
 
-**v1 universe** (~280 research-filled companies, ~1,000 placeholder rows,
-plus an AI watchlist and on-demand private companies):
+**v1 universe** (236 real companies today; A500/SPX add ~1,000 placeholder
+rows in P1; plus the AI watchlist):
 
 | Index | Code | Market | Status |
 |---|---|---|---|
-| CSI A500 / 中证A500 | `000510` | A | **placeholder (planned)**: stub pages, filled only by operator batches |
-| S&P 500 | `SPX` | US | **placeholder (planned)**: stub pages, filled only by operator batches |
-| STAR 50 / 科创50 | `000688` | A (SSE) | **deferred to P2 (2026-11-01)**: procedure in §10, not scheduled |
+| CSI A500 / 中证A500 | `000510` | A | **P1.1 placeholder layer**: searchable stub pages, no bulk research |
+| S&P 500 | `SPX` | US | **P1.1 placeholder layer**: searchable stub pages, no bulk research |
+| STAR 50 / 科创50 | `000688` | A (SSE) | **deferred backfill**, not in the current P1/P2 plan |
 | ChiNext 50 / 创业板50 | `399673` | A (SZSE) | **done 2026-10-31**: 50 constituents, 45 ready / 5 needs_review |
-| Hang Seng Index | `HSI` | HK | **snapshot added 2026-10-31**: 85 constituents in `config/indices/hsi.yaml`; pilot → full batch in progress |
+| Hang Seng Index | `HSI` | HK | **done 2026-10-31**: 85 constituents, 85/85 memberships |
 | NASDAQ-100 | `NDX` | US | **done**: 100 companies backfilled |
 
-- **A500 and S&P 500 have no bulk backfill and no in-app on-demand research.**
-  They are placeholder pages; an operator fills companies through an explicit,
-  capped local batch (decision 2026-10-31). Cost data:
-  [`docs/NVIDIA_NIM_MIGRATION.md`](docs/NVIDIA_NIM_MIGRATION.md) §2/§5.
-- Placeholder rows are intentionally minimal: ticker, Chinese/English name,
-  market and index membership. No profile, documents, financials or embeddings
-  until an operator-run batch fills them.
+- **A500 and S&P 500 get placeholders, not research.** P1.1 adds index
+  snapshots and `occ indices sync`; stub rows carry ticker + names + index
+  membership only. They are **searchable** with a `未收录` badge and open a
+  read-only placeholder page. An operator may later fill a company through an
+  explicit, capped local batch; there is no in-app research.
+- Placeholder rows are intentionally minimal: no profile, documents,
+  financials, chunks or embeddings until an operator-run batch fills them.
 - AI watchlist (~24 names: OpenAI, Anthropic, DeepSeek, Moonshot/Kimi, Zhipu,
   MiniMax, ByteDance, Huawei, …) lives in [`config/universe.yaml`](config/universe.yaml).
 - The product is exposed through a web UI, CLI, MCP server and a DeepSeek
@@ -653,7 +148,7 @@ plus an AI watchlist and on-demand private companies):
 
 ---
 
-## 2. Current state (2026-10-30)
+## 2. Current stack (2026-11-01)
 
 - **LLM/search providers — official DeepSeek by default (revised 2026-10-31
   14:16)**:
@@ -707,12 +202,12 @@ plus an AI watchlist and on-demand private companies):
   Parallel Search MCP) is opt-in with `OCC_LLM_PROVIDER=nvidia`. ACP sidebar
   unchanged.
 - **HSI (2026-10-31)**: `config/indices/hsi.yaml` + worker `--universe hsi`;
-  A/HK research attaches F10 by default. Pilot on `HK:00700` exercises
-  research → ingest → reviewer → revise.
+  A/HK research attaches F10 by default. Full batch done: **59 ready / 26
+  needs_review**, 85/85 memberships.
 - **ChiNext 50 (2026-10-31)**: `config/indices/cyb50.yaml` + worker
   `--universe cyb50` (`CYB50`, SZSE). Full batch finished **45 ready /
   5 needs_review**; `scripts/backfill-cyb50.sh` runs it. STAR 50 is deferred
-  to P2 priority.
+  backfill, out of the current plan.
 - **Reviewer (2026-10-31)**: `review.company` queue + `company_research_state`;
   official DeepSeek with reasoning on, structured JSON, max 2 revisions, then
   `needs_review`. `occ-backfill states` exposes operator status.
@@ -720,15 +215,13 @@ plus an AI watchlist and on-demand private companies):
   `MajorShareholder` / US `gbgd` shareholder rows become `reported`-status
   `owns`/`invests_in` edges when the shareholder is in the company universe;
   page JSON cached under `.occ/f10/`.
-- **Structured financial statements (2026-11-01, backend)**: new
+- **Structured financial statements (2026-11-01)**: new
   `financials.company` queue + `occ-backfill enqueue financials`. **US is
-  EDGAR-only** (`method='xbrl'`, `trust_tier='filing'` after the next
-  cleanup); A/HK use F10 `cwfx` / `NewFinancialAnalysis`
-  (`method='f10'`, `secondary`); profile facts remain the fallback for
-  periods the structured sources do not cover. Pure parsers in
-  `packages/extract/src/financials/`; raw caches under `.occ/f10/` and
-  `.occ/edgar/`; the current EDGAR-vs-F10 comparison is being retired for US.
-  The next round also implements the Financials-tab UI.
+  EDGAR-only** (`method='xbrl'`, `trust_tier='filing'`); A/HK use F10 `cwfx` /
+  `NewFinancialAnalysis` (`method='f10'`, `secondary`); profile facts remain
+  the fallback for periods the structured sources do not cover. Pure parsers
+  in `packages/extract/src/financials/`; raw caches under `.occ/f10/` and
+  `.occ/edgar/`. The Financials-tab UI is shipped (see §5).
 
 Verified numbers worth keeping:
 
@@ -739,33 +232,23 @@ Verified numbers worth keeping:
   fix. The old failure was 32 distinct calls in 95 s with no repeats.
 - Graph: AAPL 3 edges, ARM 8, NVDA 14; 2-hop NVDA 26 nodes.
 - Search p95 (no rerank): companies 218–300 ms, documents 366–473 ms.
-- Build: web main JS 399 KB (gzip 123 KB), lazy Markdown chunk 163 KB
-  (gzip 49 KB), CSS 42.8 KB (gzip 8.8 KB).
+- Build: web main JS 421.7 KB (gzip 129.8 KB), lazy Markdown chunk 162.7 KB
+  (gzip 49.1 KB), CSS 52.4 KB (gzip 10.4 KB).
 
-Verified this round (2026-10-31):
+Verified 2026-11-01:
 
-- NIM probe: dsh headless returns `OK`; Parallel search returns ranked URLs;
-  F10 `CompanyProfile` on HK `00700` works through `mcp__occ__f10_scrape`.
-- `HK:00700` pilot on NIM: research **289 s** / 99k input + 6k output tokens,
-  ingest **27 s** / 16 chunks, reviewer **73 s** per cycle. The reviewer found
-  6 real issues (OCF vs FCF reconciliation, a mismatched citation, source-count
-  mismatch, a meaningless sentence, wrong interest-coverage definition, mixed
-  single-quarter/cumulative columns); after 2 revisions it correctly ended
-  **`needs_review`** instead of pretending success. This is the intended
-  quality gate; the profile is still ingested and visible.
-- F10 shareholder parsing verified against the real `00006` page: 长江基建
-  (`01038`) and 长江和记 (`00001`) resolve to `invests_in` edges at 36.01%.
-  The live cross-holding pilot also wrote real `reported` edges:
-  **长江和记 owns 75.67% of 长江基建**, **长江和记 / 长江基建 each
-  invest_in 電能實業 (36.01%)**, and **恒基兆业地产 invest_in 香港中华煤气
-  (41.53%)** — with evidence quotes, F10 URLs and review items.
-- Reviewer with the stricter prompt/content checklist now has only
-  web search/fetch tools; file/shell/sub-agent tools are disabled.
+- News sweep `b892648d-…` completed 236/236; AAPL 20/19; 600519 News tab 28
+  items; TaskDock active/completed states verified on desktop/mobile/dark.
+- Structured financials: AAPL FY2025 416.161B USD (10-K); CCEP FY2025 EUR
+  20.901B (20-F); GOOGL gross profit 240.301B (derived); 600519/00700 from F10.
+- Graph: 22 reported edges (15 `invests_in`, 7 `owns`) incl. the CK group and
+  恒基兆业→香港中华煤气; 64 inferred.
+- Search p95 (no rerank): companies 218–300 ms, documents 366–473 ms.
 
 Tests (serial, because parallel vitest workers collide on
 `node_modules/.vitest-cache`): `corepack pnpm -r --workspace-concurrency=1 test`.
-Current counts: API 30, agent 17, web 22, ingest 39, extract 22, worker 26,
-CLI 7, retrieval 10, db 9, storage 5, sources 13 (F10 9 + news 4). All green.
+Current counts: API 33, agent 17, web 33, ingest 39, extract 42, worker 40,
+CLI 7, retrieval 10, db 9, storage 5, sources 18 (F10 9 + news 9). All green.
 
 ---
 
@@ -823,6 +306,9 @@ corepack pnpm -r build
 node apps/api/dist/server.js        # http://127.0.0.1:8787
 corepack pnpm dev:web               # http://127.0.0.1:5173 (proxy /v1 → 8787)
 
+# persistent automatic-news worker (separate process)
+scripts/dev-news-worker.sh start    # status | stop | restart | logs
+
 # optional F10 sidecar
 cd services/finance-analyst && uv run occ-f10 serve --port 8090
 
@@ -845,7 +331,7 @@ Key env:
 | `OCC_AGENT_IDLE_TIMEOUT_MS` | `600000` (`0` disables) |
 | `DEEPSEEK_API_KEY` / `_FILE` | required by the **headless research worker**, the ACP sidebar, ingest/extraction and the **reviewer** |
 | `NVIDIA_API_KEY` / `_FILE` | only for the opt-in NIM route (`OCC_LLM_PROVIDER=nvidia`); `NVIDIA_API_KEY.txt` is gitignored |
-| `OCC_LLM_PROVIDER` | `nvidia` (worker default); `deepseek` rolls back research |
+| `OCC_LLM_PROVIDER` | `deepseek` (default: official DeepSeek + official search/fetch); `nvidia` opts into NIM + Parallel |
 | `OCC_NIM_GATEWAY_PORT` / `OCC_NIM_RPM` | `4010` / `20` |
 | `OCC_REVIEW_MAX_CYCLES` | `2` (then `needs_review`) |
 | `OCC_F10_RELATIONS` | `on`; `none` disables structured shareholder extraction |
@@ -874,7 +360,7 @@ replaces an entry's `config` wholesale.
 React 19 + Vite 8 + TypeScript + React Router 7 + TanStack Query 5. Styles use
 the prototype CSS tokens; **no Tailwind/shadcn**. Vite dev binds
 `127.0.0.1:5173`, proxies `/v1` to `127.0.0.1:8787`. Production static hosting
-is still TODO.
+is P2 (deferred).
 
 Pages:
 
@@ -882,10 +368,14 @@ Pages:
   recent views (`localStorage`).
 - `/search?q=` — company hybrid search with market/index/sector filters. Rows
   show name, ticker, country, sector, indices and a two-line description; no
-  score/matchType. Short Chinese queries with no exact/alias/fuzzy hit and a
-  low dense score show “没找到 + 问助手” instead of unrelated vector neighbours.
+  score/matchType. **A500/SPX stubs (P1.1) are searchable with a `未收录`
+  badge** and open the placeholder page. Short Chinese queries with no
+  exact/alias/fuzzy hit and a low dense score show “没找到 + 问助手” instead
+  of unrelated vector neighbours.
 - `/c/:ref` — ticker, slug, Chinese alias or ULID. Five tabs:
-  基本资料 / 财务数据 / 关系图谱 / 新闻动态 / 资料来源.
+  基本资料 / 财务数据 / 关系图谱 / 新闻动态 / 资料来源. A `stub` company
+  renders the read-only placeholder state (names/ticker/market/indices, no
+  fake data, no CTA).
   - Overview: one-line summary, segment bars, key numbers, recent events, and
     right-column shareholders/investments/related companies.
   - Financials: metric cards (derived values carry a `推导` marker), a
@@ -909,9 +399,10 @@ Pages:
   `更新于 … · 自动更新` / `正在更新…` and refetches the card when the cursor
   advances.
 - `/graph?company=` — global ego network with company picker.
-- `/indices/NDX` — 100 QQQ constituents; planned A/HK index pages show the
-  not-loaded state. The UI filter codes are
-  `["NDX", "STAR50", "CYB50", "HSI"]` (SPX/A500 removed from the picker).
+- `/indices/NDX` / `/indices/HSI` / `/indices/CYB50` — loaded constituent
+  pages. The UI filter codes are currently
+  `["NDX", "STAR50", "CYB50", "HSI"]`; **P1.1 adds `A500` and `SPX`** to the
+  picker and index pages. STAR50 has no snapshot (deferred backfill).
 - AI sidebar — 35% of page width on desktop (hardcoded `35vw`; was 420 px),
   full-screen on mobile; real
   `POST /v1/agent/sessions` + SSE prompt/cancel; company context; suggestions;
@@ -952,10 +443,13 @@ Backend endpoints added with the UI:
 
 Known limitations:
 
-- Investment/equity relations are sparse: only `partners_with` / `supplies` /
-  `other` / `buys_from` / `licenses_to` / `joint_venture_with`; no
-  `invests_in` / `owns` / `parent_of` yet. Do not fake edges in the UI.
-- Many NDX companies have `sector = null`; the index page shows `—`.
+- **Ownership coverage is thin:** 22 `reported` edges (15 `invests_in`, 7
+  `owns`) + 64 `inferred`. A/HK edges come from F10 shareholder tables; **US has
+  no ownership edges**. US 13F, HKEX DION and broader `parent_of` are P1.3. Do
+  not fake edges in the UI.
+- **Industry classification is missing:** 223/236 non-fixture companies have
+  `sector = null`; the index/company header shows `—` and the search sector
+  filter is mostly empty. P1.2.
 - English mode translates UI chrome only; company descriptions stay as sourced.
 - Hot companies are a static front-end list; there is no admin backend.
 - **News updates are automatic** (2026-11-01): daily `news.sweep` schedule +
@@ -963,10 +457,10 @@ Known limitations:
   There is still **no refresh button and no POST route** by design. Updates
   progress only while the news worker runs (`scripts/dev-news-worker.sh`).
   The source is Google News RSS, not agentic search, so a refresh costs 0 LLM
-  tokens. See §10 “Done — Automatic news refresh”.
-- No web unit tests beyond trajectory/news-dock helpers; acceptance is currently
-  Playwright/manual.
-- Production static hosting (API/nginx same-origin) is still TODO.
+  tokens. See [docs/NEWS.md](docs/NEWS.md).
+- No Playwright web suite, agent eval or CI yet; acceptance is manual
+  (P2 delivery quality).
+- Production static hosting (API/nginx same-origin) is still TODO (P2).
 
 More design detail: [`docs/UI.md`](docs/UI.md).
 
@@ -1179,6 +673,9 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 - **Fixture isolation**: `companies.is_fixture` / `documents.is_fixture` and
   Qdrant payload flags. Search excludes fixtures unless `include_fixtures=true`.
   `occ sync-fixtures` is idempotent and also backfills pinyin aliases.
+- **Stubs are not fixtures**: `coverage_tier='stub'` rows (A500/SPX, P1.1) are
+  included in search with a `未收录` badge; they have no embeddings/documents,
+  so semantic search must not pretend they have a profile.
 - **Chinese aliases** are curated in `config/aliases/zh.yaml`; run
   `occ aliases sync` (inserts aliases + pinyin forms and reindexes company
   points). Do not hardcode names.
@@ -1200,10 +697,12 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
   full-text fetch or redistribution. Ingestion is deterministic and LLM-free.
   **Automatic refresh is implemented** (2026-11-01): `news.sweep` schedule +
   lazy `/v1/news/status` trigger, `global_news_last_update` cursor/lease,
-  worker write-back, 3-day history. See §10 “Done — Automatic news refresh”.
+  worker write-back, 3-day history. See [docs/NEWS.md](docs/NEWS.md).
 - **F10** (`services/finance-analyst` + `packages/sources/eastmoney-f10`):
-  A/HK/US structured pages, per-domain rate limits, table/XHR extraction,
-  2 MB cap, retries + jitter. Eastmoney data is for internal demo + attribution.
+  A/HK structured pages (US pages remain technically available but are not
+  used for structured financials), per-domain rate limits, table/XHR
+  extraction, 2 MB cap, retries + jitter. Eastmoney data is for internal demo
+  + attribution.
 - **Structured financial statements** (`apps/worker/src/financials/` +
   `packages/extract/src/financials/`): `financials.company` fetches F10
   `cwfx` (HK `NewFinancialAnalysis`) for **A/HK only** and SEC EDGAR
@@ -1238,11 +737,11 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
    config. The DeepSeek key stays in the repo; the coding session keeps its
    own copy.
 5. **No Docker on this machine**; use native services. Cross-platform support
-   (macOS + WSL2/Linux) is still required; Electron/Docker stay in P5.
-6. **Universe scope (2026-10-29, updated 2026-10-31)**: STAR 50 + ChiNext 50 +
-   HSI + NDX + AI watchlist + on-demand private companies. **A500 and S&P 500
-   have no bulk backfill and no in-app research** — placeholders filled only by
-   explicit, capped operator batches. NDX is done; A/HK are P4.
+   (macOS + WSL2/Linux) is still required; Docker/Electron are **P2**.
+6. **Universe scope**: ChiNext 50 + HSI + NDX are done; **A500 + S&P 500 get
+   searchable placeholder pages in P1.1** with no bulk research; STAR 50 and
+   remaining HSI/CYB50 coverage are **backfill, out of the current plan**.
+   NDX is done; A/HK profiles are done.
 7. **F10 reuse** (Apache-2.0 attribution); do not bulk redistribute Eastmoney.
 8. No full port of `opportunity-radar`; keep the distilled BFS/DFS + citation
    discipline.
@@ -1317,11 +816,14 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     (unchanged items skip embedding). TTL is 23 h (deliberately shorter than
     the 24 h period) so every company is due each day; cron, TTL and batch are
     configurable as a set.
-30. **Placeholders are first-class rows, not seed data**: `coverage_tier='stub'`
-    (the current schema has **no `is_placeholder` column**; do not add one),
-    only ticker + Chinese/English names + index membership. They are excluded
-    from default semantic search, listed on index pages and reachable by direct
-    `/c/:ticker`; never overwrite a real profile.
+30. **Placeholders are first-class, searchable rows** (revised 2026-11-01):
+    `coverage_tier='stub'` (the schema has **no `is_placeholder` column**; do
+    not add one), only ticker + Chinese/English names + market + index
+    membership. They **must appear in search** with a `未收录` badge — exact
+    ticker/name matches always; semantic results may include them but rank
+    below real profiles. Opening a result shows the read-only placeholder page.
+    Never fabricate profile data and never overwrite a real profile. The
+    earlier “exclude from default search” rule is cancelled.
 31. **Batch research uses our own durable queue, not a DSH batch plugin**
     (decision 2026-10-30): pg-boss is the queue/retry/progress store and a
     worker pool runs one `dsh --profile headless` process per company. The DSH
@@ -1339,14 +841,15 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     2026-11-01): the **top-nav** control (last item after `EN` / `深色`) has
     exactly one producer, the automatic news sweep (badge “更新新闻”). No
     `company_research` rows, no filter tabs, and **no retry/review buttons**
-    (failures retry automatically). The prototype (commit `dd465fc`) is the
-    approved visual reference; the production dock shows the active sweep and
-    the last completed one, and drops its manual controls.
+    (failures retry automatically). The production dock shows the active sweep,
+    the last completed one, and completed sweeps from the **last 3 days**; it
+    drops all manual controls. The prototype (commit `dd465fc`) is the visual
+    reference only.
 34. **No in-app on-demand stock research** (decision 2026-10-31): the
     placeholder CTA and `POST /v1/companies/:ref/research` are cancelled.
     Research is operator-initiated through the local worker pool (explicit,
     capped batches). On-demand **news refresh is cancelled** (2026-11-01):
-    news is fully automatic (§10 “Next — Automatic news refresh”), so no public
+    news is fully automatic ([docs/NEWS.md](docs/NEWS.md)), so no public
     control can trigger a fetch. The operator CLI stays.
 35. **Step-level retry belongs to the NIM client, not the job queue**
     (decision 2026-10-31): NIM throws episodic 500s and sometimes returns an
@@ -1459,14 +962,14 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 | MinIO `dl.min.io` returns 410 | `brew install minio` or set `MINIO_BIN`. |
 | Snapshot hash mismatch | Re-run `occ ingest --force` before `occ snapshots upload`; don’t upload different content. |
 | Review accept/reject semantics | Only `pending` moves; accept relation → verified, accept fact → `facts` row + proposal source, reject relation → rejected. Batch needs `--ids/--kind/--company/--all --yes`. |
-| `deep_research` returns 400 for private companies | It requires a recognized exchange listing. Private companies go through CLI/backfill until P4 entity resolution. |
+| `deep_research` returns 400 for private companies | It requires a recognized exchange listing. Private companies go through CLI/backfill until P1.2 entity resolution. |
 | `deep_research` is async | Poll `get_run`; research completion automatically enqueues `ingest.company`. |
 | News ingestion says `company not found` | Ingest the company profile first. |
 | Google News RSS is link-only, ~10/company | Don’t fetch/redistribute full text; add a separate adapter for bodies. |
 | News rerun shows `skipped=5` | Idempotent title+summary sha256; not a failure. |
-| Automatic news sweep finished but the UI is stale | News events come from `documents` via `listEvents`; poll the run/status and refetch the company query after it completes instead of relying on a cached response. Do not pass `force=true` for unchanged items. |
-| Concurrent sweeps duplicate jobs | The advisory lock makes a second producer a no-op, and `global_news_last_update.next_due_at` is leased before enqueue; tabs never trigger a sweep at all (no public trigger). |
-| Placeholder companies pollute search | Default search excludes `coverage_tier='stub'`; index pages/direct routes include them with a “未收录” badge. |
+| Automatic news sweep finished but the UI is stale | The News tab invalidates the company query when `lastUpdateAt` advances; the dock refetches `/v1/news/status`. If a cached response still looks old, wait one poll (≤60 s) or reload. Do not pass `force=true` for unchanged items. |
+| Concurrent sweeps duplicate jobs | The advisory lock makes a second producer a no-op, `next_due_at` is leased before enqueue, and the API skips enqueueing while a sweep is queued or the latest run is still progressing. |
+| Placeholders and search | Stubs are **searchable** with a `未收录` badge (decision 30); rank them below real profiles and never render fake metrics. Exact ticker/name must always find them; opening the row shows the read-only placeholder page. |
 | Reviewer/research loop never ends | Cap at 2 revise cycles, then `needs_review`; every attempt is logged. Never retry unbounded. |
 | Reviewer keeps rejecting a stable profile | `needs_review` is the honest outcome; fix the section manually (or improve the research prompt) and re-review. Do not silently flip it to `ready` or raise the cap in production. |
 | NIM request hangs | The gateway aborts at `OCC_NIM_REQUEST_TIMEOUT_MS` (default 600 s) and retries. The old no-timeout gateway could sit on one call for 10+ min; keep the timeout. |
@@ -1486,1112 +989,231 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 
 ---
 
-## 10. Next tasks
+## 10. Next tasks — active plan (2026-11-01)
 
-### Done — US EDGAR-only + Financials-tab UI (2026-11-01)
-
-> **Shipped.** US F10 removal, `ifrs-full` + derived subtotals, and the
-> Financials tab are complete. Result: NDX **100/100 `xbrl`, 0 `f10`**;
-> 2,053 US `f10` rows deleted; CCEP/FER/TRI covered; NDX liabilities
-> 100/100 (derived where needed), gross profit 87/100, debt 95, eps 99,
-> capex/FCF 97. Rerun `7dacfac0-ce2c-4d61-983a-f180a1f1c23b` (100/100,
-> cache-only, 0 LLM tokens). UI: canonical labels, statement tabs, per-period
-> source badges, `推导`/`累计` markers, annual/quarter/half/TTM modes, coverage
-> line, and per-kind fetching (`getCompanyFinancials`) so a full statement is
-> never truncated at 200 rows. Tests: extract 42, web 26, worker 40, API 30,
-> ingest 39, agent 17, CLI 7, retrieval 10, db 9, storage 5, sources 13 — all
-> green. The original task spec is kept below for reference.
-
-**Task 1 — remove US F10 financial data (backend).**
-
-Decision: for US, structured financials use **SEC EDGAR XBRL only**. F10 stays
-the A/HK structured layer. Rationale is in decision 42 and in the comparison
-in §0: F10 US is a secondary repackaging with cumulative quarters and mapping
-differences, while EDGAR is filing-grade and deeper.
-
-- [x] `apps/worker/src/financials/run.ts`: call `loadF10` only when
-  `market !== "US"`. US runs EDGAR only; the `F10_PAGE` map has no US entry
-  and the EDGAR-vs-F10 comparison records zeros.
-- [x] Keep `packages/extract/src/financials/f10-cwfx.ts` generic (A/HK still
-  use it) and keep its fixture tests. Do not delete the parser.
-- [x] Delete existing US F10 rows (**2,053 rows**; the checklist's earlier
-  estimate was 2,213, which also counted 阿里巴巴's HK-sourced rows). Match on
-  the US F10 source URL rather than company exchange, so a dual-listed
-  company's HK rows survive:
-
-```sql
-delete from financial_facts f
-using sources s
-where f.source_id = s.id
-  and f.method = 'f10'
-  and s.url like '%PC_USF10%';
-```
-
-- [x] Delete the EDGAR `extraction_cache` stage `financials` rows (97
-  companies with `xbrl` facts), then
-  `occ-backfill enqueue financials --universe ndx` +
-  `work --queues financials --drain` (no `--force`; the EDGAR cache was
-  fresh). Verified: no US `f10` rows returned.
-- [x] `.occ/f10/US/` page caches are unread; left on disk (harmless).
-
-**Coverage compensation — required in the same task:**
-
-Removing US F10 without compensation would lose: 38 companies' gross
-profit/margin, 23 total liabilities, 9 cost of revenue, 8 total debt, 5
-capex/FCF, 4 EPS (and the 3 IFRS-only issuers entirely).
-
-- [x] Add SEC `ifrs-full` concept mapping to
-  `packages/extract/src/financials/edgar-xbrl.ts` for the IFRS-only NDX issuers
-  (`CCEP`, `Ferrovial`, `Thomson Reuters`). Verified exact names in the cached
-  `companyfacts`: `Revenue`, `RevenueFromContractsWithCustomers`, `ProfitLoss`,
-  `ProfitLossAttributableToOwnersOfParent`,
-  `ProfitLossFromOperatingActivities`, `Assets`, `Liabilities`, `Equity`,
-  `CashAndCashEquivalents`, `CashFlowsFromUsedInOperatingActivities`,
-  `CashFlowsFromUsedInInvestingActivities`,
-  `CashFlowsFromUsedInFinancingActivities`, `Borrowings`,
-  `PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities`,
-  `DilutedEarningsLossPerShare`, `BasicAndDilutedEarningsLossPerShare`.
-- [x] Derive `total_liabilities = total_assets - total_equity` when the
-  `Liabilities` concept is missing.
-- [x] Derive `gross_profit = revenue - cost_of_revenue` when `GrossProfit` is
-  missing and both inputs exist; derive `gross_margin` from it.
-- [x] Keep the existing `total_debt` concept fallback; extended with IFRS
-  `Borrowings`/`LongtermBorrowings`/current+noncurrent borrowings and
-  convertible-debt concepts (DDOG/PDD now have total debt).
-- [x] Derived rows carry a quote like `计算：总资产 - 股东权益`, confidence
-  0.85, and are never rendered as reported lines (UI `推导` badge).
-- [x] Re-ran NDX and reported item coverage before/after. Core items
-  (revenue, net income, assets, equity, cash, OCF, investing, financing) are
-  **100/100**; the 3 IFRS issuers are covered; liabilities 100 (was 76) and
-  gross profit 87 (was 62) include derived values.
-
-**Task 2 — Financials tab UI.** Follow “Frontend UI — required changes” in
-“Done — Structured financial statements backend” below. Additional notes now
-that US is EDGAR-only:
-
-- US cells: `SEC 10-K` / `SEC 10-Q` badge; A/HK: `东方财富 F10`; profile-only
-  older periods: `研究资料`.
-- US quarters are true quarters; A/HK 三季报 are cumulative — show a `累计`
-  badge (or render from `periodStart`).
-- Derived US cells (liabilities/gross profit/FCF) need a `推导` marker in the
-  badge or source popover.
-- Use `financial_period_kind=annual|quarter` to fetch each mode separately; no
-  new endpoint.
-
-**Verification**
-
-- `select count(*) from financial_facts ... method='f10'` for NASDAQ/NYSE
-  companies = **0**.
-- A/HK F10 row counts unchanged; `HK:00823` remains the only known gap.
-- NDX core item coverage does not fall below the pre-removal level (EDGAR-only
-  plus derivation/IFRS); report actual numbers, do not fake values.
-
-### Done — ChiNext 50 backfill (2026-10-31)
-
-Completed with the procedure below. Result: **45 ready / 5 needs_review**,
-50/50 memberships, 1 reported F10 edge. Pilot run `a8511401…` (3 targets) and
-full batch `1514f251…` (47 targets). New files:
-`config/indices/cyb50.yaml`, `scripts/backfill-cyb50.sh`; `cyb50` /
-`chinext50` added to `INDEX_UNIVERSES` in
-[`apps/worker/src/universe.ts`](apps/worker/src/universe.ts).
-The 5 `needs_review` rows are operator work (revision cap).
-
-**Steps that produced it** (reuse for STAR 50):
-
-1. Snapshot `config/indices/cyb50.yaml` with `index.code: "CYB50"`, market `A`,
-   exchange `SZSE`, `as_of`, source/license, and 6-digit tickers.
-   Verify against the current SZSE/CNI constituent list; the June 2026
-   rebalance added 罗博特科 / 迈为股份 / 光库科技 / 香农芯创 / 天华新能 and
-   removed 智飞生物 / 泰格医药 / 康龙化成 / 机器人 / 神州泰岳. Note that
-   `300223`'s ticker name is now **君正股份** (renamed 2026-08-13).
-2. Add
-   `cyb50: { file: "cyb50.yaml", market: "A", exchange: "SZSE", coverage: "index_member" }`
-   to `INDEX_UNIVERSES`; update the `unknown universe` message and the
-   `--universe` usage in [`apps/worker/src/cli.ts`](apps/worker/src/cli.ts).
-3. Pilot: `enqueue research --universe cyb50 --limit 3`, then
-   `OCC_LLM_PROVIDER=deepseek node apps/worker/dist/cli.js work --queues research,ingest,review,f10,financials --drain`.
-   Verify research → ingest → review and that `index_memberships` gets CYB50
-   rows.
-4. Batch: `enqueue research --universe cyb50 --exclude <pilots>` then the same
-   drain. Supervise via `status --run` / `states`; never re-enqueue on retries.
-5. Finish: `relations f10 --universe cyb50`; verify
-   `curl /v1/indices/CYB50` shows 50 members. Report ready/needs_review;
-   `needs_review` is operator work, not a failure.
-
-**Gotchas**
-- The internal index code must equal the web filter code (`CYB50`, `STAR50`),
-  not the vendor code (`399673`, `000688`), or `/indices/CYB50` is empty.
-- A-share profiles are Chinese; expect a meaningful `needs_review` share and
-  sparse in-universe shareholder edges (see §0).
-- Do not raise `OCC_REVIEW_MAX_CYCLES`; do not move the reviewer off
-  official DeepSeek + `reasoningEffort: high`.
-
-### Deferred to P2 — STAR 50 backfill (SSE 000688, internal `STAR50`)
-
-> **Priority changed 2026-11-01: deferred to P2.** Minimal A + HK + US coverage
-> is considered sufficient for now; STAR 50 is not the next task. Keep this
-> procedure for when it is scheduled.
-
-Same procedure as the Done section above, with:
-- `config/indices/star50.yaml`, `index.code: "STAR50"`, `market: A`,
-  `exchange: SSE`, 6-digit SSE tickers (688xxx), `as_of` from the current
-  SSE/STAR 50 constituent list with source + license.
-- `star50: { file: "star50.yaml", market: "A", exchange: "SSE", coverage: "index_member" }`
-  in `INDEX_UNIVERSES`, plus `--universe` usage text.
-- `scripts/backfill-star50.sh` modeled on `scripts/backfill-cyb50.sh`.
-- A-share F10 (`gdyj`) is attached automatically; run the post-batch
-  `relations f10 --universe star50` pass.
-
-### Done — Structured financial statements backend (2026-11-01)
-
-> **Status: backend implemented, tested and backfilled; the US F10 removal and
-> Financials-tab UI shipped on 2026-11-01 (see §10 “Done — US EDGAR-only +
-> Financials-tab UI”).** New
-> `financials.company` queue + `occ-backfill enqueue financials`; pure parsers
-> in `packages/extract/src/financials/{canonical,f10-cwfx,edgar-xbrl}.ts`; worker
-> stage in `apps/worker/src/financials/`. SEC EDGAR XBRL is the US
-> filing-grade source; F10 `cwfx` / `NewFinancialAnalysis` remains the A/HK
-> structured layer (**US F10 removed — decision 42**). Migration
-> `0007_financials_stage.sql` adds the
-> `financials` extraction-cache stage. Backend-round coverage was NDX 100/100,
-> HSI 84/85 (`00823` F10 EmptyRender), CYB50 50/50; the current figures live in
-> §0.3.
+> **Scope rule:** P1 is the only active list. **Backfill is out of scope**
+> (STAR 50, any remaining HSI/CYB50 gaps, A500/SPX bulk research). Delivery/
+> engineering quality is P2 and explicitly deferred. Do not start P2 before P1
+> is accepted.
 >
-> **Original priority note (2026-11-01).** This was the gap identified after
-> the ChiNext 50 round: `financial_facts` previously came only from
-> deterministic Markdown extraction of research profiles. F10 `cwfx` statement
-> pages were scraped but never parsed into facts, and US had no SEC EDGAR/XBRL
-> adapter at all.
+> **Cancelled / permanently deferred** (do not re-propose): manual news
+> refresh, on-demand research, page-entry nudge, first-class sub-agent card,
+> AI news summaries/full-text fetch, account system, K-line/portfolio, graph
+> editing, financial trend charts, Docker/Electron (P2).
 
-**Source ladder and precedence**
+### P1.1 — A500 + S&P 500 placeholder layer
 
-| Priority | Source | Markets | Method / trust |
-|---|---|---|---|
-| 1 | SEC EDGAR XBRL company facts + 10-K/10-Q links | US | `method='xbrl'`, `trust_tier='filing'` |
-| 2 | Eastmoney F10 `cwfx` (HK: `NewFinancialAnalysis`) | **A / HK only** (US removed by decision 2026-11-01) | `method='f10'`, `trust_tier='secondary'` |
-| 3 | Research profile Markdown tables | all | `deterministic_table_v1` (existing) |
+**Goal:** every constituent of CSI A500 (000510) and S&P 500 (SPX) has a
+read-only, **searchable** placeholder page — names, ticker, market,
+index/weight — without inventing profile data. **No bulk research/backfill.**
 
-> **US source change (2026-11-01, executed):** US is **EDGAR-only**. The
-> dual-source US implementation described in this section is superseded; US
-> `f10` rows/fetching are gone and `ifrs-full` + derived subtotals are in
-> `edgar-xbrl.ts` / `canonical.ts`. F10 remains the A/HK structured layer. See
-> §10 “Done — US EDGAR-only + Financials-tab UI”.
+- `config/indices/a500.yaml` and `config/indices/sp500.yaml`: `as_of`,
+  optional weights, source/license. Use official constituent lists and record
+  the source.
+- `occ indices sync` (new CLI command): for every constituent not already
+  resolvable by ticker+exchange/name, insert a `coverage_tier='stub'` row:
+  `market`, `display_name`, `name_en`/`name_zh` (aliases when one language is
+  unknown), `profile={}`; add `index_memberships` rows. Idempotent by
+  ticker+exchange; never overwrite a real profile.
+- **Searchable (revised 2026-11-01):** placeholder rows MUST be returned by
+  search with a `未收录` badge. Exact ticker/name matches always include them;
+  semantic results may include them but rank below real profiles. Never show
+  fake scores or metrics. Clicking a result opens `/c/:ticker`.
+- Placeholder page: names, ticker, market, indices/weights and a neutral
+  “尚未收录 / 数据由运营侧批量补充” note. **No CTA**, no fake progress, no
+  `/research` endpoint. Other tabs stay empty (no fake data).
+- No documents, chunks, financials, embeddings or profile sections for stubs.
+- Acceptance: constituent count minus existing companies; no duplicate
+  slugs/tickers; real profiles untouched; a stub appears in search with the
+  badge and opens the placeholder page; index pages list all members; no route
+  or UI action can enqueue research.
 
-One row per `(company, statement, item, period_end, period_kind)` wins by
-precedence; `source_id`, `method` and `extractor_version` record the winner.
-Differences >1% between EDGAR and F10 are counted/logged in
-`extraction_cache.stats` (no UI in v1). Do not add a source discriminator to
-`financial_facts_uq` until a conflict/comparison view is actually scheduled.
+### P1.2 — Industry classification + entity resolution
 
-**Canonical item map (v1, ~20 items)**
+**Goal:** make the company header, search sector filter and ownership
+matching trustworthy.
 
-- `income`: `revenue`, `cost_of_revenue`, `gross_profit`, `gross_margin`,
-  `research_and_development`, `selling_general_admin`, `operating_income`,
-  `net_income`, `net_income_attributable`, `eps_diluted`
-- `cash_flow`: `operating_cash_flow`, `capex`, `free_cash_flow`, `investing_cash_flow`,
-  `financing_cash_flow`
-- `balance`: `cash_and_equivalents`, `total_assets`, `total_liabilities`,
-  `total_equity`, `total_debt`
-- US us-gaap concepts: `Revenues` /
-  `RevenueFromContractWithCustomerExcludingAssessedTax`, `GrossProfit`,
-  `OperatingIncomeLoss`, `NetIncomeLoss`, `EarningsPerShareDiluted`,
-  `NetCashProvidedByUsedInOperatingActivities`,
-  `PaymentsToAcquirePropertyPlantAndEquipment`, `Assets`, `Liabilities`,
-  `StockholdersEquity`, `CashAndCashEquivalentsAtCarryingValue`.
-- F10 `cwfx` Chinese labels map to the same keys (营业收入 / 营业总收入,
-  营业成本, 毛利润, 研发费用, 销售及管理费用, 营业利润, 净利润,
-  归母净利润, 每股收益, 经营活动现金流净额, 资本开支, 投资活动现金流净额,
-  筹资活动现金流净额, 货币资金, 总资产, 总负债, 股东权益, 总债务).
-- Store **native currency units**, never "millions": `unit='currency'` +
-  `currency`, `unit='percent'` for margins, `unit='shares'` for counts.
-  `period_label` keeps `FY2025` / `Q3 FY2026`; `fiscal_year_end` comes from
-  the filing.
-- `period_kind`: `annual` (10-K/FY), `quarter` (10-Q/Qn), `half` only when the
-  source reports H1 and no quarter; drop TTM at write time unless the UI gets
-  a TTM toggle.
+- Fill `companies.sector` for all index members (current: **223/236 null**).
+  Use a deterministic mapping from index snapshots/vendor industry codes
+  first; only fall back to an LLM/manual pass with a recorded source.
+- Identifier coverage: keep ticker/domain/CIK and add LEI, USCC, ISIN and
+  Wikidata QID where available; use GLEIF for LEI ↔ legal-entity/parent
+  relationships. Store them in `company_ids` with `id_type`; no fabricated
+  values.
+- Acceptance: sector coverage report (≥95% of index members, or an explicit
+  unmatched list); identifier coverage report; `search?industry=` returns
+  sensible results; company pages show the sector; GLEIF edges carry a source.
 
-**Pipeline**
+### P1.3 — Investment/ownership graph depth
 
-1. New pure parsers with recorded fixtures (no network in tests):
-   `packages/extract/src/financials/f10-cwfx.ts` and
-   `packages/extract/src/financials/edgar-xbrl.ts`.
-2. Worker stage after ingest (reuse `ingest.company`, or a new
-   `financials.company` queue if it needs independent retries):
-   - F10: `POST /v1/f10/scrape {market, code, pages:["cwfx"]}`; cache page
-     JSON under `.occ/f10/<market>/<code>/cwfx.json`.
-   - EDGAR: cache `companyfacts` JSON under `.occ/edgar/<cik>/companyfacts.json`;
-     fetch submissions for filing URLs; `User-Agent` required, ≤10 req/s,
-     fixture tests must not call the network.
-   - Idempotent by input sha256; delete only rows owned by the same
-     extractor version. Never touch llm/human rows with a different method.
-3. CIK mapping: cache `https://www.sec.gov/files/company_tickers.json`; resolve
-   ticker → CIK; record the CIK on the source metadata.
-4. Operator commands (capped, no web route):
-   `occ-backfill enqueue financials --universe ndx|hsi|cyb50|star50`
-   and `--tickers AAPL,600519:A,00700:HK`; plus a re-run/force flag for the
-   existing corpus. No scheduled full sweep.
-5. Reviewer: not involved. Financials are deterministic; a failed parse must
-   leave prior facts intact and log the error.
+**Goal:** the investment graph stops being a stub.
 
-**Acceptance**
+- US 13F institutional holdings and HKEX DION substantial-shareholder notices
+  become `owns` / `invests_in` / `parent_of` edges when the holder is already
+  in the universe (same additive, universe-bounded rule as F10 relations —
+  never fabricate companies). Broaden A/HK ownership beyond F10 top-10 where a
+  public source exists.
+- Every edge keeps `reported` status, evidence quote, source URL and the review
+  queue path; human review is still the only route to `verified`.
+- Acceptance: per-market coverage report (matched vs out-of-universe holder
+  counts); new edges visible in the graph with evidence; no duplicate edges;
+  no fabricated holders.
 
-- AAPL: revenue / net income / operating cash flow / capex / total assets
-  match the latest 10-K within rounding; every cell opens the SEC filing URL;
-  values in USD (not millions).
-- 600519 and 300750: F10 `cwfx` annual/quarter values match the page tables;
-  CNY; source opens the F10 page.
-- 00700: HKD; annual + interim (half) handled.
-- Precedence verified: US uses EDGAR over F10; A/HK use F10 over profile;
-  profile-only items still render when no structured value exists.
-- Zero LLM calls; rerun is idempotent; no duplicate `(statement,item,period)`
-  rows; no unit-scaling errors.
-- Tests: one fixture per market/source plus precedence/conflict unit tests.
+### P1.4 — Official filing adapters
 
-**Frontend UI — required changes (no new page) — DONE 2026-11-01**
+**Goal:** announcements and filing-level events, not just F10/research/news.
 
-> **Shipped 2026-11-01.** Kept as the design record: the tab fetches each
-> `financial_period_kind` separately (no new endpoint), US rows are true filing
-> periods and EDGAR-only, A/HK 三季报 are cumulative (badge 累计), and derived
-> cells carry the 推导 marker.
+- CNINFO / SSE / SZSE announcements, HKEXnews (title + PDF link, follow PDF),
+  HKEX DION, company IR RSS, GDELT.
+- Ingest into the existing `documents`/`sources`/`events` model; link-only /
+  official-first; dedupe by canonical URL + content hash; no paywall bypass or
+  bulk redistribution.
+- PDF extraction for announcements/annual reports: text + tables with page
+  provenance; no LLM required for ingest; deterministic extraction is fine.
+- Acceptance: sample companies in A/HK/US show official announcement events;
+  every event opens the filing; re-ingest is idempotent; licenses/robots
+  respected.
 
-The existing `CompanyFinancials` tab already renders `financial_facts` grouped
-by `statement`, with annual/quarter toggle and a per-row 来源 button. New rows
-appear automatically once they use the canonical `statement`/`item` keys, but
-these adjustments are needed:
+### P1.5 — Daily company-data / financial-report refresh (automatic, pure code)
 
-1. **Labels and ordering** — extend `FIN_ITEM_LABEL` and `FIN_ITEM_ORDER` in
-   [`apps/web/src/format.ts`](apps/web/src/format.ts) for every canonical item.
-   Unknown keys currently fall back to raw `snake_case`
-   (`financialItemLabel`), which would show `research_and_development` to
-   users.
-2. **Statement navigation** — full EDGAR/F10 statements have 20–40 rows; the
-   current stacked layout becomes very long. Add per-statement tabs
-   (利润表 / 资产负债表 / 现金流量表) or collapsible sections when a company has
-   more than ~12 rows.
-3. **Source type per row/cell** — cells are already clickable and open the
-   fact's source, but the row-level 来源 button uses the *first* period's fact
-   only, which becomes misleading when EDGAR supplies the latest period and F10
-   the older ones. Show a small source badge per cell/period
-   (`SEC 10-K` / `东方财富 F10` / `研究资料`) or drop the row-level button for
-   mixed-source rows. Derive it from `method` (`xbrl` / `f10` / `llm_web`) and
-   the source title; EDGAR rows must use `trust_tier='filing'`.
-4. **Period controls** — annual/quarter already exist; decide TTM (add a toggle
-   or drop it at write time) and show the fiscal year end in the header.
-5. **Coverage line** — one line on the Financials tab: “财报来源：SEC EDGAR
-   (10-K) · 2026-09-27” or “东方财富 F10 · 2026-06-30”, plus the existing
-   empty state when only profile facts exist.
-6. **No change needed** to the Sources tab (already groups by trust tier) or the
-   graph; the source popover already carries quote/date.
+**Goal:** every company is checked daily for new filings; when a new periodic
+report appears, the deterministic financials pipeline re-runs and the company
+page reflects it. Reuse the news sweep architecture (cursor + lease + run +
+worker + status). **This item is pure code and 0 LLM tokens.** Agent fallback
+is a separate P2 item and is not required for P1.5.
 
-**Optional v2 (do not build in v1)**: side-by-side EDGAR vs F10 conflict view
-(>1% differences). That requires adding a source discriminator to
-`financial_facts_uq` and a conflict API/view; document the decision first.
+**Detection is code, not judgment:**
 
-**Non-goals**
+- **US**: SEC EDGAR `submissions` filing index (`form`, `filingDate`,
+  `accessionNumber`, `primaryDocument`). A new 10-K/10-Q/20-F/40-F triggers
+  `financials.company` for that period; a new 8-K becomes announcement
+  metadata (P1.4).
+- **A-share**: CNINFO announcement query (年报/半年报/季报) plus SSE/SZSE
+  announcement lists; PDF URL.
+- **HK**: HKEXnews title search (annual/interim/quarterly results); PDF URL.
+- **Fallback**: F10 `cwfx` page hash for companies without a usable official
+  feed.
+- Detection is a set diff on accession/announcement ID or content hash — a new
+  ID means “check”, not “ask an LLM”.
 
-- Full XBRL taxonomy coverage; v1 is a curated ~20-item map.
-- CNINFO / HKEXnews official statement adapters (F10 is the structured layer
-  for A/HK for now).
-- LLM extraction for financials.
-- UI conflict comparison in v1.
+**Cadence:** the daily loop covers filing indexes (the part that actually
+changes). Basic profile/description/sector refresh runs on a slower cadence
+(weekly/monthly) and only re-extracts when the source hash changes; it is not
+part of the daily filing poll.
 
-### Next 0 — Headless-provider cutover only (P0)
+**Data model:**
 
-**Status 2026-10-31 14:16: reverted to official DeepSeek by default.** NIM
-provider + gateway + Parallel MCP remain implemented and selectable with
-`OCC_LLM_PROVIDER=nvidia`. The default is now official DeepSeek +
-official `web_search`/`web_fetch`: NIM `deepseek-v4.1-flash` hit sustained
-per-model 429s at 13:49 and stalled the HSI batch. Verified on `HK:00669`
-(13 `web_search` + 16 `web_fetch`). The earlier NIM acceptance probes
-(engine chat, Parallel tools, F10 scrape, reviewer turn) remain valid for the
-opt-in route; the ACP sidebar is unchanged either way.
+- `company_filing_state` (one row per company + source): `cursor` (last
+  accession or content hash), `last_checked_at`, `last_changed_at`,
+  `next_due_at`, `consecutive_failures`, `last_status`.
+- `filings`: `company_id`, `source`, `accession`, `form`, `filed_at`,
+  `period_end`, `url`, `content_hash`, `status`
+  (`detected|fetched|parsed|applied|failed`); unique `(source, accession)`.
 
-**Decision (revised 2026-10-31 14:16): official DeepSeek is the default; NIM
-is opt-in.**
+**Jobs:**
 
-| Route | Inference | Search/fetch | Why |
-|---|---|---|---|
-| **ACP sidebar** (browser Q&A) | official DeepSeek API, `deepseek-flash` | `deepseek-official` | Latency + quality matter; volume is tiny; **no changes at all** |
-| **Headless worker pool** (local backfill) | official DeepSeek API, `deepseek-flash` | official `web_search` / `web_fetch` | Reliable; NIM's per-model 429s stalled the HSI batch |
-| **NIM opt-in** (`OCC_LLM_PROVIDER=nvidia`) | NVIDIA NIM `deepseek-ai/deepseek-v4.1-flash` | Parallel Search MCP (keyless) | Free tier, but only when the quota is healthy |
+- `data.sweep` (daily, singleton + advisory lock) selects due
+  company/source rows and enqueues `data.source.check`.
+- `data.source.check` fetches the index, diffs `filings`, inserts new rows and
+  enqueues `financials.company` (periodic report) or `ingest.filing` (P1.4
+  announcement), then stamps the cursor. It never re-fetches unchanged filings.
+- Existing `financials.company` stays deterministic and LLM-free.
 
-The repo **keeps** `DEEPSEEK_API_KEY.txt` (research + sidebar + review) and a
-gitignored `NVIDIA_API_KEY.txt` (only for the opt-in route). The coding
-session's own key is outside the repo and untouchable. Plan, measured data,
-touchpoints and rollback:
-[`docs/NVIDIA_NIM_MIGRATION.md`](docs/NVIDIA_NIM_MIGRATION.md).
+**Concurrency:** `data.sweep` is a singleton producer (advisory lock), not the
+work. Actual checks run as concurrent `data.source.check` jobs
+(`OCC_DATA_CONCURRENCY`, default 4) and the existing `financials.company`
+queue (`OCC_FINANCIALS_CONCURRENCY=2`; the F10 sidecar caps browser
+concurrency at 2, and EDGAR has a per-process 110 ms global limiter). Multiple
+worker processes are allowed, but keep the aggregate financials request rate
+polite — one financials process per host is safest because the EDGAR limiter
+is per process.
 
-Key facts to carry in:
+**UI:**
 
-- NIM is OpenAI-compatible (`https://integrate.api.nvidia.com/v1`), ~40 RPM
-  free tier, no card, no SLA; `/v1/models` currently lists 85 models including
-  `z-ai/glm-5.3-flash`, `moonshotai/kimi-k2.6` and the two DeepSeek ones.
-- **Measured 2026-10-31 (same prompts, ~35 RPM):** DeepSeek v4.1-flash p50
-  8–17 s, p95 35–62 s, with **episodic 500s** (3/10 in one batch, 0/10 in the
-  next) and occasional empty `content`. GLM-5.3-flash is faster on trivial
-  calls but needs **67–118 s** for Chinese long-form and timed out at 120–150 s
-  repeatedly — **rejected** for the backfill path.
-- **NIM quirks that must be coded for:**
-  - `response_format: json_object` / `json_schema` returns 200 but puts the
-    JSON in `reasoning_content` and leaves `content` empty — unless
-    `thinking: false` is set (then it is correct and fast).
-  - Thinking tokens count against `max_tokens`; a small budget yields an empty
-    `content`. Use `max_tokens ≥ 512` for extraction, more for research.
-  - Unknown parameters are rejected with `400 Validation: Unsupported
-    parameter(s)`; `thinking`, `reasoning_effort: "none"` and
-    `chat_template_kwargs` are accepted.
-- **Step-level retry is mandatory.** A single 500 must not kill an 18-step
-  company run: 3 attempts with backoff (500s return in <3 s, so retries are
-  cheap), plus a `content`-empty fallback to `reasoning_content`. Prefer a
-  small local OpenAI-compatible gateway (~100 lines) in front of NIM so both
-  the dsh adapter and `packages/extract` get retry/normalisation in one place.
-- **Timeout headroom:** raise the headless research timeout (not
-  `OCC_AGENT_TURN_TIMEOUT_MS`, which stays 180 s for the sidebar); p95 per
-  call is ~60 s, so one company can take several minutes.
-- **Not migrated on purpose:** LLM relation extraction (`packages/extract`) and
-  the reviewer agent stay on **official DeepSeek with reasoning on** — quality
-  matters there and volume is low. The worker therefore carries **both** keys,
-  with a per-job env whitelist (research → NVIDIA only, reviewer/extraction →
-  DeepSeek only).
-- Parallel is keyless and free, no quota/SLA. It exposes `web_search` and
-  `web_fetch`; mount it with `@deepseek-ai/dsh-mcp-client`
-  (`transport: streamable-http`) **in the headless profile only**. Tools become
-  `mcp__psearch__web_search` / `mcp__psearch__web_fetch`; update the headless
-  prompt, skills, `phase0/lib/validate.mjs`, `phase0/lib/dsh.mjs` URL
-  extraction (fetch input is a `urls` array) and their tests. **Leave the ACP
-  patch, `apps/web/src/lib/agent-trace.ts` and the sidebar alone.**
-- Parallel quality trade-off (measured 2026-10-30): slower search (0.8–1.4 s
-  vs 0.55 s), much faster fetch (0.16 s typical), better US/English official
-  sources, weaker Chinese/HK freshness (Tencent top results included 2022
-  pages). Accepted for backfilled data.
-- **No paid fallback.** One retry + plain-HTTP fetch for non-JS pages; if
-  Parallel is down the batch fails loudly.
-
-Acceptance and rollback are in the migration doc §7–8. The sidebar path is
-explicitly out of scope: its DeepSeek key, model row, timeout and
-`reasoningEffort` must remain byte-for-byte unchanged.
-
-### Done — Automatic news refresh (shipped 2026-11-01)
-
-> **Shipped.** Migration `0008_global_news_last_update.sql`, `news.sweep`
-> queue + `registerNewsSweepSchedule`, `runNewsSweep` with advisory lock and
-> lease, worker cursor write-back, lazy `/v1/news/status` trigger, read-only
-> status API, `TaskDock` in the top nav, News-tab status line + refetch, CLI
-> `news status` / `news sweep --now`, `scripts/dev-news-worker.sh`, tests
-> (sources/news 9, web 33, API 33). Live run `b892648d-…` completed
-> 236/236 (0 failed, 8m59s): 232 `ok` / 4 `empty`, 3,237 new articles, 38
-> skipped, 0 LLM tokens. History is pruned at 3 days
-> (`OCC_NEWS_HISTORY_MS`). The design below is kept for reference; it is no
-> longer a plan.
-
-> **Decision change.** The manual **刷新新闻** button is **cancelled**, and with
-> it `POST /v1/companies/:ref/news/refresh` and the page-entry nudge. News
-> updates run **fully automatically** from the worker pool; the public UI only
-> observes them. The approved dock prototype
-> [`docs/prototypes/task-dock.html`](docs/prototypes/task-dock.html)
-> (commit `dd465fc`) is still the visual reference for progress, but its manual
-> controls, the `公司数据` tab and the filter tabs are out of scope
-> (decision 33).
->
-> **Why automatic.** News is LLM-free, link-only and cheap (one Google News RSS
-> request per company per cycle; local BGE-M3 embedding only for new items).
-> Asking a retail user to press refresh adds a fourth action (“搜 → 看 → 问 →
-> 刷新”), and the server would still have to dedupe clicks and tabs. A
-> per-company cursor plus a schedule is both simpler for the user and more
-> precise than a button.
->
-> **Status: implemented 2026-11-01.** The plan text below matches the shipped
-> code except for these additions: the lazy `/v1/news/status` trigger (UI
-> opens → API enqueues the producer), `backfill_jobs.meta` for per-job counts,
-> and `scripts/dev-news-worker.sh` for a persistent local worker.
-
-**State table `global_news_last_update`** — the per-company lease and
-incremental cursor. One row per company; the key uses the same canonical target
-string as the worker and pg-boss (`US:AAPL`, `A:600519`, `HK:00700`,
-`NAME:<slug>`), so the table, job keys and logs line up. `company_id` is the
-real reference; `ticker`/`name` are for debugging and the dock. Companies
-without a ticker (AI watchlist / private) use `NAME:<slug>`, which satisfies the
-“ticker or company name” key requirement.
-
-```sql
-create table if not exists global_news_last_update (
-  key                  text primary key,          -- US:AAPL | A:600519 | HK:00700 | NAME:openai
-  company_id           text not null references companies(id) on delete cascade,
-  ticker               text,
-  name                 text,
-  last_update_at       timestamptz,               -- last successful fetch (incl. empty check)
-  newest_published_at  timestamptz,               -- newest article pubDate seen; incremental hint
-  last_run_id          text,
-  last_status          text not null default 'never', -- never | ok | empty | failed | paused
-  last_inserted        integer not null default 0,
-  last_skipped         integer not null default 0,
-  consecutive_failures integer not null default 0,
-  last_enqueued_at     timestamptz,
-  next_due_at          timestamptz,               -- lease until claim timeout, then schedule
-  updated_at           timestamptz not null default now()
-);
-create unique index if not exists global_news_company_uq
-  on global_news_last_update (company_id);
-create index if not exists global_news_due_idx
-  on global_news_last_update (next_due_at);
-```
-
-- This is **state, not a registry**: the sweep source is `companies` LEFT JOIN
-  this table, so a company with no row is due immediately. No data backfill is
-  needed; rows are created on the first attempt (upsert). Fixtures
-  (`is_fixture=true`) and stubs (`coverage_tier='stub'`) never get a row.
-- `last_update_at` means “the last successful check”, including a valid empty
-  result. A failed fetch never advances it.
-- `newest_published_at` is the newest article date actually seen. It lets the
-  next run widen its window when the feed lags, so late-indexed articles are not
-  skipped.
-- The name is kept exactly as requested. In code comments call it the
-  “news refresh state” table; one row per company, not one global timestamp.
-
-**Scheduling — one producer, pg-boss schedule**
-
-1. Register a fixed schedule `news-sweep` on worker/API boot (idempotent, same
-   schedule name): **once a day**, `OCC_NEWS_SWEEP_CRON` default
-   `0 7 * * *` (07:00 server-local time). The schedule job uses a pg-boss
-   `singletonKey: "news-sweep"` so a worker that was offline does not process a
-   backlog of sweeps — at most one pending sweep exists. One daily sweep is
-   enough for this product: it is ≈235 RSS requests per day in total and keeps
-   the corpus at most ~24 h old. If fresher news is ever required, change the
-   cron **and** the TTL together (e.g. every 6 h with a 5 h TTL) — never change
-   one without the other.
-2. The sweep job **only selects and enqueues**. All fetching stays in the
-   existing `news.company` queue (`apps/worker/src/jobs/news.ts`). The API
-   never fetches news.
-3. Advisory lock `pg_try_advisory_lock(hashtext('occ:news:sweep'))` around the
-   selection; a second producer (two API instances, overlapping cron, operator
-   CLI) returns `{ skipped: true }`.
-4. **Operational requirement:** automatic updates progress only while a worker
-   with the news queue is running. Document in §0.1 and `docs/NEWS.md`:
-   `node apps/worker/dist/cli.js work --queues research,ingest,review,f10,financials,news`
-   (or a news-only pool). With no worker, sweep jobs stay queued; that is not an
-   error and the UI shows “排队中”.
-5. No page-entry nudge and no public trigger. The operator keeps
-   `occ-backfill enqueue news` for backfills; it leases the same rows so it
-   cannot double-run with a sweep.
-6. **Job payload:** include `companyId`, `ticker`, `name`, `market` and
-   `sinceDays`. The sweep reads `market` from the company's security (reuse the
-   `pickListing` logic in `apps/api/src/services/research.ts`), not from the key
-   prefix alone, so the zh-CN / en-US locale is right. The worker must resolve
-   **`companyId` first** and only fall back to `resolveCompanyId(ticker)`:
-   `NAME:<slug>` targets (AI watchlist / private) have no ticker.
-
-**Selection, lease and backoff**
-
-For each sweep:
-
-1. Select `companies` LEFT JOIN `global_news_last_update` where the company is
-   not a fixture, `coverage_tier <> 'stub'`, and
-   `COALESCE(next_due_at, '-infinity') <= now()`. Order by
-   `COALESCE(next_due_at, companies.created_at)` and limit to
-   `OCC_NEWS_SWEEP_BATCH` (default **250**, a safety cap that covers the current
-   235-company corpus — raise it when the corpus grows so no company waits
-   multiple days).
-2. TTL: `OCC_NEWS_TTL_MS` default **23 h**, deliberately **shorter than the
-   24 h sweep period** so every company is due at the next daily sweep (an
-   exact 24 h TTL would skip companies whose previous run finished after the
-   sweep time and leave them at 48 h). No jitter: the single daily sweep
-   enqueues the whole due set at once and `OCC_NEWS_CONCURRENCY=2` paces the
-   requests. The expected freshness is therefore “≤ ~24 h old”, which is the
-   agreed product trade-off.
-3. **Lease before enqueue:** set `last_enqueued_at = now()` and
-   `next_due_at = now() + OCC_NEWS_CLAIM_TIMEOUT_MS` (default **30 min**). This
-   is the dedupe guard for overlapping sweeps and multiple tabs/instances. A job
-   lost with the worker crash becomes due again when the lease expires — self
-   healing, no manual reset. A rare duplicate caused by a slow job completing
-   after its lease is harmless: article ingestion is idempotent and the second
-   run reports `empty`.
-4. Create one `news` run per sweep (`kind='news'`, options
-   `{ source: 'auto', ttlMs, batch, sweepId }`) with one `news.company` job per
-   due company; job key `${runId}:${key}` (existing scheme).
-5. **On success** the worker stamps `last_update_at = now()`,
-   `newest_published_at = max(seen pubDate)`,
-   `next_due_at = last_update_at + ttl`, `last_status = 'ok'` (or
-   `'empty'` when the feed returned no items), `last_inserted` /
-   `last_skipped`, and resets `consecutive_failures`.
-6. **On failure** do not touch `last_update_at`; increment
-   `consecutive_failures`; `next_due_at = now() + min(15 min × 2^n, ttl)`. With
-   the daily sweep the practical retry is simply the next day's sweep; the
-   backoff mainly protects an operator `news sweep --now` from re-hitting a
-   failing feed. After 5 consecutive failures set `last_status='paused'` and
-   `next_due_at = now() + 24 h`; a later success resets it. Never hammer Google
-   News.
-7. Automatic runs never pass `force=true`; unchanged items must not re-embed.
-   `force` remains operator-only.
-
-**Incremental fetch — what “precise” means here**
-
-Google News RSS has no reliable `since` cursor: it returns the newest ~N items
-for a query. Precise incrementality therefore has three layers:
-
-- **Schedule layer** — only companies whose `next_due_at` is in the past are
-  fetched: exactly one request per company per TTL, no full-corpus sweep.
-- **Window layer** — each job computes
-  `sinceDays = clamp(ceil((now − min(last_update_at, newest_published_at)) / 1 d) + 1, 1, 30)`
-  (cold start 30, steady state 1–2) and passes it to `fetchGoogleNews`
-  (`packages/sources/news/src/google-news.ts` already exposes `sinceDays`; add
-  `when:<N>d` to the query only if the adapter supports it). Taking the older
-  of run time and newest article time widens the window when the feed lags.
-  **The cursor is a hint, never a filter:** an article older than the window is
-  still accepted if it is new to the database.
-- **Article layer** — the existing title+snippet sha256 makes ingestion
-  idempotent; unchanged articles skip embedding. If duplicate stories appear
-  (Google News title suffixes / tracking params), add a normalized-URL second
-  key — do not replace the hash key.
-- `maxItems`: **20 on the cold start**, **10 steady state**. News remains a
-  coverage layer of the newest items, not an archive; do not page backwards.
-
-**Volume estimate.** 235 real companies (NDX 100 + HSI 85 + CYB50 50) at one
-daily sweep → **≈235 RSS requests/day**, **0 LLM tokens**; embedding only for
-new articles (local BGE-M3). `OCC_NEWS_CONCURRENCY=2` stays and paces the
-burst; `OCC_NEWS_SWEEP_BATCH=250` covers the corpus in one sweep.
-
-**UI — observe only, no refresh control**
-
-1. **News tab** ([`CompanyNews.tsx`](apps/web/src/components/CompanyNews.tsx)):
-   header line “更新于 12 分钟前 · 自动更新”; while this company's job is active,
-   “正在更新…”. Read from `GET /v1/news/status?company=<ref>` (do not bloat the
-   company card). No refresh button, no CTA. The empty state for a never-updated
-   company says “新闻将自动更新” instead of promising an instant result.
-2. **TaskDock** (`apps/web/src/components/TaskDock.tsx`, port of the
-   prototype): global, mounted in
-   [`TopNav.tsx`](apps/web/src/components/TopNav.tsx) as the last control after
-   `EN` / `深色`.
-   - Collapsed: 46×46 ring with the active sweep's progress, count badge when
-     active; idle is muted. `aria-expanded` / `aria-controls` /
-     `aria-label="任务进度，15/48"`.
-   - Expanded: one group per sweep (“更新新闻 · 42 家公司”), status line
-     (`更新中 12/42 · 28%` / `已完成 — 128 条` / `2 家需要重试`), progress bar
-     with `role="progressbar"` + `aria-valuemin/max/now`, elapsed, chevron;
-     expanded body lists per-company subtasks (state dot, name + ticker,
-     `8 条` / `抓取中` / `RSS 超时`, link to `/c/:ticker`).
-   - When idle, show the **last sweep** summary and the next due time
-     (“最近更新：4 分钟前 · 已更新 128 条”; “下次自动更新约 2 小时后”). This is
-     how a user learns updates happen without a button.
-   - **Remove from the prototype:** the `公司数据` tab, filter tabs, retry and
-     review buttons (no public action; failures retry automatically), and the
-     “原型 · 模拟数据” footer (decision 33).
-3. Polling: `GET /v1/news/status` every 5 s while a run is active and the dock
-   is open, every 60 s when idle; the News tab polls only while its company's
-   job is active. No SSE needed. Closing the dock never cancels anything.
-4. States: `queued`, `running`, `completed`, `partial`, `failed`; colour **and**
-   text encode state; polite live region on completion; respect
-   `prefers-reduced-motion`; mobile becomes a full-width sheet under the header
-   and never causes horizontal scroll.
-
-**API (read-only)**
-
-- `GET /v1/news/status` → `{ active: { runId, status, total, done, failed, startedAt } | null, lastSweep: {...} | null, dueCount, nextDueAt, ttlMs, sweepCron }`.
-- `GET /v1/news/status?company=<ref>` → the global block plus
-  `{ company: { key, lastUpdateAt, lastStatus, nextDueAt, lastInserted }, run?: {...} }`;
-  404 for an unknown company.
-- `GET /v1/runs/:id` (exists) supplies per-company subtasks for the dock; the
-  job payload already carries `ticker` / `name`.
-- **No** `POST /v1/news/refresh`, no `POST /v1/companies/:ref/news/refresh`, no
-  client-triggered sweep.
-- CLI: `occ-backfill news status` (due count, last sweep, failures, paused
-  companies) and `occ-backfill news sweep --now` (operator-forced, still
+- Company page shows the latest filing line (“财报更新于 … / 最新报告
+  2026-09-30 (10-Q)”) from `filings`; no fake data.
+- The top-nav TaskDock stays **news-only** for the first cut (decision 33).
+  If the product wants a “财报更新” group, that is an explicit decision-33
+  change with a second producer.
+- CLI: `occ-refresh status`, `occ-refresh sweep --now` (operator, still
   advisory-locked).
 
-**Migration and rollout**
+**Acceptance:**
 
-- Migration `0008_global_news_last_update.sql` (table + indexes, `IF NOT
-  EXISTS`), applied by `node apps/cli/dist/occ.js migrate`.
-- **Phase A — backend, no UI:** migration, state read/write helpers, sweep
-  producer, schedule registration, worker stamping, CLI status. Extend
-  `NewsJobData` with `companyId` + `sinceDays` and resolve `companyId` before
-  the ticker. Verify from psql/CLI and logs; the News tab is unchanged.
-- **Phase B — API + UI:** status endpoints, News tab line, `TaskDock` port and
-  mount. Remove the refresh-button plan from the docs.
-- **Phase C:** tests, `docs/NEWS.md`, `docs/UI.md` §7.5, §0 monitor commands and
-  the §11 checklist.
+- 236 companies checked daily; **0 LLM tokens, on unchanged and changed days**.
+- A new EDGAR/CNINFO/HKEXnews filing is detected, its financials parsed, and
+  the company page shows the new period without a manual backfill.
+- Re-running is idempotent; unchanged filings are not re-fetched or re-parsed.
+- Failures back off and pause; the UI says 排队中/重试中, never fake success.
 
-**Tests and acceptance**
+### P2 — delivery / engineering quality (deferred; do not start now)
 
-- Unit (fake clock): due / not-due selection, lease expiry reclaims a lost job,
-  backoff after failures, paused after 5, TTL shorter than the sweep period, `sinceDays` clamp,
-  second concurrent sweep is skipped by the advisory lock.
-- Worker (fixture RSS, no network): success stamps `last_update_at` and next
-  due; an empty check still stamps and reports `empty`; a failure does not
-  advance the cursor and backs off; fixtures/stubs are never selected.
-- API: status response shapes; unknown company → 404; the refresh routes do not
-  exist.
-- Web: dock view helpers (grouping, status text, elapsed, idle summary) unit
-  tested; manual check against a fake/real run.
-- Live: start a worker, wait for a sweep, confirm a company page shows new
-  items without a reload and `last_update_at` advances; run a second sweep
-  inside the TTL → 0 due; kill the worker mid-run → the lease expires and the
-  company is retried; no LLM tokens anywhere.
-- Acceptance: **no user-facing refresh control**; updates happen on the
-  automatic cadence; `global_news_last_update` is the only per-company cursor;
-  unchanged runs report `empty`; failures retried with backoff; the News tab
-  timestamp matches the table; the dock shows active and last-completed sweeps
-  with per-company detail.
+- Production hosting: same-origin static build + reverse proxy, one-command
+  local demo; Docker/Electron remain deferred by the current machine.
+- Automated quality: Playwright web smoke suite, agent eval (golden questions
+  + evidence shape + citation precision), CI gate.
+- Observability: pino JSON, request IDs end-to-end, Prometheus `/metrics`,
+  OTel spans, LLM call audit, in-app debug drawer (`Ctrl/Cmd+Shift+D`).
+- API productionization: remote auth/API keys, idempotency keys, response
+  cache, Scalar `/docs`, `/v1/entities/resolve`.
+- **Optional agent fallback for data refresh (not committed; do not build
+  unless P1.5 leaves a real gap).** Only for: (a) no filing source/IR URL is
+  known, (b) the deterministic parser fails on a *changed* filing, (c)
+  cross-source conflicts need an explanation, (d) on-demand narrative
+  summaries. Guards if it is ever built: change-gated (0 LLM tokens on
+  unchanged days), one call per company per changed filing, hard daily cap
+  (e.g. 20 calls / 200k tokens), cheap model + low reasoning + structured
+  JSON, send only the changed table/rows, content-hash cache, results go to
+  the **review queue**. It must never become the daily polling loop.
+- Small follow-ups: “continue research” after a budget stop; verify AI
+  watchlist entries (Zhipu `02513.HK`, MiniMax listing status).
+- STAR 50 backfill and any remaining HSI/CYB50 coverage: **backfill, out of
+  scope for this plan**; revisit only if the universe plan changes.
 
-**Superseded / non-goals**
+### Done index (details live in the linked docs)
 
-- Manual 刷新新闻 button, `POST /v1/companies/:ref/news/refresh`, page-entry
-  nudge — **cancelled**.
-- `companies.news_updated_at` — superseded by `global_news_last_update`.
-- AI summaries, full-text article fetch/redistribution — out of scope
-  (decision 28).
-- Archiving or paging beyond the newest 10–20 items — out of scope.
-
-### Next 2 — A500 + S&P 500 placeholders + local research/reviewer worker pool
-
-**Status 2026-10-31**: the reviewer half is implemented (`review.company`,
-`company_research_state`, bounded revisions, `occ-backfill states`). The
-A500/SPX placeholder half (index snapshots, `occ indices sync`, placeholder
-pages) is still pending. HSI is the first end-to-end user of the research +
-reviewer pipeline.
-
-**Scope.** Add index snapshots `config/indices/a500.yaml` (CSI A500, `000510`)
-and `config/indices/sp500.yaml` (`SPX`), each with `as_of`, optional weights and
-license/source. `occ indices sync` (new command) inserts a **placeholder** row
-for every constituent not already resolvable by ticker+exchange/name. A real
-profile is never overwritten.
-
-**No in-app on-demand research (decision 2026-10-31).** The placeholder CTA,
-`POST /v1/companies/:ref/research` and the whole user-triggered research flow
-are **cancelled**. Placeholders are filled only when the operator runs a local
-batch through the worker pool (NIM + Parallel). There is still **no full
-constituent sweep**: A500/SPX batches are explicit, capped and operator-started.
-On-demand **news refresh is cancelled** (2026-11-01): news updates are
-fully automatic (§10 “Done — Automatic news refresh”, 0 LLM tokens).
-
-Placeholder row:
-
-- `companies.coverage_tier='stub'` (there is no `is_placeholder` column),
-  market, `display_name`, `name_en` / `name_zh` (or aliases when one language is
-  unknown), `profile={}`.
-- `index_memberships` rows for `A500` / `SPX` with `as_of`.
-- **No** documents, chunks, financials, embeddings or profile sections.
-- Default semantic search excludes placeholders; index pages and direct
-  `/c/:ticker` routes include them. An exact ticker/name match may show a row
-  with a “未收录” badge.
-
-Placeholder page:
-
-- `/c/:ref` resolves the ticker; render names, ticker, market, index/weight and
-  a “尚未收录” state. **No CTA** — show a short neutral note that data is
-  filled by the operator (e.g. “数据由运营侧批量补充”), never a fake progress
-  bar. Other tabs stay empty (no fake data).
-- No new endpoint is added. The page is read-only.
-
-Pipeline and worker pool (operator-invoked):
-
-- **Do not adopt a DSH batch plugin.** The durable queue and worker pool are
-  already [`pg-boss`](packages/jobs/src/queues.ts) + [`apps/worker`](apps/worker);
-  DSH is the executor only: one `dsh --profile headless` process per company via
-  [`runDshResearch`](apps/worker/src/research/dsh.ts). Headless runs use the
-  NIM + Parallel profile (Next 0); the ACP profile is untouched.
-- Entry point is the local CLI/worker (e.g. `occ-backfill enqueue research
-  --index A500 --limit N`), never a web route. Any batch must preview its count
-  and enforce `OCC_RESEARCH_BATCH_MAX` (default 20); no command accepts “all
-  constituents”.
-- State machine per company: `queued → running → reviewing → ready`, with
-  terminal `failed` / `needs_review`. Store it in a small
-  `company_research_state` table (company_id PK, status, run_id, attempts,
-  review_attempts, last_error, requested_at, updated_at) for operator
-  visibility; keep detailed run/checkpoint rows in the existing run store.
-- Retries/timeouts: **step-level retry (3 attempts, backoff) is mandatory** for
-  NIM's episodic 500s and empty `content`; pg-boss `retryLimit` is the outer
-  net, not the primary defence. Raise the headless research timeout (NIM p95
-  ≈ 60 s/call); one active job per company (unique key).
-- Worker concurrency: configurable (start 2–4, ≤ 36 RPM total) to respect the
-  NIM free tier; queue backpressure rather than unbounded fan-out.
-
-Reviewer agent (after research + ingest) — **official DeepSeek, reasoning on**:
-
-- Enqueue `review.company` (new queue) or run it as a second phase of the same
-  job. It is a second **headless dsh** run with a checklist prompt: numbers
-  match cited sources, relations have evidence, no unsupported claims, required
-  profile sections present.
-- **Provider (decision 2026-10-31):** the reviewer gets its own dsh profile on
-  the **official DeepSeek API** with reasoning enabled — not NIM. The review is
-  the quality gate; NIM's reliable structured-output mode requires
-  `thinking:false`, which defeats the purpose. Volume is 1–3 runs per company.
-  Spawn it with a DeepSeek-only env whitelist (research children get
-  `NVIDIA_API_KEY` only, reviewer children get `DEEPSEEK_API_KEY` only).
-- Structured output:
-  `{ verdict: "pass" | "revise", issues: [{field, reason, evidence}], fix_instructions }`.
-  On NIM this requires `thinking:false` + a generous `max_tokens` (JSON lands
-  in `reasoning_content` otherwise).
-- `pass` → mark `ready`; `revise` → re-enqueue research with the feedback,
-  **max 2 review cycles**, then `needs_review`; `needs_review` is visible to the
-  operator (review queue/logs), not as a fake success.
-- The reviewer is **hidden in the UI**; only aggregate status, counts and token
-  usage appear in the progress dock.
-
-Shared task dock (top nav, last control after `EN` / `深色`):
-
-- One global `<TaskDock>` mounted in the **top navigation**, as the last control
-  after `EN` and `深色`, visible across routes; modeled on the browser download
-  bubble. It is **not** a per-page widget and there is only one of it.
-- **News is the only producer** (badge “更新新闻”): one group per **automatic
-  sweep**, “更新新闻 · 42 家公司”, completion “已更新 128 条 · 3 家失败”.
-  There is **no `company_research` producer** (decision 2026-10-31): operator
-  batches are local-only and are not mirrored into the dock. There is also no
-  user-triggered news action (decision 34, 2026-11-01).
-- Collapsed button: ring shows aggregate progress; a count badge appears when
-  tasks are active. Expanded card header: overall `12/37 · 32%` and a
-  “查看全部任务” footer. With one task kind, no filter tabs. When idle, the card
-  shows the last sweep summary and the next due time.
-- Each row: badge, title, status line (`更新中 12/42 · 28%`, `已完成 — 128 条`,
-  `2 家需要重试`), determinate or step-based progress bar, elapsed time, and a
-  chevron for subtasks. A failed row keeps its error reason; clicking a company
-  row navigates to `/c/:ticker`. **No retry/review buttons** — failures retry
-  automatically with backoff.
-- States: `queued`, `running`, `completed`, `partial`, `failed`. Color encodes
-  state (semantic, not accent-only); text always names the state too. Use
-  `role="progressbar"` with `aria-valuenow` and a polite live region for
-  completion; respect `prefers-reduced-motion`.
-- Data source: `GET /v1/news/status` for the active/last sweep (poll every 5 s
-  while active, 60 s when idle) and `GET /v1/runs/:runId` for per-company
-  subtasks. Polling is DB/API only — no LLM. Closing/minimizing the dock does
-  not cancel.
-- Mobile: the card becomes a full-width sheet under the header; never causes
-  horizontal scroll.
-
-**Prototype status.** The standalone dock prototype was approved and placed in
-the top nav on 2026-10-30 (commit `dd465fc`). It renders both task kinds, but
-the production component observes **only the automatic news sweep**; the
-`company_research` kind, filter tabs and retry/review controls are not built
-(decisions 33 and 34).
-
-Acceptance:
-
-- A500 + SPX seed: constituent count minus already-present companies; no
-  duplicate slugs/tickers; existing real profiles untouched; placeholders have
-  no documents/embeddings.
-- **No** route, endpoint or UI action can enqueue research; the placeholder page
-  is read-only with no CTA.
-- A local capped batch runs end-to-end through the worker pool on NIM/Parallel
-  and never appears in the dock.
-- Reviewer `revise` triggers exactly one bounded retry cycle; repeated failure
-  ends in `needs_review` and is logged.
-- A single NIM 500 or empty response does not fail an 18-step company run
-  (step-level retry verified with injected failures).
-- Any batch is explicit, capped at `OCC_RESEARCH_BATCH_MAX`, and shows its count
-  before enqueueing.
-- No reviewer internals or raw JSON in the UI.
-
-Token discipline:
-
-- News refresh: **0 LLM tokens**.
-- Research: one headless run per company, operator-invoked only; reviewer adds
-  one run per attempt; at most 2 revisions. **No bulk pre-research of A500/SPX.**
-- The only batch path is an explicit, capped operator command. No endpoint,
-  CLI command or scheduled job accepts “all constituents”.
-- Progress polling and page refreshes never call an LLM.
-
-### Wider agent sidebar — done 2026-10-29
-
-- The AI assistant sidebar is **35% of the page width** on desktop
-  (`35vw` on `.ask-sidebar`, hardcoded in
-  [`apps/web/src/styles.css`](apps/web/src/styles.css)). No drag-to-resize.
-- Layout offset matches (`body.ask-open .app-shell { padding-right: 35vw }`,
-  nav search `min(560px, 65vw - 200px)`), so page content neither overlaps nor
-  leaves a gap. The ≤1100 px overlay (420 px) and full-screen mobile width are
-  unchanged, and the left-side layout is untouched.
-
-### Done — ACP `session/resume` (2026-10-30)
-
-**Shipped.** `DshAcpRuntime.resumeSession` + `AgentService` resume-on-miss +
-yellow `agent.resume.failed` notice. Capability probe confirmed
-`dsh@0.2.1-rc.3` advertises `sessionCapabilities.resume`. Live-verified across
-API restart and idle dispose (memory survived; replay 2 turns; history 1 row)
-and with a corrupt log (notice + normal answer). Tests: `@occ/agent` 17,
-API 30, web 22. Design record below is kept for the next similar protocol
-change.
-
-**Why.** Replay restores the UI, not the model. Before this change, when
-`AgentService.prompt` could not resolve a session it called
-`runtime.createSession()` ([`apps/api/src/services/agent.ts`](apps/api/src/services/agent.ts))
-and aliased the old UI id in memory. The new dsh session contained only
-`SYSTEM_CONTEXT` + the current question; prior turns were absent. Verified
-2026-10-30 (session `9ece6cfe…` → new `18bd84ff…`): asking the model to repeat
-the previous question answered “不知道”; the new turn went to a separate log and
-a separate history row. See §6 “Session memory”.
-
-**Goal.** After API restart / idle dispose / process restart, reuse the **same
-dsh session id and log** whenever a persisted log exists, so memory, replay and
-the history menu stay on one continuous conversation.
-
-**Official facts (checked 2026-10-30).**
-
-- Upstream `@deepseek-ai/dsh-acp` supports `session/list` and `session/resume`.
-  `session/resume` restores the persisted log but **does not replay updates** —
-  exactly what we want (our replay stays independent).
-- `session/load` (replay-on-load), delete, fork and transcript replay are
-  **not supported upstream**. Do not switch to third-party plugins for this.
-- Request shape: `{ sessionId, cwd, mcpServers, additionalDirectories? }`.
-  The response contains `modes`/`configOptions` but **no `sessionId`**.
-- `@agentclientprotocol/sdk@2.1.0` exposes the raw request as
-  `connection.agent.request("session/resume", …)`; it has no public resume
-  builder (see implementation note below).
-- **Pinned dsh verified (2026-10-30).** `dsh@0.2.1-rc.3` returns
-  `agentCapabilities.sessionCapabilities = { list: {}, resume: {}, close: {} }`.
-  `DshAcpRuntime.start` now stores the `initialize` response and exposes
-  `capabilities` / `supportsSessionResume` for diagnostics. If a future dsh
-  drops `resume`, resume will fail into the yellow-notice fallback; re-probe
-  before assuming npm docs match the pin.
-- **SDK inference quirk.** `connection.agent.request(methods.agent.session.resume, params)`
-  returns `unknown` when `params` is a widened variable (the typed overload's
-  conditional mapped type only resolves with a contextual argument). Annotate
-  the request as `ResumeSessionRequest` (or pass a literal) or the response
-  loses its type.
-
-**Implementation sketch.**
-
-1. `DshAcpRuntime.resumeSession(sessionId, options?)` in
-   [`packages/agent/src/runtime.ts`](packages/agent/src/runtime.ts):
-   - Extract the `mcpServers` builder from `createSession` into a helper; reuse
-     it so the resumed session gets the exact same `occ` MCP attachment.
-   - `await this.start()` (spawns `dsh --profile acp` if the idle disposer
-     killed it), then
-     `connection.agent.request("session/resume", { sessionId, cwd, mcpServers })`.
-   - Attach the resumed session to the SDK's update router, otherwise
-     `prompt()`/`nextUpdate()` never receive `session/update`. The SDK's
-     `ClientContext.attachSession(response)` is private but only needs
-     `response.sessionId`; call it through one narrow cast and keep it in this
-     single method:
-     ```ts
-     // `ActiveSession` is already imported in runtime.ts.
-     const attach = (
-       connection.agent as unknown as {
-         attachSession(response: {
-           sessionId: string;
-           modes?: unknown;
-           configOptions?: unknown;
-         }): ActiveSession;
-       }
-     ).attachSession.bind(connection.agent);
-     const active = attach({ ...response, sessionId });
-     ```
-     If a future SDK exposes a public resume builder, switch to it.
-   - Store it: `this.sessions.set(sessionId, active)`; return
-     `{ sessionId, acpSessionId: sessionId }`. If `hasSession(sessionId)` is
-     already true, return it without resuming.
-2. `AgentService.prompt` ([`apps/api/src/services/agent.ts`](apps/api/src/services/agent.ts)):
-   - On `resolveSession` miss, call `findSessionLog(options.dshHome, sessionId)`
-     (already exported from `@occ/agent`, read-only). If a log exists →
-     `runtime.resumeSession(sessionId)`; otherwise → `runtime.createSession()`.
-   - Keep the alias map for legacy ids; after a successful resume set
-     `aliases.set(sessionId, sessionId)`.
-   - If resume fails (corrupt/unsupported log, dsh error), fall back to
-     `createSession()` **and emit a localized `notice`** (new code, e.g.
-     `agent.resume.failed`) so the UI knows the context was reset. Do not fail
-     the prompt and do not silently pretend memory survived.
-3. `apps/web`: no protocol change needed — the stored id already points at the
-   log. Optional polish: when `run.started.sessionId` differs from the stored
-   id (fallback path), update `occ.agent.sessionId` and show the notice.
-
-**Tests / acceptance.**
-
-- Runtime unit test with a fake connection: `session/resume` is called with the
-  same `cwd` + `mcpServers`; updates for that id route to the session; calling
-  it twice does not resume twice.
-- `AgentService` unit test: unknown id + existing log → resume; unknown id +
-  no log → create; resume throws → create + notice.
-- Live: one turn, restart the API, follow-up “请原样复述我上一条问题” must
-  answer correctly; replay of the same id shows **2 turns**; history shows
-  **1 row**. Repeat with `OCC_AGENT_IDLE_TIMEOUT_MS=1000` (idle dispose) and
-  with a fresh browser holding the stored id.
-- Keep the current live path green: same-process follow-ups must not call
-  resume (session already attached).
-
-**Pitfalls.**
-
-- `attachSession` is private API; confined to `resumeSession()`, SDK pinned.
-  Re-check on any `@agentclientprotocol/sdk` upgrade.
-- The resume response has no `sessionId`: use the requested id.
-- Never point `OCC_AGENT_DSH_HOME` at `phase0/.dsh-home` (plaintext vs zstd).
-- A crashed turn leaves an open `turn/start`; dsh appends `interrupted`
-  closers on resume. If resume still fails, use the notice + fresh-session
-  fallback.
-- The resumed session must receive the same `occ` MCP server spec; reuse the
-  helper extracted from `createSession`.
-- After resume, `hasSession(id)` must be true so later prompts don’t create
-  yet another session.
-- `findSessionLog` rejects unsafe ids; do not pass raw UI input into path
-  joins.
-
-### P3.4 UX v3 — done 2026-10-29
-
-Shipped: **one** trajectory card at the top of the assistant bubble (above the
-answer), live while researching and static in place once text streams; merged
-group lines; expandable search/fetch rows (query, status, result count, top
-domains, hit links in a new tab, duration, 已引用 badge); and a “计划与来源”
-disclosure with the ledger. `AgentActivity.tsx` was removed — the card reuses
-the same element for both states. Files:
-`apps/web/src/components/AgentTrajectory.tsx`, `apps/web/src/lib/agent-trace.ts`,
-`styles.css`, `i18n.tsx`, and the `packages/agent/src/runtime.ts` content
-bridge. Verification: Playwright on the live sidebar + 17 web / 10 agent unit
-tests.
-
-### P3.4 remaining
-
-- ~~First-class sub-agent card for `deep_research`/`get_run` with nested steps.~~
-  **Deferred 2026-10-30 — not needed for this project.** `deep_research` stays
-  a tool card; do not re-propose it as roadmap work.
-- **Replay + resume done** (read dsh's log; ACP `session/resume` for memory).
-  New turns stay on one continuous session/log; sessions split before
-  2026-10-30 remain split (a persisted alias chain is optional cleanup). Child
-  subagent sessions still do not replay.
-- Consider “continue research” after a budget stop.
-
-### P4 — A/HK coverage (revised scope)
-
-**HSI status 2026-10-31**: `config/indices/hsi.yaml` has 85 constituents and
-`scripts/backfill-hsi.sh` runs the batch (enqueue `--universe hsi --exclude
-00700` → `work --queues research,ingest,review,f10,financials --drain` → `relations f10
---universe hsi`). A/HK research attaches F10 by default. After ingest, the
-index page `/indices/HSI` reads the memberships with no API change. The
-post-batch `relations f10` pass re-resolves cached shareholder pages against the
-now-complete HSI universe (a 01038 shareholder of 00006 may not exist yet when
-00006 ingests). The full batch for the remaining **81 companies** was enqueued
-as run `a19a67ba-8739-4361-833b-6887395556ad` (excludes the 4 pilot names
-`00700,00001,00006,01038`); `occ-backfill status` / `states` track it.
-ChiNext 50 is done (`config/indices/cyb50.yaml`, 2026-10-31; 45 ready /
-5 needs_review). **STAR 50 is deferred to P2 priority** (`000688`, SSE,
-internal `STAR50`); procedure kept in §10.
-
-- Index snapshots: **STAR 50 (000688, SSE)**, **ChiNext 50 (399673, SZSE)**,
-  **HSI**; store `as_of`, weights and license. **Do not add S&P 500.** NDX is
-  done (`config/indices/ndx.yaml`, 2026-10-28); HSI is done
-  (`config/indices/hsi.yaml`, 2026-10-31).
-- Backfill A/HK profiles: parallel pg-boss, F10 + official filings, per-company
-  checkpoints. A-share path is already validated on 600519, HK on 00700.
-- Entity resolution: LEI / CIK / USCC / ISIN / ticker+exchange / Wikidata QID /
-  domain. Fill `sector` coverage for NDX while here.
-- Adapters: SEC EDGAR, CNINFO, HKEXnews, HKEX DION, GLEIF, company IR, news.
-- AI watchlist: confirm Zhipu `02513.HK` against HKEX; MiniMax listing status
-  is still `verify`.
-- Investment/equity relations (`invests_in`, `owns`, `parent_of`) need 13F/
-  shareholder data; the UI currently has no such edges.
-
-### P5 — Docker / Electron (deferred)
-
-All Docker/Compose/multi-arch/GHCR and Electron work is deferred until a machine
-with Docker is available. The current native setup is the supported dev path.
-Cross-platform requirements do not change.
-
-### P6 — Evaluation / quality
-
-Golden set covers Chinese/English names, tickers, typos, pinyin initials and
-natural language. Track MRR@10, nDCG@10, Recall@50, zero-result rate, p95.
-Add agent eval (Google–Anthropic relations, M7 fact checks, citation precision)
-and a UI smoke suite.
-
----
+- 2026-11-01 — automatic news refresh + TaskDock → [docs/NEWS.md](docs/NEWS.md),
+  [docs/UI.md](docs/UI.md) §7.5/§7.9.
+- 2026-11-01 — US EDGAR-only + Financials tab → [docs/EXTRACT.md](docs/EXTRACT.md).
+- 2026-10-31 — HSI, ChiNext 50, F10 relations, reviewer, structured financials.
+- 2026-10-30 — ACP resume, session replay, UX v3.
 
 ## 11. Handoff checklist
 
-- [ ] HSI: `--universe hsi` resolves 85 HKEX targets; pilot research → ingest →
-  reviewer completes; `/indices/HSI` lists members after ingest.
-- [ ] Reviewer: `review.company` pass → `ready`; `revise` is capped at
-  `OCC_REVIEW_MAX_CYCLES`; repeated failure ends in `needs_review`; `states`
-  shows the last review result.
-- [ ] NIM: worker research resolves `deepseek-ai/deepseek-v4.1-flash` through
-  `127.0.0.1:4010`; Parallel tools are `mcp__psearch__web_search` /
-  `mcp__psearch__web_fetch`; a 500/empty-content response is retried.
-- [ ] F10 relations: A/HK/US ownership page JSON is cached under `.occ/f10/`;
-  in-universe shareholders become `owns`/`invests_in` with evidence; refresh
-  does not delete LLM or verified edges; `relations f10 --universe hsi`
-  re-resolves cached pages after the batch.
-- [ ] Structured financials: `enqueue financials --universe ndx|hsi|cyb50`
-  (or `--tickers`) runs through `financials.company`; **US is EDGAR-only**
-  (`method='xbrl'`, `trust_tier='filing'`, SEC filing URL) and has **no
-  `f10` rows**; A/HK rows carry `method='f10'` + `secondary` and open the F10
-  page; values are in native units; rerunning does not duplicate periods;
-  `OCC_EDGAR_USER_AGENT` has a real contact and
-  `OCC_FINANCIALS_CONCURRENCY` stays ≤2.
-- [x] US F10 cleanup: **2,053 US `f10` rows deleted** (HK-sourced rows for
-  dual-listed 阿里巴巴 kept); the US pipeline does not fetch or write F10; the
-  3 IFRS-only NDX issuers are covered via `ifrs-full`; derived
-  `total_liabilities`/`gross_profit` carry a `计算：` quote, confidence < 1 and
-  the UI `推导` marker.
-- [x] Financials tab UI: canonical labels/order, per-statement tabs, per-period
-  source badges (`SEC 10-K/10-Q/20-F/40-F` / `东方财富 F10` / `研究资料` /
-  `推导`), annual/quarter/half/TTM controls, coverage + fiscal-year-end line;
-  US quarters are true quarters, A/HK 三季报 carry `累计`.
-- [ ] ACP sidebar unchanged: same model row, `reasoningEffort`, timeout,
-  `deepseek-official` tools and `agent-trace.ts`.
-- [ ] Repo is private; no key/token/cookie/`.env` tracked.
-- [ ] Migration (dual-mode): provider `nvidia` is registered in the **headless**
-      profile only; the headless `agent-default-model` points at
-      `deepseek-ai/deepseek-v4.1-flash`; `NVIDIA_API_KEY.txt` is gitignored.
-- [ ] Migration: **the ACP `acp` row, `reasoningEffort`, `OCC_AGENT_TURN_TIMEOUT_MS`
-      and `agent-trace.ts` are unchanged**; the sidebar still uses
-      `deepseek-flash` + `deepseek-official`.
-- [ ] Migration: Parallel Search MCP mounted in the **headless profile only**
-      (`streamable-http`, `https://search.parallel.ai/mcp`); headless
-      prompt/skills/`validate.mjs`/URL extraction use
-      `mcp__psearch__web_search` / `mcp__psearch__web_fetch`.
-- [ ] Migration: `DEEPSEEK_API_KEY.txt` **stays** (sidebar + ingest/extraction
-      + reviewer) and is still gitignored; per-job env whitelist keeps it out
-      of the research child.
-- [ ] Migration: step-level retry (3 attempts + backoff) on NIM 500 / empty
-      `content`, plus `reasoning_content → content`; a single 500 never fails
-      an 18-step company run.
-- [ ] Migration: reviewer spawns a **DeepSeek** headless profile with reasoning
-      on and a DeepSeek-only env; relation extraction is unchanged.
-- [ ] Migration: no paid fallback for Parallel; one retry + plain-HTTP fetch
-      fallback only; failure mode documented.
-- [ ] Migration: global 36 RPM limiter across worker shards; a 10-minute
-      sustained run leaves no dead jobs.
-- [ ] Migration: the coding session still runs with the user's own key;
-      nothing under `~/.claude*` or shell profiles changed.
-- [ ] `scripts/dev-db.sh status` and `node apps/worker/dist/cli.js status` work.
-- [ ] `corepack pnpm -r --workspace-concurrency=1 test` is green.
-- [ ] `node scripts/e2e-search.mjs` passes against the live corpus.
-- [ ] Default search shows only real profiles; `include_fixtures=true` exposes
-      synthetic rows.
-- [ ] Web: `corepack pnpm --filter @occ/web typecheck` + `build` pass.
-- [ ] Agent: same-session follow-ups work; idle/restart behavior is understood;
-      no limit notice on a normal research question.
-- [ ] Replay: after one live turn, reload shows the same question/answer and
-      trajectory; “新对话” clears `occ.agent.sessionId`; the clock menu lists
-      persisted sessions and opens one.
-- [ ] Resume: one live turn → restart the API (or wait out
-      `OCC_AGENT_IDLE_TIMEOUT_MS`) → “请原样复述我上一条问题” answers correctly;
-      replay of the same id shows 2 turns; history shows 1 row.
-- [ ] Resume failure shows the yellow `agent.resume.failed` notice between the
-      question and the answer, then answers normally (do not fail the prompt).
-- [ ] Automatic news refresh (design in §10): `global_news_last_update` exists
-      and is the only per-company cursor; the pg-boss `news-sweep` schedule
-      selects only due companies (advisory-locked, daily cron, batch-capped, TTL < period);
-      the worker stamps `last_update_at` / `next_due_at` on success (including
-      an empty check) and backs off on failure; fixtures (`is_fixture`) and
-      stubs (`coverage_tier='stub'`) never get a row; **no manual refresh
-      button or client-triggered endpoint exists**; 0 LLM tokens.
-- [ ] News UI: the News tab shows “更新于 … · 自动更新” from
-      `GET /v1/news/status?company=<ref>`; no refresh control.
-- [ ] Shared task dock prototype (commit `dd465fc`,
-      `docs/prototypes/task-dock.html`) ported to
-      `apps/web/src/components/TaskDock.tsx`, mounted in `TopNav.tsx` as the
-      last control after `EN` / `深色`; it observes the automatic sweeps, shows
-      the active and last-completed run, and keeps **no** `公司数据` tab, filter
-      tabs, retry/review buttons or “原型 · 模拟数据” footer.
-- [ ] A500 + SPX placeholders: constituent counts match minus existing
-      companies; no documents/embeddings; default search excludes them; index
-      pages and direct `/c/:ticker` show the 未收录 state.
-- [ ] Placeholder page is **read-only**: no CTA, no `/research` endpoint, no
-      route or UI action can enqueue research.
-- [ ] Local capped research batch (operator CLI) runs through the worker pool on
-      NIM/Parallel; reviewer pass flips the page to the full profile,
-      `revise` is capped at 2 cycles.
-- [ ] A/HK **bulk backfill** plan is STAR 50 + ChiNext 50 + HSI; ChiNext 50 is
-      done and STAR 50 is deferred to P2 priority; **A500 and
-      SPX stay placeholder-only** (filled by explicit, capped operator batches),
-      never a full sweep.
-- [ ] Do not write `deepseek-v4-pro` back into any config.
-- [ ] Do not commit keys, tokens, cookies, or `.env`.
+Current invariants (verify before a demo):
+
+- [x] NDX 100/100 `xbrl`, HSI 84/85 `f10`, CYB50 50/50 `f10`; `HK:00823` is
+  the only documented structured-financials gap.
+- [x] HSI 85/85 and CYB50 50/50 memberships; `/v1/indices/HSI|CYB50` returns
+  the members.
+- [x] `company_research_state`: 104 `ready` / 31 `needs_review`; review is
+  operator work, not a bug.
+- [x] Automatic news refresh: `global_news_last_update` is the only cursor;
+  daily schedule + lazy `/v1/news/status` trigger; 3-day history; no manual
+  refresh control; 0 LLM tokens.
+- [x] TaskDock in the top nav and News-tab status line; tests and builds green.
+- [x] No key/token/`.env` tracked; no NIM gateway on the default path.
+- [x] `corepack pnpm -r --workspace-concurrency=1 test` green; web build green.
+
+P1 (active; see §10):
+
+- [ ] P1.1 A500 + SPX placeholders (`occ indices sync`, stub rows, searchable
+  `未收录` pages).
+- [ ] P1.2 sector + entity resolution (LEI/USCC/ISIN/Wikidata/GLEIF).
+- [ ] P1.3 US 13F + HKEX DION ownership graph.
+- [ ] P1.4 CNINFO/SSE/SZSE/HKEXnews/IR RSS/GDELT adapters + PDF.
+- [ ] P1.5 daily company-data/financial-report refresh (`data.sweep`,
+  `company_filing_state`, `filings`, deterministic detection, 0 LLM tokens).
+
+P2 (deferred; do not start):
+
+- [ ] production hosting/one-command demo, Docker/Electron.
+- [ ] Playwright E2E + agent eval + CI.
+- [ ] observability/debug drawer/metrics/LLM audit.
+- [ ] API productionization, continue-research, AI watchlist verification.
+- [ ] **optional** agent fallback for data refresh (discovery / unmapped /
+  conflict / on-demand summaries); not required, change-gated + capped if built.
+- [ ] STAR 50 / remaining backfill (backfill; out of current plan).
 
 ---
 
@@ -2617,6 +1239,11 @@ Active docs:
 - [`phase0/README.md`](phase0/README.md)
 
 Historical archive: [`context_transfer_history.md`](context_transfer_history.md)
+
+> **Cleaned 2026-11-01.** Detailed done specs for the news round, US EDGAR-only
+> financials, HSI/CYB50, structured financials backend, ACP resume and UX v3
+> were removed from this handoff to keep it short. The implementation docs
+> below and git history keep the design detail. §10 is the only TODO list.
 
 | Topic | Archive section |
 |---|---|

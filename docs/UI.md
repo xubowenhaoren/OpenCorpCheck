@@ -1,8 +1,9 @@
 # OpenCorpCheck UI — 企查查式公司情报页
 
-> Status: implemented in [`apps/web`](../apps/web) · 2026-10-29
-> (tool-use trajectory + GFM Markdown + session replay shipped; sub-agent cards
-> remain reserved in §8.4)
+> Status: implemented in [`apps/web`](../apps/web) · updated 2026-11-01
+> (tool-use trajectory + GFM Markdown + session replay; automatic news
+> TaskDock and Financials tab shipped; a first-class sub-agent card is
+> **permanently deferred**, not “reserved”)
 > Audience: 本项目作者 / 前端实现者
 > Related: [Architecture](ARCHITECTURE.md) §1、§7.4、§8.4 · [Search](SEARCH.md) ·
 > [Facts & relations](EXTRACT.md) · [Agent sidebar](AGENT.md) ·
@@ -13,11 +14,12 @@
 > inferred、confidence。UI 要借用企查查已经被验证过的信息架构，同时把内部工具和
 > 技术术语全部藏起来。
 >
-> **实现备注（2026-10-29）**：`apps/web` 已实现首页、搜索、公司页 5 个 tab、
-> 全局关系图谱、NDX 成分页和 AI 助手侧栏。技术栈是 React 19 + Vite 8 +
-> TypeScript + React Router 7 + TanStack Query 5 + 现有 CSS tokens；Tailwind /
-> shadcn/ui 暂未引入。搜索相关性 guard、图谱自适应布局和 AI 助手真实 SSE 的
-> 验收结果见 [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §6 P3.5。
+> **实现备注（2026-11-01）**：`apps/web` 已实现首页、搜索、公司页 5 个 tab、
+> 全局关系图谱、NDX/HSI/CYB50 成分页、自动新闻任务坞和 AI 助手侧栏。
+> 技术栈是 React 19 + Vite 8 + TypeScript + React Router 7 + TanStack Query 5 +
+> 现有 CSS tokens；Tailwind / shadcn/ui 暂未引入。搜索相关性 guard、图谱自适应
+> 布局和 AI 助手真实 SSE 的验收结果见
+> [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §5–§6。
 
 ---
 
@@ -184,6 +186,9 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 - 筛选用顶部 chips + 两个下拉（行业、指数），不做复杂侧栏。
 - 每行两个动作：**资料**（进 `/c/:ref`）、**图谱**（进 `/c/:ref/graph`）。
 - 关键词在名称/描述里高亮。
+- **Placeholder 结果（P1.1）**：`coverage_tier='stub'` 的公司必须能被搜到，行内带
+  `未收录` 标签；只显示名称、代码、市场、指数，不显示编造的描述/财务/分数。
+  点击 `资料` 打开只读占位页；`图谱` 不显示（没有关系数据）。
 - 搜不到时给三种建议：换关键词、问助手、粘贴官网 URL（后续）。
 
 ---
@@ -413,6 +418,17 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 - 视觉参考：[`docs/prototypes/task-dock.html`](prototypes/task-dock.html)
   （去掉原型控制条、筛选 tab 和手动按钮）。
 
+### 7.10 Placeholder 公司页（P1.1，未实现）
+
+- 用于 CSI A500 / S&P 500 中尚未收录的公司。`coverage_tier='stub'`，只有
+  ticker、中文/英文名、市场、指数/权重。
+- 页头显示名称、代码、市场、指数标签和 `未收录` 状态；正文显示中性说明
+  “数据由运营侧批量补充”，**没有 CTA、没有假进度条、没有研究按钮**。
+- 其他 tab（财务、图谱、新闻、来源）保持空状态，不编造数据。
+- 搜索必须能返回该页（精确 ticker/名称优先；语义结果排在真实公司之后），
+  并在结果行显示 `未收录`。
+- 不新增后端端点；页面只读。
+
 ---
 
 ## 8. AI 助手（问一问）
@@ -470,15 +486,14 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 | F10 抓取 | 查最新财报 |
 | `propose_*` | **不暴露**，只进内部审核队列 |
 
-### 8.4 轨迹与子代理（tool use + 会话回放已实现；子代理卡片预留）
+### 8.4 轨迹与子代理（tool use + 会话回放已实现；子代理卡片永久 defer）
 
 > 工具轨迹（P3.4 UX v3：静态分组轨迹 + 可展开的搜索/抓取行）、来源账本、
 > Markdown 渲染和**会话回放**已在 `apps/web` 实现（2026-10-29/30）。侧栏把
 > dsh 会话 id 存在 `localStorage`，重新打开时通过
 > `GET /v1/agent/sessions/{id}/replay` 读取 dsh 持久化的 `session.v4.jsonl.zstd`，
-> 用同一张轨迹卡回放历史。子代理卡片（deep_research 的 job 进度/嵌套轨迹）
-> 仍是预留设计，见 [CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §6「P3.4」和
-> [AGENT.md](AGENT.md)「Session persistence and replay」。
+> 用同一张轨迹卡回放历史。**一级子代理卡片永久 defer**；`deep_research` 保持
+> 普通工具卡片，不再作为路线图项。
 
 - **工作轨迹卡片（一个组件、一个位置）**：位于助手气泡顶部、答案上方，从研究到结束
   始终是同一张卡片，不会在答案下面再出现第二块。
@@ -493,9 +508,8 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
   查财报、发起深研；显示查询/结果数/域名/耗时/是否被引用，不显示原始 JSON/HTML。
 - **Markdown**：助手消息渲染 GFM（标题、粗体、列表、引用、表格、分隔线、代码、链接）；
   流式期间节流解析，表格在气泡内横向滚动；原始 HTML 不执行，链接只放行 http(s)。
-- **子代理卡片**（预留）：agentic web search 或 `deep_research`；显示任务、状态、
-  进度、当前步骤、嵌套子轨迹、摘要和来源；最多一级嵌套。目前 `deep_research`
-  先以「发起深度研究」工具卡片呈现。
+- **子代理卡片**：**永久 defer**，不再设计/实现。`deep_research` 以普通
+  「发起深度研究」工具卡片呈现。
 - **来源账本**：去重后的 URL，分「已引用 / 仅查阅」，放在「计划与来源」里，
   与计划、token 用量一起按需展开。
 - **会话回放与历史对话**：页面刷新/重开后恢复上次会话的问答与轨迹；头部时钟按钮
@@ -612,7 +626,8 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 
 | 组件 | 职责 |
 |---|---|
-| `TopNav` | logo、常驻搜索、首页/查公司/关系图谱、语言、主题 |
+| `TopNav` | logo、常驻搜索、首页/查公司/关系图谱、语言、主题、任务坞 |
+| `TaskDock` | 自动新闻 sweep 的进度/历史（只读，无手动按钮） |
 | `HomeSearch` | 首页大搜索、热门、最近查看 |
 | `SearchResults` | 结果列表、市场/行业/指数筛选 |
 | `CompanyHeader` | 名称、代码、地区、行业、关键元数据、关注/问一问 |
@@ -640,7 +655,7 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 | 搜索 | `GET /v1/search/companies` | 已支持 market / index / sector / coverage 过滤 |
 | 公司页 | `GET /v1/companies/:ref?include=facts,relations,events` | 基础卡片 |
 | 财务 | `GET /v1/companies/:ref?include=financials&financial_period_kind=…` | 每种期间分别取（annual/quarter/half/ttm），避免 200 行截断；含 `method`/`quote`/`source`，前端据此标来源与「推导」 |
-| 一句话介绍 | `company.description` | 当前 102 家公司都有 description；空值前端回退 |
+| 一句话介绍 | `company.description` | 当前 236 家非 fixture 公司都有 description；空值前端回退 |
 | 关系图 | `GET /v1/graph?company=&depth=`（1/2 层） | 1/2 层 ego network，见下 |
 | 新闻 | `events` | 已含 news + profile_event |
 | 来源 | 各视图的 `source` 去重 | 前端聚合 |
@@ -651,7 +666,8 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 已补齐：
 
 - `GET /v1/graph?company=&depth=&types=&status=` — 2 层图谱、全局 `/graph`。
-- `GET /v1/indices/:code` — 指数成分；NDX = 100 家 QQQ 成分股。
+- `GET /v1/indices/:code` — 指数成分；已加载 NDX 100 / HSI 85 / CYB50 50。
+  A500/SPX（P1.1）只加载 placeholder 成分；STAR50 暂无快照。
 - `GET /v1/sectors` — 搜索行业过滤。
 - `GET /v1/search/companies?sector=` — Qdrant + Postgres 双侧过滤。
 - 开发期用 Vite proxy（5173 → 8787），不需要 CORS。
@@ -682,8 +698,8 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 | **M7 问一问** | 右侧助手栏、SSE、建议问题、来源 URL | 真实 ACP 回复“只回复 OK”验证通过 | ✅ |
 | **M8 移动端/打磨** | 响应式、图谱缩放、深色、英文、错误态 | 390px 无横向滚动；中/英切换 | ✅（英文仅 UI chrome） |
 
-内部工具（审核/运行/explain/debug）不在这条线上。P3.4 的 agent trajectory /
-sub-agent 可视化也不在 M1–M8 内，见 §8.4。
+内部工具（审核/运行/explain/debug）不在这条线上。Agent trajectory 已实现；
+一级 sub-agent 卡片 **permanently deferred**（见 §8.4）。
 
 ---
 
@@ -699,11 +715,11 @@ sub-agent 可视化也不在 M1–M8 内，见 §8.4。
 
 ---
 
-## 15. 待确认
+## 15. 已确认（以实现为准）
 
-1. 关系图谱默认层级：1 层（本稿）还是 2 层？1 层更接近企查查首屏。
-2. 财务 tab 默认展示年度还是最新季度？
-3. 首页"热门公司"是否需要运营配置，还是按指数头部公司自动生成？
-4. 关注/收藏是否 v1 就要（本地 localStorage 即可）？
-5. 全球 `/graph` 导航入口是否保留，还是只从公司页进入图谱？
-6. 关系图库：d3-force + SVG（本稿推荐）还是 Cytoscape？
+1. 关系图谱默认 1 层，提供 1/2 层切换。
+2. 财务 tab 默认年度，提供 annual / quarter / half / TTM 切换。
+3. 首页“热门公司”是静态前端列表，无运营后台。
+4. 关注/收藏用 `localStorage`，不做账号。
+5. 保留全局 `/graph` 导航入口，同时保留公司页图谱 tab。
+6. 图谱使用自绘 SVG，不引入 Cytoscape。

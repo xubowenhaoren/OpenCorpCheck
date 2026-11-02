@@ -1,6 +1,16 @@
 # OpenCorpCheck Architecture
 
-> Status: draft for discussion · 2026-10-27
+> Status: **original design document** · 2026-10-27 (status note 2026-11-01).
+> For the current implementation and the only active TODO list, read
+> [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §0/§10. This document is kept
+> for system design; **do not treat its roadmap as current work**.
+> **Implemented:** monorepo, API/worker/web, Postgres+pg-boss, Qdrant hybrid
+> search, dsh headless + ACP, MCP/CLI, structured financials (EDGAR/F10),
+> news, reviewer, graphs. **P1 (active):** A500/SPX placeholders, sector/entity
+> resolution, 13F/DION ownership, official filing adapters. **P2 (deferred):**
+> Docker/Electron (§10, §12), OTel/metrics/debug drawer (§10.3, §11.3), remote
+> auth/idempotency/response cache (§11.1), Playwright/agent eval/CI (§11.4),
+> hosted demo.
 > Audience: the project author and future contributors.
 > Companion docs: [Prior art](PRIOR_ART.md), [README](../README.md).
 
@@ -13,10 +23,11 @@ research layer**, not a generic "deep research" wrapper.
 
 Twelve decisions define the architecture:
 
-1. **Scope the universe**: STAR 50 (科创50) + ChiNext 50 (创业板50) + HSI + NASDAQ-100
-   (~280 deduped companies) + a curated AI watchlist (OpenAI, Anthropic, DeepSeek,
-   Kimi/Moonshot, Zhipu, ...) + private companies discovered on demand. Not 200M legal
-   entities. The S&P 500 backfill was cancelled on 2026-10-29; NDX is already backfilled.
+1. **Scope the universe**: NASDAQ-100 + HSI + ChiNext 50 (236 real companies) + a
+   curated AI watchlist (OpenAI, Anthropic, DeepSeek, Kimi/Moonshot, Zhipu, ...)
+   + private companies discovered on demand. Not 200M legal entities. CSI A500
+   and S&P 500 are **searchable placeholder pages** (P1.1), not bulk research
+   targets; STAR 50 is deferred backfill.
 2. **TypeScript end-to-end**: web, API, workers, CLI, MCP, dsh integration, Electron. One
    debugger, one type system, one toolchain. Python appears only as an isolated Playwright
    scraper sidecar (reusing `finance_analyst`), never in the API request path.
@@ -62,8 +73,9 @@ Twelve decisions define the architecture:
 
 ### 1.2 v1 scope
 
-- **Universe**: four index snapshots (STAR 50, ChiNext 50, HSI, NASDAQ-100), refreshed
-  weekly; ~280 companies after dedupe. S&P 500 was dropped from the v1 backfill.
+- **Universe**: NASDAQ-100 + HSI + ChiNext 50 snapshots (236 real companies after
+  dedupe). CSI A500 and S&P 500 are **searchable placeholder pages** (P1.1),
+  never bulk-researched; STAR 50 is deferred backfill.
 - **AI watchlist**: a curated seed of hot private/listed AI companies that are not necessarily
   index members — OpenAI, Anthropic, xAI, Mistral, Perplexity, DeepSeek, Moonshot/Kimi,
   Zhipu, MiniMax, Baichuan, StepFun, 01.AI, ByteDance, Huawei, SenseTime, iFlytek,
@@ -73,16 +85,17 @@ Twelve decisions define the architecture:
 - **Private companies**: created on demand by the agent or user; lower confidence, clearly
   labeled `discovered`.
 - **Languages**: Chinese and English UI; company names and aliases in local language + English.
-- **Interfaces**: web UI, Electron (Windows/macOS; WSL2/Linux via the browser), `occ` CLI,
-  MCP server, REST/OpenAPI.
+- **Interfaces**: web UI, `occ` CLI, MCP server, REST/OpenAPI. Electron/Docker are P2
+  and deferred by the current machine.
 - **Agent**: DeepSeek Harness sidebar with streaming, tool cards, citations, permissions, trace.
-- **Deployment**: Docker Compose (local or server), thin desktop client. Docker is the
-  confirmed desktop backend; there is no embedded database mode in v1.
+- **Deployment**: native dev services today (Postgres/Qdrant/uv/Node); Docker
+  Compose and a thin desktop client are P2.
 
 ### 1.3 Non-goals (v1)
 
 - Global registry of all legal entities; UBO graph at OpenCorporates scale.
-- All listed companies in CN/HK/US; v1 is four indices + the AI watchlist.
+- All listed companies in CN/HK/US; v1 is NDX + HSI + ChiNext 50, A500/SPX
+  placeholders, and the AI watchlist.
 - Moomoo/OpenD integration; it needs a local daemon and is post-v1.
 - Paywalled data, login-walled sites, CAPTCHA bypass, LinkedIn scraping.
 - Trading signals, price prediction, portfolio advice.
@@ -287,7 +300,7 @@ OpenCorpCheck/
   services/
     finance-analyst/     # Python + Playwright sidecar: aif10 + EDGAR + HKEX scrapers
   config/
-    universe.yaml        # four indices (STAR 50 / ChiNext 50 / HSI / NDX) + AI watchlist
+    universe.yaml        # NDX/HSI/CYB50 snapshots + AI watchlist; A500/SPX are P1 placeholders
   packages/
     core/                # Zod schemas, domain types, IDs, errors
     db/                  # Drizzle schema, migrations, repositories
@@ -403,7 +416,7 @@ is on page 87 of this PDF".
 
 ```mermaid
 flowchart TD
-  I["Index snapshots<br/>STAR 50 · ChiNext 50 · HSI · NDX"] --> U["Universe build + entity resolution"]
+  I["Index snapshots<br/>NDX · HSI · ChiNext 50<br/>(A500/SPX placeholders)"] --> U["Universe build + entity resolution"]
   U --> B["BFS coverage mission"]
   B --> H["Hub pages: about, products, IR, newsroom"]
   H --> P1["Company profile v1"]
@@ -431,11 +444,13 @@ export interface SourceAdapter<T> {
 }
 ```
 
-Adapters to build first:
+Adapters to build first (status 2026-11-01: NDX/HSI/CYB50 snapshots,
+`eastmoney-f10`, EDGAR and Google News are implemented; CNINFO/HKEXnews/DION/
+GLEIF/13F are P1):
 
 | Adapter | What | Notes |
 |---|---|---|
-| `index-snapshot` | STAR 50 / ChiNext 50 / HSI / NDX constituents + weights | Official source first; Wikipedia/AAStocks fallback; store `as_of`. S&P 500 is out of scope. |
+| `index-snapshot` | NDX / HSI / ChiNext 50 constituents + weights; A500/SPX placeholders (P1.1) | Official source first; Wikipedia/AAStocks fallback; store `as_of`. |
 | `eastmoney-f10` | A/HK/US profile, financial/organizational analysis, shareholders, events, research reports, peer comparison, dividends, capital operations | Reuse `finance_analyst/scripts/aif10_scraper.py` via the Python sidecar; add JSON/tables/snapshots |
 | `sec-edgar` | Submissions, companyfacts, 10-K/10-Q/8-K, 13F/13D/13G | Public domain; User-Agent + ~10 req/s; XBRL first |
 | `cninfo` | A-share announcements + annual/interim reports | Official disclosure; PDFs |
@@ -902,7 +917,10 @@ Why a CLI: it is the lowest-friction tool for agents and for debugging. The same
 
 ---
 
-## 10. Desktop (Electron) and debugging
+## 10. Desktop (Electron) and debugging (P2 — deferred)
+
+> Not implemented. Web-first debugging + the agent trajectory card cover the
+> current demo; the debug drawer/Electron items below are P2.
 
 ### 10.1 Process model
 
@@ -1100,7 +1118,10 @@ resumes.
 
 ---
 
-## 12. Docker and deployment
+## 12. Docker and deployment (P2 — deferred)
+
+> The current machine cannot run Docker. Native services are the supported dev
+> path; this section is the packaging target, not current instructions.
 
 ### 12.1 Compose services
 
@@ -1225,7 +1246,10 @@ Use Flash for extraction/classification and Pro for planning/verification/synthe
 
 ---
 
-## 15. Roadmap and acceptance criteria
+## 15. Roadmap and acceptance criteria (historical — not the current plan)
+
+> Superseded by [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §10. Kept for
+> the original phasing rationale; Docker/Electron/CI/debug-drawer items are P2.
 
 | Phase | Duration | Deliverables | Exit criteria |
 |---|---:|---|---|
@@ -1287,7 +1311,7 @@ This proves the three riskiest things first: **debuggability**, **search quality
 | Docker requirement scares users | Low adoption | Remote mode; 50-company offline fixture demo; one-command compose |
 | Cost/latency blowup | Demo becomes expensive | Budgets; caching; Flash/Pro split; page caps; dedupe |
 | Search quality plateau | "Just another search box" | Golden set; RRF/DBSF/rerank experiments; explain UI; published metrics |
-| Scope creep to 200M entities | Never ships | Hard v1 scope: four indices + on-demand private; backlog for later |
+| Scope creep to 200M entities | Never ships | Hard v1 scope: NDX/HSI/CYB50 + A500/SPX placeholders + on-demand private; backlog for later |
 
 ---
 
@@ -1295,8 +1319,9 @@ This proves the three riskiest things first: **debuggability**, **search quality
 
 ### Decided
 
-1. **Universe**: four indices + a curated AI watchlist + on-demand private companies. Not all
-   listed companies, not 200M entities.
+1. **Universe**: NDX + HSI + ChiNext 50 + A500/SPX placeholder pages + a curated
+   AI watchlist + on-demand private companies. Not all listed companies, not 200M
+   entities.
 2. **Desktop backend**: Docker/remote. No embedded PGlite/LanceDB mode in v1.
 3. **Web search**: DeepSeek Harness's built-in `web_search`. No SearXNG/Tavily default.
 4. **A/HK/US coverage**: reuse `finance_analyst`'s Eastmoney F10 / EDGAR / HKEX scrapers via

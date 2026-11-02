@@ -1,18 +1,19 @@
 # Headless NIM + Parallel migration — P0 (revised 2026-10-31: dual-mode)
 
-> Status: **implemented 2026-10-31 (headless only)**. The worker runs NIM
-> through `apps/worker/src/nim-gateway.ts` and mounts Parallel Search MCP;
-> `OCC_LLM_PROVIDER=deepseek` is the rollback. The interactive ACP sidebar keeps
-> the official DeepSeek API and `deepseek-official` search/fetch. Remaining
-> operational work is the capped HSI batch measurement (latency/500 counts);
-> the plan below is kept as the design record.
+> Status: **historical migration record (2026-10-31)**. NIM + Parallel was
+> implemented headless-only, then **retired as the default at 14:16** after
+> sustained per-model 429s. Official DeepSeek (`deepseek-flash` + official
+> `web_search`/`web_fetch`) is the default; NIM remains opt-in with
+> `OCC_LLM_PROVIDER=nvidia`. The interactive ACP sidebar is unchanged
+> (official DeepSeek). Keep this document as the measured cost/latency record,
+> not as current configuration.
 >
 > Revised **2026-10-31**: the migration is now
 > **headless-only**. The interactive ACP sidebar keeps the official DeepSeek
 > API and `deepseek-official` search/fetch; only the **local worker pool**
 > (headless `dsh --profile headless`) moves to NVIDIA NIM + Parallel. The
-> repo's DeepSeek key **stays**. Plan also in
-> [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §10 Next 0.
+> repo's DeepSeek key **stays**. Current config is in
+> [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §2.
 >
 > Goal: run **unattended local backfill** on
 > [NVIDIA NIM](https://build.nvidia.com) (`deepseek-ai/deepseek-v4.1-flash`) and
@@ -120,10 +121,9 @@ From `phase0/runs/*.jsonl` (102 companies) and `backfill_jobs` (102 completed
 
 **Decision 2026-10-31: no full A500/SPX backfill and no in-app research.** Both
 indices stay placeholder-only; data is filled by an explicit, capped **operator
-batch** run locally through the worker pool. The feature plan (placeholder rows,
-reviewer loop, task dock) lives in
-[`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §10 Next 2 — this doc only covers
-the provider/cost side. The numbers below are kept as the *reason*: they
+batch** run locally through the worker pool. The placeholder feature plan lives
+in [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §10 P1.1 — this doc only
+covers the provider/cost side. The numbers below are kept as the *reason*: they
 describe the sweep we are **not** running. A capped batch is ~18 requests and
 ~3–8 minutes per company on NIM (see §1.1); the **research** step costs **¥0**
 (NIM + Parallel free tiers). Reviewer and relation extraction stay on the paid

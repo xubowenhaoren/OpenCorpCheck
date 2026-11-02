@@ -1,7 +1,8 @@
 # Data Sources & the `finance_analyst` Reuse Plan
 
-> Status: draft · 2026-10-27
-> Related: [Architecture](ARCHITECTURE.md) · [Prior art](PRIOR_ART.md)
+> Status: living document · updated 2026-11-01
+> Related: [Architecture](ARCHITECTURE.md) · [Prior art](PRIOR_ART.md) ·
+> [Context transfer](../CONTEXT_TRANSFER.md) §10
 
 This document defines where OpenCorpCheck gets its facts, which existing code we reuse, what
 must change before it becomes a database source, and the licensing constraints.
@@ -30,6 +31,12 @@ must change before it becomes a database source, and the licensing constraints.
 | Entity spine | GLEIF (LEI, parent relationships), Wikidata | OpenCorporates (BYO token) | GLEIF is CC0; use it for ownership edges |
 | News | Company IR RSS, GDELT, credible outlets | dsh `web_search` | Dedupe + entity link |
 
+**Current adapter coverage (2026-11-01):** implemented = SEC EDGAR XBRL,
+Eastmoney F10 (A/HK), Google News RSS. **Planned P1.4** = CNINFO/SSE/SZSE
+announcements, HKEXnews + PDF, HKEX DION, company IR RSS, GDELT. **Planned
+P1.2** = GLEIF/Wikidata/LEI/USCC/ISIN entity resolution. The “Primary” column
+above is the target hierarchy, not current coverage.
+
 ### 2.1 Index constituent snapshots
 
 - `config/indices/ndx.yaml` is the NASDAQ-100 snapshot used by
@@ -42,13 +49,21 @@ must change before it becomes a database source, and the licensing constraints.
 - Nasdaq index data is proprietary. Keep the snapshot for internal demo/research with
   attribution; do **not** redistribute it as a licensed dataset. Refresh by re-fetching
   and replacing the file (new `as_of`), never by editing tickers by hand.
-- HSI (`config/indices/hsi.yaml`, 85 constituents, `as_of` 2026-10-31) is now
-  snapshotted from Wikipedia's HSI components table as a documented fallback:
-  the official hsi.com.hk list sits behind an SPA with no stable public JSON
-  endpoint. Cross-check against HKEX before treating it as a licensed feed.
-- STAR 50 (`000688`, SSE) is deferred to P2 priority. ChiNext 50
-  (`config/indices/cyb50.yaml`, `399673`, SZSE, `as_of` 2026-06-15) was added
-  2026-10-31. S&P 500 is not planned (2026-10-29 scope change).
+- **Index snapshots today:** NDX (`ndx.yaml`, 2026-10-28), HSI
+  (`hsi.yaml`, 85 constituents, `as_of` 2026-10-31), ChiNext 50
+  (`cyb50.yaml`, `399673`, SZSE, `as_of` 2026-06-15). HSI is snapshotted from
+  Wikipedia's components table as a documented fallback: the official
+  hsi.com.hk list sits behind an SPA with no stable public JSON endpoint.
+  Cross-check against HKEX before treating it as a licensed feed.
+- **P1.1 placeholders (planned, not built):** add `a500.yaml` (CSI A500,
+  `000510`) and `sp500.yaml` (`SPX`) with `as_of`/weights/source/license and an
+  `occ indices sync` command. Constituents become `coverage_tier='stub'` rows
+  (ticker + names + membership only) that are **searchable with a `未收录`
+  badge** and open a read-only placeholder page. No bulk research/backfill;
+  a real profile is never overwritten. See
+  [CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §10 P1.1.
+- **STAR 50** (`000688`, SSE) is deferred backfill and out of the current
+  plan.
 - **Structured financial statements (implemented 2026-11-01, US cleanup done
   2026-11-01).** **US = SEC EDGAR XBRL only** (`companyfacts` + 10-K/10-Q
   filing URLs, `method='xbrl'`, `trust_tier='filing'`); the US pipeline does
@@ -61,21 +76,35 @@ must change before it becomes a database source, and the licensing constraints.
   [EXTRACT.md](EXTRACT.md#structured-financial-statements-2026-11-01) and
   [CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §10.
 
+### 2.2 Daily filing refresh (P1.5, planned — pure code)
+
+Detection is deterministic, not agentic: poll the SEC EDGAR `submissions`
+index, the CNINFO announcement query, HKEXnews title search and (fallback) the
+F10 `cwfx` page hash; diff by accession/announcement ID or content hash. A new
+periodic report enqueues the existing `financials.company` pipeline; an
+announcement goes through the P1.4 adapter. **0 LLM tokens.** See
+[CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §10 P1.5.
+
+An **optional agent fallback** (source discovery, unmapped table, conflict
+explanation, on-demand summary) is P2, not committed, and must be
+change-gated + capped; it never becomes the polling loop. See
+[CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §10 P2.
+
 ## 3. Reused assets from `finance_analyst`
 
 The private repo ([xubowenhaoren/finance_analyst](https://github.com/xubowenhaoren/finance_analyst),
 Apache-2.0, read via `gh`) already contains proven scrapers. Reuse them behind a clean
 interface instead of rewriting the hard-won URL/scroll logic.
 
-| Asset | What it gives | Reuse in v1 | Changes needed |
+| Asset | What it gives | Status | Notes |
 |---|---|---|---|
-| `scripts/aif10_scraper.py` | Eastmoney F10 (A/HK/US): 16/12/5 pages — financial analysis, operating analysis, company profile, shareholders, events, research reports, peer comparison, dividends, capital operations, management | **Yes — primary A/HK coverage**; US pages remain available but are not used for structured financials after 2026-11-01 | JSON output, table extraction, remove 8k truncation for financial pages, retries, snapshots, page presets |
-| `scripts/edgar_scraper.py` | SEC full-text search + submissions + filing text | Yes — wrap in the same sidecar; later port to TS | Structured `companyfacts` XBRL fetch (the current script only fetches filing text), retries, 10 req/s limiter |
-| `scripts/hkex_di_scraper.py` | HKEX DION substantial-shareholder notices (buy/sell, shares, avg price, holdings) | Yes — relation/ownership evidence | JSON output, cache off in production, retries |
-| `scripts/hkex_news_scraper.py` | HKEXnews announcement titles + PDF links | Yes — announcement discovery | Follow PDF links, download + parse, dedupe |
-| `scripts/market_utils.py` | Market detection, trading-hours warnings, financial-statement keyword maps, DCF field extraction | Reference/port the keyword maps into `packages/sources/taxonomy.ts` | Do not rely on string matching for canonical facts; use as validation/fallback |
-| `scripts/wrappers_mcp.py` (`a_share_comprehensive`) | AkShare A-share indicators, valuation, forecasts, dividends | Optional; not v1 primary | AkShare/Eastmoney reliability issues (see `context_transfer.md`); treat as fallback |
-| `scripts/futu_mcp.py` | Moomoo/OpenD 110+ tools (quotes, valuation, institutional holdings, revenue breakdown, short interest) | **No — post-v1** | Requires OpenD daemon + China IP; not suitable for the Docker-only v1 |
+| `scripts/aif10_scraper.py` | Eastmoney F10 (A/HK/US): 16/12/5 pages — financial analysis, operating analysis, company profile, shareholders, events, research reports, peer comparison, dividends, capital operations, management | **Done** — A/HK structured layer; US pages unused | JSON output, table extraction, retries, snapshots, page presets |
+| `scripts/edgar_scraper.py` | SEC full-text search + submissions + filing text | **Done** — EDGAR XBRL in `packages/extract/src/financials/edgar-xbrl.ts` | `companyfacts` XBRL, 10 req/s limiter, `ifrs-full` |
+| `scripts/hkex_di_scraper.py` | HKEX DION substantial-shareholder notices (buy/sell, shares, avg price, holdings) | **P1.3 planned** — ownership edges | JSON output, retries, entity match |
+| `scripts/hkex_news_scraper.py` | HKEXnews announcement titles + PDF links | **P1.4 planned** — announcement discovery | Follow PDF links, parse, dedupe |
+| `scripts/market_utils.py` | Market detection, trading-hours warnings, financial-statement keyword maps, DCF field extraction | Reference only | Do not rely on string matching for canonical facts |
+| `scripts/wrappers_mcp.py` (`a_share_comprehensive`) | AkShare A-share indicators, valuation, forecasts, dividends | Optional, not planned | AkShare/Eastmoney reliability issues; treat as fallback |
+| `scripts/futu_mcp.py` | Moomoo/OpenD 110+ tools (quotes, valuation, institutional holdings, revenue breakdown, short interest) | **No — post-v1** | Requires OpenD daemon + China IP |
 
 License: `finance_analyst` is Apache-2.0. If we vendor code, keep the license, add a `NOTICE`
 entry, and mark modified files. If we call it as an external sidecar, document the version
@@ -251,10 +280,11 @@ against HKEX before using it as a canonical identifier.
 
 Each watchlist entry gets a `coverage_tier`:
 
-- `index_member` — in one of the four indices.
+- `index_member` — in a loaded index with a real profile (NDX/HSI/CYB50).
 - `ai_watchlist` — curated, not necessarily in an index.
 - `discovered` — created by the agent/web research.
-- `stub` — name only, no verified profile.
+- `stub` — A500/SPX placeholder: ticker + names + market + index membership
+  only (P1.1); searchable with a `未收录` badge, never fake profile data.
 
 Private companies have no CIK/LEI; use the canonical website domain + Wikidata QID when
 available. Their facts are lower confidence and labeled `reported` until a primary source

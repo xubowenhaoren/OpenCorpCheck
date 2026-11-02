@@ -1,13 +1,16 @@
 # Search Evaluation
 
-> Status: measured on the fixture-isolated NDX-100 corpus · 2026-10-28
-> (re-run after curated Chinese aliases; `Adboe` typo and `奈飞`/`好市多` fixed)
+> Status: search numbers **measured on the fixture-isolated NDX-100 corpus on
+> 2026-10-28**. The live corpus has since grown to NDX-100 + HSI-85 +
+> ChiNext-50 (236 non-fixture companies, 3,245 news documents); HSI/CYB50
+> probes are **not yet in the golden set**, so these numbers are an NDX
+> baseline, not a full-corpus score.
 > Related: [Data layer & hybrid search](SEARCH.md) · [NDX snapshot](../config/indices/ndx.yaml) · [Golden queries](../scripts/golden-queries.mjs) · [Curated aliases](../config/aliases/zh.yaml)
 
 ## Corpus
 
-The visible corpus used for these numbers contains **real research profiles
-only**:
+The visible corpus **when these numbers were measured** contained real
+research profiles only:
 
 | Layer | Visible | Hidden fixtures |
 |---|---:|---:|
@@ -139,9 +142,10 @@ fixtures hidden.
 
 ## Known limits
 
-- The visible corpus is still NDX-100 plus 600519/00700. STAR 50 / ChiNext 50
-  (the revised A-share scope), HSI and the AI watchlist are not backfilled yet,
-  so the golden set cannot cover them. S&P 500 is out of scope.
+- The visible corpus is NDX-100 + HSI-85 + ChiNext-50 (236 non-fixture
+  companies). The golden set is still NDX/Chinese-NDX names; HSI/CYB50
+  natural-language probes are not added yet. STAR 50 and the A500/SPX
+  placeholders (P1.1) are not in the eval. S&P 500 has no bulk research.
 - Curated Chinese aliases are hand-maintained. Add a ticker to
   `config/aliases/zh.yaml`, run `occ aliases sync`, and company points are
   re-indexed automatically; forgetting that step leaves Qdrant behind Postgres

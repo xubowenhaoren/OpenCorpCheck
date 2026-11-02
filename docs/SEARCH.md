@@ -77,8 +77,9 @@ curl 'http://127.0.0.1:8787/v1/health'
 curl 'http://127.0.0.1:8787/openapi.json'
 ```
 
-Response envelope (the synthetic fixture corpus still carries legacy A500/SPX
-index labels; the v1 backfill plan is STAR 50 + ChiNext 50 + HSI + NDX):
+Response envelope (legacy seed fixtures still carry old A500/SPX index labels;
+real memberships are loaded for NDX / HSI / ChiNext 50, and A500/SPX are P1
+placeholder pages):
 
 ```json
 {
@@ -185,21 +186,24 @@ Selected results:
 Explain mode verified: BM25 branch, dense branch, fusion list, and per-hit
 branch ranks are all present.
 
-## Real-corpus evaluation (2026-10-28)
+## Real-corpus evaluation (2026-10-28, NDX baseline)
 
 The NDX-100 backfill is ingested and indexed: 100 companies, 1,428 profile
 chunks, 1,459 document points. `scripts/eval-search.mjs` reports hybrid
 ticker/English-name **top-1 100%**, semantic recall@5 **90%**, document
 recall@5 **100%**, and p95 **214–278ms**. Exact identifier/alias/fuzzy matches
-now sort ahead of unbounded BM25 scores. Full method and comparisons:
-[EVAL.md](EVAL.md).
+now sort ahead of unbounded BM25 scores. The live corpus has since grown to
+236 companies (NDX + HSI + CYB50); these numbers are an NDX baseline, not a
+full-corpus score. Full method and comparisons: [EVAL.md](EVAL.md).
 
 ## Known limits / next
 
-- The visible corpus is now **real research only**: 102 companies with
-  research profiles (100 NDX + 600519/00700); the 14 fixture-only companies and
+- The visible corpus is **real research only**: 236 companies (NDX 100,
+  HSI 85, CYB50 50, plus one discovered); the 14 fixture-only companies and
   all 31 fixture documents are hidden by default (`include_fixtures=true`
   restores them for E2E). Old corpora need one `occ sync-fixtures` run.
+- A500/SPX placeholders (P1.1) will be searchable with a `未收录` badge; they
+  carry no documents, chunks or embeddings.
 - News documents (`doc_type='news'`) are ingested per company from Google News
   RSS; they are searchable through `/v1/search/documents?doc_type=news` and
   appear in the company card's `events`. See [NEWS.md](NEWS.md).
@@ -217,14 +221,14 @@ now sort ahead of unbounded BM25 scores. Full method and comparisons:
   snapshots; raw HTML capture is still a sidecar follow-up.
 - Rerank is implemented and wired, but the E2E run uses `OCC_RERANK_ENABLED=false`
   so it does not download the second model.
-- The `occ` CLI currently calls the API for search; entity resolution, graph
-  queries, and MCP search tools land in P3.
-- Index constituent snapshots (P4) are not loaded yet; the seeded legacy
-  `A500`/`HSI`/`SPX`/`NDX` memberships are fixture metadata. NDX is the
-  exception: the backfill writes real `index_memberships`. The v1 backfill plan
-  is **STAR 50 (`000688`) + ChiNext 50 (`399673`) + HSI + NDX**; S&P 500 was
-  cancelled on 2026-10-29. Existing fixtures keep the old A500/SPX labels for
-  E2E compatibility.
+- The `occ` CLI calls the API for search; entity resolution, graph queries and
+  MCP search tools are implemented (P3).
+- Index snapshots are loaded for NDX / HSI / ChiNext 50 and write real
+  `index_memberships`. P1.1 adds CSI A500 + S&P 500 **searchable placeholder**
+  rows (`coverage_tier='stub'`); STAR 50 is deferred backfill. Legacy
+  `A500`/`SPX` seed fixtures remain for E2E compatibility only.
+- Placeholder rows are searchable with a `未收录` badge (decision 30 revised
+  2026-11-01); rank them below real profiles and never render fake metrics.
 - `scripts/e2e-search.sh` runs `occ seed --reset`, which **truncates the target
   database and Qdrant collections**. `occ seed` without `--reset` is also not
   safe on a shared corpus: it rewrites the 24 seed companies' aliases and
