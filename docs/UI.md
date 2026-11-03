@@ -483,6 +483,8 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 - 视觉参考：[`docs/prototypes/task-dock.html`](prototypes/task-dock.html)
   （两种 kind、筛选 tab、移动端）；原型控制条、手动按钮和 research mock 行
   未接入。
+- 验收截图：[`docs/screenshots/p1.5/`](screenshots/p1.5/)（桌面、暗色、390 px
+  移动端，以及 00700 的「财报更新中」状态）。
 
 ### 7.10 Placeholder 公司页（P1.1，已实现）
 

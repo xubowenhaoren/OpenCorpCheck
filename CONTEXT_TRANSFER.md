@@ -458,7 +458,8 @@ Verified 2026-11-03 (P1.5 follow-ups):
 - **Shared dock:** `/v1/news/status.dataRefresh` listed 11 runs,
   `pendingFinancials=1`, `appliedFinancials=1`; desktop/mobile/dark rendered
   `全部 / 更新新闻 / 财报更新`, per-company rows, no console errors, no
-  horizontal scroll.
+  horizontal scroll. Screenshots:
+  [`docs/screenshots/p1.5/`](docs/screenshots/p1.5/).
 - Tests: **379** TypeScript tests green (filings 30, worker 58, web 53, API 33,
   ingest 49, extract 42, agent 17, CLI 7, retrieval 10, db 11, storage 5, F10 9,
   news 9, entity 29, ownership 17); Python 30 green.
