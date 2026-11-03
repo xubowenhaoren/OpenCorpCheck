@@ -92,7 +92,8 @@
 > 130.93 KB). Python DION tests: 6. Run tests serially:
 > `corepack pnpm -r --workspace-concurrency=1 test`.
 >
-> **Recent commits:** `b19a8ef` fixture sector normalization + P1.2 docs;
+> **Recent commits:** `03449da` P1.3 US 13F + HKEX DION ownership;
+> `b19a8ef` fixture sector normalization + P1.2 docs;
 > `e6217ab` P1.2 sector + entity resolution; `8f795d5` P1.1 A500/SPX
 > placeholder layer; `0eec66f` automatic news refresh + TaskDock; `75864fb`
 > US EDGAR-only + Financials tab; `771490c` news sweep daily. Migrations
