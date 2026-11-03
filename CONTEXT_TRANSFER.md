@@ -132,12 +132,14 @@
 > (F10/API, DION, PDF, HKEXnews). Run tests serially:
 > `corepack pnpm -r --workspace-concurrency=1 test`.
 >
-> **Recent commits:** `faaa499` filings: add official filing adapters + PDF
-> (P1.4); `926365b` web: stagger inner/outer rings in dense ownership graph;
-> `eead595` web: make dense ownership graphs readable (P1.3 follow-up);
-> `a6c0289` docs: add P1.3 dense-graph UI follow-up; `01c9909` docs: record
-> P1.3 commit and live numbers; `03449da` P1.3 US 13F + HKEX DION ownership;
-> `b19a8ef` fixture sector normalization + P1.2 docs. Migrations
+> **Recent commits:** `d1a3c51` refresh: verify financials periods + shared
+> TaskDock (P1.5 follow-ups); `40de29a` docs: restore shared TaskDock design;
+> `faaa499` filings: add official filing adapters + PDF (P1.4); `926365b` web:
+> stagger inner/outer rings in dense ownership graph; `eead595` web: make dense
+> ownership graphs readable (P1.3 follow-up); `a6c0289` docs: add P1.3
+> dense-graph UI follow-up; `01c9909` docs: record P1.3 commit and live
+> numbers; `03449da` P1.3 US 13F + HKEX DION ownership; `b19a8ef` fixture
+> sector normalization + P1.2 docs. Migrations
 > `0008_global_news_last_update.sql`, `0009_entity_merge_log.sql`,
 > `0010_relation_metadata.sql`, **`0011_filing_refresh.sql`** and
 > **`0012_financials_verification.sql`** are applied;
