@@ -199,6 +199,11 @@ completed-job guard.
   every 15 s while pending.
 - A dead-lettered follow-up job is visible in `backfill_jobs` and the worker
   log; `filingRefresh` reflects the source check, not downstream job death.
+- **Not shared with the news refresh UI:** the top-nav TaskDock stays
+  news-only (decision 33); there is no global "财报更新" group and no
+  `/v1/news/status` involvement. Filing/financials state is per-company on the
+  company page, and the card polls itself while `pending`. The two systems
+  share the cursor/lease/backoff *pattern*, not the component or endpoint.
 - The TaskDock is unchanged (news-only, decision 33).
 
 ## 8. Commands
@@ -305,6 +310,9 @@ company page shows `重试中` rather than fake success.
 - **The data worker must be running** for the cron/lazy follow-ups. With no
   worker, `data.source.check` / `ingest.filing` jobs stay queued and the page
   shows `排队中`.
+- **Financials verification is not closed (P1.5 follow-up).** The auto-run is
+  one-shot: it does not confirm the expected period landed. US EDGAR is
+  verified; A/HK can miss a period while F10 lags. See §13.
 
 ## 12. Tests
 
@@ -317,3 +325,38 @@ company page shows `重试中` rather than fake success.
 - Full serial suite: **363 TypeScript tests** green;
   `corepack pnpm -r --workspace-concurrency=1 test`.
 - Python sidecar unchanged at 30 tests.
+
+## 13. Follow-up — financials verification/retry (not done)
+
+P1.5 ships detection + one automatic `financials.company` enqueue per new
+periodic report. It does **not** verify that the expected period landed. That
+is enough for US EDGAR (`companyfacts` is current when the filing appears;
+verified live with AAPL/MSFT) but **not for A/HK**, where F10 commonly lags the
+CNINFO/HKEXnews announcement. The one-shot job can complete "successfully"
+while writing only the old periods, and nothing re-triggers it because the
+`filings` row is already `applied` and the accession is no longer new.
+
+Proposed shape (next agent):
+
+1. Persist `expected_period_end`, `financials_status`
+   (`pending|applied|failed`) and `next_retry_at` — on `filings` or a separate
+   `financials_refresh_state` table.
+2. Derive `expected_period_end` when a periodic report is detected: EDGAR
+   `periodEnd`; CNINFO title (`2026年第三季度报告` → `2026-09-30`, etc.);
+   HKEXnews results title (`... six months ended 30 June 2026` → `2026-06-30`).
+3. After `financials.company`, check
+   `max(financial_facts.period_end) >= expected_period_end`. If not, keep
+   `pending` and retry with 1h/6h/1d backoff (bounded, e.g. 7 days). Do not
+   re-fetch the filing index or re-ingest the document.
+4. Add a `data.sweep` "financials catch-up" pass that enqueues pending rows
+   only. Keep it deterministic and 0 LLM tokens.
+5. Live-accept A/HK with the sidecar running: `600519` / `00700`, including one
+   deliberate F10-lag run (first pending, later applied). This also closes the
+   A/HK live-acceptance gap from §10.
+
+Separately, the P1.5 cadence note about a **weekly/monthly profile,
+description and sector refresh** (content-hash gated, re-extract only on
+change) was not implemented. It is not part of the daily filing poll.
+
+The UI remains per-company (`filingRefresh`); the news TaskDock is intentionally
+not shared (decision 33).

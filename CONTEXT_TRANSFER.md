@@ -1788,6 +1788,37 @@ Shipped end-to-end; migration `0011_filing_refresh.sql`; details in
   period `2026-09-26`); steady rerun inserted/enqueued 0; HK failure backed off
   and surfaced `lastStatus=failed`; 0 LLM tokens. Tests: filings 25, worker 52,
   db 11, web 48; **363 total**.
+- **Known gap:** the auto-run is one-shot. See the follow-up section below;
+  A/HK is not closed until that is implemented and live-accepted.
+
+### P1.5 follow-up — financials verification/retry (not done)
+
+The daily path detects a new periodic report and enqueues `financials.company`
+**once**. It does **not** verify that the expected period actually landed.
+This is acceptable for US EDGAR (verified live) but is **not closed for A/HK**:
+F10 often lags the CNINFO/HKEXnews announcement, so the one-shot run can finish
+"successfully" without the new period. The `filings` row is already `applied`
+and the accession is no longer new, so nothing re-triggers it.
+
+Required follow-up (next agent):
+
+- Persist `expected_period_end`, `financials_status`
+  (`pending|applied|failed`) and `next_retry_at` on `filings` (or a separate
+  `financials_refresh_state` table).
+- After `financials.company`, verify `max(financial_facts.period_end)` covers
+  the expected period. If not, keep `pending` and retry with 1h/6h/1d backoff
+  (max N days); do not re-fetch the filing index or re-ingest the document.
+- Add a `data.sweep` "financials catch-up" pass for `pending` rows.
+- Live-accept A/HK with the sidecar running: `600519` / `00700`, including one
+  deliberate F10-lag run (first check pending, later retry applied).
+- The P1.5 cadence's slower profile/description/sector refresh
+  (weekly/monthly, content-hash gated) was **not** implemented either; it is
+  separate from the daily filing poll.
+
+The current UI is deliberately **not** shared with the news refresh: the
+TaskDock stays news-only (decision 33/70); filing/financials state lives on the
+company page (`filingRefresh`). A global "财报更新" dock group would be an
+explicit decision-33 change.
 
 ### P1.5 original scope (kept for reference)
 
