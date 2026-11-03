@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { getCompanyCard, getCompanyFinancials } from "../api";
 import { CompanyFinancials } from "../components/CompanyFinancials";
+import { CompanyFilings } from "../components/CompanyFilings";
 import { CompanyGraph } from "../components/CompanyGraph";
 import { CompanyHeader } from "../components/CompanyHeader";
 import { CompanyNews } from "../components/CompanyNews";
@@ -22,6 +23,7 @@ const TABS: CompanyTab[] = [
   "financials",
   "graph",
   "news",
+  "filings",
   "sources",
 ];
 
@@ -34,7 +36,9 @@ export function CompanyPage() {
   const query = useQuery({
     queryKey: ["company", ref],
     queryFn: () =>
-      getCompanyCard(ref ?? "", { include: "facts,relations,events" }),
+      getCompanyCard(ref ?? "", {
+        include: "facts,relations,events,filings",
+      }),
     enabled: Boolean(ref),
   });
 
@@ -76,6 +80,9 @@ export function CompanyPage() {
     }
     for (const event of card.events ?? []) {
       if (event.source?.url) urls.add(event.source.url);
+    }
+    for (const filing of card.filings ?? []) {
+      if (filing.source?.url) urls.add(filing.source.url);
     }
     for (const relation of [
       ...(card.relations?.incoming ?? []),
@@ -129,6 +136,7 @@ export function CompanyPage() {
           financials: card.financials?.length ?? 0,
           relations,
           events: card.events?.length ?? 0,
+          filings: card.filings?.length ?? 0,
           sources: sourceCount,
         }}
       />
@@ -150,6 +158,12 @@ export function CompanyPage() {
         ) : null}
         {activeTab === "news" ? (
           <CompanyNews events={card.events ?? []} company={card.company} />
+        ) : null}
+        {activeTab === "filings" ? (
+          <CompanyFilings
+            filings={card.filings ?? []}
+            company={card.company}
+          />
         ) : null}
         {activeTab === "sources" ? <CompanySources card={card} /> : null}
       </section>

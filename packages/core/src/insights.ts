@@ -173,7 +173,7 @@ export interface RelationView {
 export interface NewsEventView {
   id: string;
   companyId: string;
-  kind: "news" | "profile_event";
+  kind: "news" | "profile_event" | "filing";
   date?: string;
   title: string;
   summary?: string;
@@ -221,6 +221,8 @@ export interface CompanyCard {
     incoming: RelationView[];
   };
   events?: NewsEventView[];
+  /** Official filings/announcements, kept separate from news (P1.4). */
+  filings?: NewsEventView[];
 }
 
 const relationTypeList = z.preprocess(
@@ -284,7 +286,13 @@ export interface ReviewItemView {
   updatedAt?: string;
 }
 
-const includeSection = z.enum(["financials", "facts", "relations", "events"]);
+const includeSection = z.enum([
+  "financials",
+  "facts",
+  "relations",
+  "events",
+  "filings",
+]);
 export type IncludeSection = z.infer<typeof includeSection>;
 const includeList = z.preprocess(
   (value) => {
@@ -306,6 +314,8 @@ export const CompanyCardQuerySchema = z.object({
   fact_limit: z.coerce.number().int().min(1).max(200).default(30),
   relation_limit: z.coerce.number().int().min(1).max(200).default(20),
   event_limit: z.coerce.number().int().min(1).max(100).default(10),
+  /** Official filings list (separate tab); no news dilution. */
+  filing_limit: z.coerce.number().int().min(1).max(200).default(30),
   relation_status: RelationStatusSchema.optional(),
 });
 export type CompanyCardQuery = z.infer<typeof CompanyCardQuerySchema>;

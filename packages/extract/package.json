@@ -18,7 +18,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p ../core/tsconfig.json && tsc -p ../db/tsconfig.json && tsc -p ../ingest/tsconfig.json && tsc -p tsconfig.json && vitest run"
+    "test": "tsc -p ../core/tsconfig.json && tsc -p ../db/tsconfig.json && tsc -p ../sources/filings/tsconfig.json && tsc -p ../ingest/tsconfig.json && tsc -p tsconfig.json && vitest run"
   },
   "dependencies": {
     "@occ/core": "workspace:*",

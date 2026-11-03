@@ -11,6 +11,10 @@ import {
   entitiesCommand,
   USAGE_OPTIONS as ENTITIES_OPTIONS,
 } from "./entities-command.js";
+import {
+  filingsCommand,
+  USAGE_OPTIONS as FILINGS_OPTIONS,
+} from "./filings-command.js";
 import { ingestCommand, USAGE_OPTIONS as INGEST_OPTIONS } from "./ingest-command.js";
 import {
   indicesCommand,
@@ -43,10 +47,12 @@ Usage:
   occ entities coverage [--json]
   occ ownership sync [--market US|HK|all] [--apply] [--limit N] [--days N] [--max-pages N] [--dataset NAME] [--refresh] [--json]
   occ ownership coverage [--json]
+  occ filings sync [--market A|HK|US|all] [--apply] [--company REF] [--limit N] [--days N] [--max-items N] [--sources official|all|...] [--skip-pdf] [--json]
+  occ filings coverage [--json]
   occ snapshots upload|check|list [options]
   occ search <query> [--mode hybrid|keyword|semantic] [--limit N] [--explain] [--json]
   occ documents <query> [--mode ...] [--limit N] [--company ID] [--json]
-  occ company <id-or-ticker> [--include financials,facts,relations,events] [--json]
+  occ company <id-or-ticker> [--include financials,facts,relations,events,filings] [--json]
   occ review list [--status pending] [--kind fact|relation] [--limit N] [--json]
   occ review approve [--ids i1,i2 | --kind fact|relation [--company REF] | --all --yes]
                      [--limit N] [--reviewer NAME] [--dry-run] [--json]
@@ -62,6 +68,7 @@ ${ALIASES_OPTIONS}
 ${INDICES_OPTIONS}
 ${ENTITIES_OPTIONS}
 ${OWNERSHIP_OPTIONS}
+${FILINGS_OPTIONS}
 ${SNAPSHOTS_OPTIONS}
 Environment:
   OCC_API_URL           default http://127.0.0.1:8787
@@ -120,6 +127,9 @@ async function main(): Promise<void> {
       return;
     case "ownership":
       await ownershipCommand(rest);
+      return;
+    case "filings":
+      await filingsCommand(rest);
       return;
     case "snapshots":
       await snapshotsCommand(rest);

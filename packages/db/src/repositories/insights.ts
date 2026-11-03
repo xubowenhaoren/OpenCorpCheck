@@ -378,6 +378,48 @@ export async function listEvents(
     .slice(0, limit);
 }
 
+/**
+ * Official filing events (P1.4). Kept separate from news so a busy news day
+ * cannot push a company's announcements out of the timeline.
+ */
+export async function listFilingEvents(
+  db: Db,
+  companyId: string,
+  limit = 20,
+): Promise<NewsEventView[]> {
+  const rows = await db
+    .select({ document: documents, source: sources })
+    .from(documents)
+    .leftJoin(sources, eq(documents.sourceId, sources.id))
+    .where(
+      and(
+        eq(documents.companyId, companyId),
+        eq(documents.docType, "filing"),
+        eq(documents.isFixture, false),
+      ),
+    )
+    .orderBy(sql`${documents.publishedAt} DESC NULLS LAST`)
+    .limit(limit);
+  return rows.map(({ document, source }) => {
+    const metadata = (document.metadata ?? {}) as Record<string, unknown>;
+    const form = typeof metadata.form === "string" ? metadata.form : undefined;
+    const category =
+      typeof metadata.category === "string" ? metadata.category : undefined;
+    const label = [form, category]
+      .filter((value, index, values) => value && values.indexOf(value) === index)
+      .join(" · ");
+    return {
+      id: document.id,
+      companyId,
+      kind: "filing" as const,
+      date: document.publishedAt?.toISOString(),
+      title: document.title ?? "公告",
+      ...(label ? { summary: label } : {}),
+      source: toSource(source),
+    };
+  });
+}
+
 export async function getCompanyCounts(
   db: Db,
   companyId: string,

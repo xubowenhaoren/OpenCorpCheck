@@ -84,6 +84,14 @@ export function CompanySources({ card }: { card: CompanyCard }) {
         event.quote ?? event.summary,
       );
     }
+    for (const filing of card.filings ?? []) {
+      put(
+        filing.source?.url,
+        filing.source?.title,
+        filing.source?.trustTier,
+        filing.summary ?? filing.title,
+      );
+    }
     for (const relation of [
       ...(card.relations?.incoming ?? []),
       ...(card.relations?.outgoing ?? []),

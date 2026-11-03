@@ -10,6 +10,8 @@ import sys
 from . import __version__, presets
 from .dion import DionScraper
 from .f10 import BrowserManager, F10Scraper, Settings
+from .hkexnews import HkexNewsScraper
+from .pdf import extract_pdf
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,6 +42,17 @@ def build_parser() -> argparse.ArgumentParser:
     dion.add_argument("--days", type=int, default=365)
     dion.add_argument("--max-pages", type=int, default=10)
     dion.add_argument("--out", help="write JSON to this path instead of stdout")
+
+    news = sub.add_parser("hkexnews", help="search HKEXnews announcements")
+    news.add_argument("code", help="HKEX stock code, e.g. 00700")
+    news.add_argument("--days", type=int, default=365)
+    news.add_argument("--max-items", type=int, default=30)
+    news.add_argument("--out", help="write JSON to this path instead of stdout")
+
+    pdf = sub.add_parser("pdf", help="extract text/tables from a local PDF")
+    pdf.add_argument("file", help="path to a PDF")
+    pdf.add_argument("--max-pages", type=int, default=80)
+    pdf.add_argument("--out", help="write JSON to this path instead of stdout")
     return parser
 
 
@@ -97,6 +110,42 @@ async def _run_dion(args: argparse.Namespace) -> int:
     return 1 if result.get("errors") else 0
 
 
+async def _run_hkexnews(args: argparse.Namespace) -> int:
+    settings = Settings.from_env()
+    manager = BrowserManager(settings)
+    scraper = HkexNewsScraper(manager)
+    try:
+        result = await scraper.search(
+            args.code,
+            days=args.days,
+            max_items=args.max_items,
+        )
+    finally:
+        await manager.close()
+    payload = json.dumps(result, ensure_ascii=False, indent=2)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as handle:
+            handle.write(payload + "\n")
+        print(f"wrote {args.out}", file=sys.stderr)
+    else:
+        print(payload)
+    return 1 if result.get("errors") else 0
+
+
+def _run_pdf(args: argparse.Namespace) -> int:
+    with open(args.file, "rb") as handle:
+        data = handle.read()
+    result = extract_pdf(data, max_pages=args.max_pages)
+    payload = json.dumps(result, ensure_ascii=False, indent=2)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as handle:
+            handle.write(payload + "\n")
+        print(f"wrote {args.out}", file=sys.stderr)
+    else:
+        print(payload)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -104,6 +153,10 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_run_scrape(args))
     if args.command == "dion":
         return asyncio.run(_run_dion(args))
+    if args.command == "hkexnews":
+        return asyncio.run(_run_hkexnews(args))
+    if args.command == "pdf":
+        return _run_pdf(args)
     if args.command == "serve":
         import uvicorn
 

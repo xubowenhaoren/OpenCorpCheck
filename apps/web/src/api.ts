@@ -104,18 +104,20 @@ export function getCompanyCard(
     factLimit?: number;
     relationLimit?: number;
     eventLimit?: number;
+    filingLimit?: number;
     relationStatus?: string;
   } = {},
 ): Promise<{ data: CompanyCard; meta: CompanyCardMeta }> {
   return request<{ data: CompanyCard; meta: CompanyCardMeta }>(
     `/v1/companies/${encodeURIComponent(ref)}`,
     {
-      include: options.include ?? "financials,facts,relations,events",
+      include: options.include ?? "financials,facts,relations,events,filings",
       financial_limit: options.financialLimit ?? 200,
       financial_period_kind: options.financialPeriodKind,
       fact_limit: options.factLimit ?? 200,
       relation_limit: options.relationLimit ?? 200,
       event_limit: options.eventLimit ?? 100,
+      filing_limit: options.filingLimit ?? 100,
       relation_status: options.relationStatus,
     },
   );

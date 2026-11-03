@@ -3,15 +3,15 @@
 **Open, agentic company intelligence for NASDAQ-100 · S&P 500 · CSI A500 · Hang Seng Index · ChiNext 50.**
 
 > Status: 2026-11-02 — search, company pages (profile / financials / relationship
-> graph / news / sources), automatic news refresh + task dock, all five index
+> graph / news / filings / sources), automatic news refresh + task dock, all five index
 > pages (NDX/SPX/A500/HSI/CYB50), `occ` CLI, MCP server, and the DeepSeek
 > Harness ACP sidebar. **P1.1 A500/SPX placeholder pages, P1.2 sector + entity
-> resolution, P1.3 US 13F + HKEX DION ownership and the P1.3 dense-graph UI
-> follow-up are shipped** (850 searchable stubs; 235/236 researched companies
-> have a canonical sector; 13,009 US 13F + 90 HKEX DION ownership edges; the
-> graph defaults to the top 10 holders with an「其他机构」cluster). The active
-> roadmap (official filing adapters, daily refresh) is in
-> [`CONTEXT_TRANSFER.md`](CONTEXT_TRANSFER.md) §10.
+> resolution, P1.3 US 13F + HKEX DION ownership, the P1.3 dense-graph UI
+> follow-up, and P1.4 official filing adapters are shipped** (850 searchable
+> stubs; 235/236 researched companies have a canonical sector; 13,009 US 13F +
+> 90 HKEX DION ownership edges; SEC EDGAR + CNINFO + HKEXnews filing discovery
+> with PDF text/tables and a separate 公告文件 tab). The active roadmap (daily
+> refresh) is in [`CONTEXT_TRANSFER.md`](CONTEXT_TRANSFER.md) §10.
 
 OpenCorpCheck is an open-source, AI-native alternative to commercial company-intelligence
 products (the "企查查" category). It builds a cited, queryable profile for every company in

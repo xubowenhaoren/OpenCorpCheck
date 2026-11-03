@@ -6,6 +6,9 @@ by browsers. Keep it on the private network.
 
 from __future__ import annotations
 
+import asyncio
+import base64
+import binascii
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
@@ -15,14 +18,20 @@ from fastapi import FastAPI, HTTPException
 from . import __version__, presets
 from .dion import DionScraper
 from .f10 import F10Scraper, Settings
+from .hkexnews import HkexNewsError, HkexNewsScraper
 from .models import (
     DionRequest,
     DionResponse,
     HealthResponse,
+    HkexNewsRequest,
+    HkexNewsResponse,
     PagesResponse,
+    PdfExtractRequest,
+    PdfExtractResponse,
     ScrapeRequest,
     ScrapeResponse,
 )
+from .pdf import PdfError, extract_pdf
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +42,7 @@ logger = logging.getLogger(__name__)
 settings = Settings.from_env()
 scraper = F10Scraper(settings)
 dion_scraper = DionScraper(scraper.browser_manager)
+hkex_news_scraper = HkexNewsScraper(scraper.browser_manager)
 
 
 @asynccontextmanager
@@ -104,3 +114,37 @@ async def dion_notices(request: DionRequest) -> DionResponse:
         max_pages=request.max_pages,
     )
     return DionResponse(**result)
+
+
+@app.post("/v1/hkexnews/search", response_model=HkexNewsResponse)
+async def hkexnews_search(request: HkexNewsRequest) -> HkexNewsResponse:
+    """Listed-company announcement titles + PDF links for one HKEX code."""
+    try:
+        result = await hkex_news_scraper.search(
+            request.code,
+            days=request.days,
+            max_items=request.max_items,
+        )
+    except HkexNewsError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return HkexNewsResponse(**result)
+
+
+@app.post("/v1/pdf/extract", response_model=PdfExtractResponse)
+async def pdf_extract(request: PdfExtractRequest) -> PdfExtractResponse:
+    """Extract page text and tables from an official filing PDF."""
+    try:
+        data = base64.b64decode(request.base64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"invalid base64: {exc}") from exc
+    if len(data) > 30 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="PDF exceeds the 30 MB cap")
+    try:
+        result = await asyncio.to_thread(
+            extract_pdf,
+            data,
+            max_pages=request.max_pages,
+        )
+    except PdfError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return PdfExtractResponse(**result)

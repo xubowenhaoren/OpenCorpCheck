@@ -1,0 +1,26 @@
+{
+  "name": "@occ/sources-filings",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic official filing adapters (SEC EDGAR, CNINFO, HKEXnews, IR RSS, GDELT)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.json && vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "5.9.3",
+    "vitest": "^5.0.5"
+  }
+}

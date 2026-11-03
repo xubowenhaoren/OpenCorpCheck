@@ -111,13 +111,17 @@ export function CompanyNews({
             <div>
               <div className="news-title">{event.title}</div>
               <div className="news-sub">
-                {event.kind === "news"
+                {event.kind === "filing"
                   ? lang === "zh"
-                    ? "新闻"
-                    : "News"
-                  : lang === "zh"
-                    ? "公司大事"
-                    : "Company event"}
+                    ? "公告"
+                    : "Filing"
+                  : event.kind === "news"
+                    ? lang === "zh"
+                      ? "新闻"
+                      : "News"
+                    : lang === "zh"
+                      ? "公司大事"
+                      : "Company event"}
                 {event.source?.title ? ` · ${event.source.title}` : ""}
               </div>
             </div>

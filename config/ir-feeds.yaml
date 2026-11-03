@@ -1,0 +1,16 @@
+# Company IR / newsroom RSS or Atom feeds (P1.4).
+#
+# Keys are canonical tickers (upper-case). These are link-only sources: we keep
+# the title, summary and publication date and always link to the original page.
+# Only add feeds whose robots/terms allow this kind of use. `occ filings sync
+# --sources ir-rss` reads this file; the default official-only run ignores it.
+#
+#   TICKER:
+#     url: https://example.com/investors/rss
+#     source_name: Example IR
+#     language: en   # or zh
+feeds:
+  AAPL:
+    url: https://www.apple.com/newsroom/rss-feed.rss
+    source_name: Apple Newsroom
+    language: en

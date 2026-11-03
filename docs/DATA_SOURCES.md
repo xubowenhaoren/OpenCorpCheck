@@ -34,11 +34,13 @@ must change before it becomes a database source, and the licensing constraints.
 **Current adapter coverage (2026-11-02):** implemented = SEC EDGAR XBRL,
 Eastmoney F10 (A/HK), Google News RSS, the **P1.2 entity spine**
 (Eastmoney F10 profile sectors + ISIN/USCC, SEC EDGAR SIC/LEI/EIN, GLEIF LEI
-parent lookup, Wikidata exact-label QID), and the **P1.3 ownership layer**
-(US SEC Form 13F-HR data sets + HKEX DION substantial-shareholder notices).
-**Planned P1.4** = CNINFO/SSE/SZSE announcements, HKEXnews + PDF, company IR
-RSS, GDELT. See [ENTITY.md](ENTITY.md) for the taxonomy, identifier precedence
-and commands, and [OWNERSHIP.md](OWNERSHIP.md) for 13F/DION.
+parent lookup, Wikidata exact-label QID), the **P1.3 ownership layer**
+(US SEC Form 13F-HR data sets + HKEX DION substantial-shareholder notices),
+and the **P1.4 filing layer** (SEC EDGAR submissions, CNINFO A-share
+announcements, HKEXnews title search, company IR RSS, GDELT; PDF text/table
+extraction through the sidecar). See [ENTITY.md](ENTITY.md) for the taxonomy,
+identifier precedence and commands, [OWNERSHIP.md](OWNERSHIP.md) for
+13F/DION, and [FILINGS.md](FILINGS.md) for P1.4.
 
 ### 2.1 Index constituent snapshots
 
@@ -83,6 +85,17 @@ and commands, and [OWNERSHIP.md](OWNERSHIP.md) for 13F/DION.
   the notice link + quoted percentage. Both are additive `invests_in` edges
   with evidence and a pending review item; counterparties outside `companies`
   are counted, never created. See [OWNERSHIP.md](OWNERSHIP.md).
+- **Filings (implemented 2026-11-02).** US = **SEC EDGAR submissions**
+  (8-K/10-K/10-Q/20-F/40-F/6-K/proxy/SC 13D/G; routine Form 3/4/5, 144, 13F
+  and N-PORT excluded). A-share = **CNINFO** announcement history, the
+  CSRC-designated platform covering both SSE and SZSE; the `orgId` is resolved
+  through CNINFO top-search (not always derivable from the ticker). HK =
+  **HKEXnews** title search through the Playwright sidecar. Optional
+  link-only **IR RSS** and **GDELT**. Filing PDFs are cached under
+  `.occ/filings/` with SHA-256 and parsed by `pdfplumber` (text + tables,
+  page provenance) at 0 LLM tokens. `doc_type='filing'` documents feed the
+  separate 公告文件 tab and the `/v1/companies/:id?include=filings` block.
+  See [FILINGS.md](FILINGS.md).
 - **STAR 50** (`000688`, SSE) is deferred backfill and out of the current
   plan.
 - **Structured financial statements (implemented 2026-11-01, US cleanup done
@@ -103,8 +116,11 @@ Detection is deterministic, not agentic: poll the SEC EDGAR `submissions`
 index, the CNINFO announcement query, HKEXnews title search and (fallback) the
 F10 `cwfx` page hash; diff by accession/announcement ID or content hash. A new
 periodic report enqueues the existing `financials.company` pipeline; an
-announcement goes through the P1.4 adapter. **0 LLM tokens.** See
-[CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §10 P1.5.
+announcement goes through the P1.4 adapters and `ingestFilings`. **0 LLM
+tokens.** P1.4 already ships the adapters and the `documents` writer; P1.5 adds
+`company_filing_state`, the `filings` detection table and the daily sweep.
+See [CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §10 P1.5 and
+[FILINGS.md](FILINGS.md).
 
 An **optional agent fallback** (source discovery, unmapped table, conflict
 explanation, on-demand summary) is P2, not committed, and must be
@@ -122,7 +138,7 @@ interface instead of rewriting the hard-won URL/scroll logic.
 | `scripts/aif10_scraper.py` | Eastmoney F10 (A/HK/US): 16/12/5 pages — financial analysis, operating analysis, company profile, shareholders, events, research reports, peer comparison, dividends, capital operations, management | **Done** — A/HK structured layer; US pages unused | JSON output, table extraction, retries, snapshots, page presets |
 | `scripts/edgar_scraper.py` | SEC full-text search + submissions + filing text | **Done** — EDGAR XBRL in `packages/extract/src/financials/edgar-xbrl.ts` | `companyfacts` XBRL, 10 req/s limiter, `ifrs-full` |
 | `scripts/hkex_di_scraper.py` | HKEX DION substantial-shareholder notices (buy/sell, shares, avg price, holdings) | **P1.3 planned** — ownership edges | JSON output, retries, entity match |
-| `scripts/hkex_news_scraper.py` | HKEXnews announcement titles + PDF links | **P1.4 planned** — announcement discovery | Follow PDF links, parse, dedupe |
+| `scripts/hkex_news_scraper.py` | HKEXnews announcement titles + PDF links | **Done 2026-11-02 (P1.4)** — `services/finance-analyst` `POST /v1/hkexnews/search`; `packages/sources/filings` | Follow PDF links with `pdfplumber`; link + page provenance |
 | `scripts/market_utils.py` | Market detection, trading-hours warnings, financial-statement keyword maps, DCF field extraction | Reference only | Do not rely on string matching for canonical facts |
 | `scripts/wrappers_mcp.py` (`a_share_comprehensive`) | AkShare A-share indicators, valuation, forecasts, dividends | Optional, not planned | AkShare/Eastmoney reliability issues; treat as fallback |
 | `scripts/futu_mcp.py` | Moomoo/OpenD 110+ tools (quotes, valuation, institutional holdings, revenue breakdown, short interest) | **No — post-v1** | Requires OpenD daemon + China IP |

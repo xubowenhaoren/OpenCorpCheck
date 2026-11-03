@@ -235,6 +235,9 @@ importers:
       '@occ/sources-entity':
         specifier: workspace:*
         version: link:../../packages/sources/entity
+      '@occ/sources-filings':
+        specifier: workspace:*
+        version: link:../../packages/sources/filings
       '@occ/sources-ownership':
         specifier: workspace:*
         version: link:../../packages/sources/ownership
@@ -244,6 +247,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -458,6 +464,9 @@ importers:
       '@occ/retrieval':
         specifier: workspace:*
         version: link:../retrieval
+      '@occ/sources-filings':
+        specifier: workspace:*
+        version: link:../sources/filings
       '@occ/sources-news':
         specifier: workspace:*
         version: link:../sources/news
@@ -552,6 +561,18 @@ importers:
       zod:
         specifier: ^4.6.7
         version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: 24.19.2
+        version: 24.19.2
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2)(yaml@2.9.1))
+
+  packages/sources/filings:
     devDependencies:
       '@types/node':
         specifier: 24.19.2

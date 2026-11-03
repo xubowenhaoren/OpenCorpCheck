@@ -16,6 +16,7 @@ import {
   getCompanyCounts,
   listEvents,
   listFacts,
+  listFilingEvents,
   listFinancialFacts,
   listIndexCompanyIds,
   listRelations,
@@ -25,7 +26,13 @@ import {
   type Db,
 } from "@occ/db";
 
-const ALL_SECTIONS = ["financials", "facts", "relations", "events"] as const;
+const ALL_SECTIONS = [
+  "financials",
+  "facts",
+  "relations",
+  "events",
+  "filings",
+] as const;
 
 const EXCHANGE_MARKET: Record<string, string> = {
   SSE: "A",
@@ -77,7 +84,7 @@ export class CompanyService {
 
     const include = new Set(query.include ?? ALL_SECTIONS);
     const counts = await getCompanyCounts(this.db, companyId);
-    const [financials, facts, relations, events] = await Promise.all([
+    const [financials, facts, relations, events, filings] = await Promise.all([
       include.has("financials")
         ? listFinancialFacts(this.db, companyId, {
             limit: query.financial_limit,
@@ -98,6 +105,9 @@ export class CompanyService {
         : Promise.resolve(undefined),
       include.has("events")
         ? listEvents(this.db, companyId, query.event_limit)
+        : Promise.resolve(undefined),
+      include.has("filings")
+        ? listFilingEvents(this.db, companyId, query.filing_limit)
         : Promise.resolve(undefined),
     ]);
 
@@ -157,6 +167,7 @@ export class CompanyService {
           }
         : {}),
       ...(events ? { events } : {}),
+      ...(filings ? { filings } : {}),
     };
   }
 

@@ -6,10 +6,11 @@ the OpenCorpCheck ingestion layer. It replaces the ad-hoc
 (Apache-2.0), keeping its navigation approach and fixing the limits that made it
 unusable as a data source.
 
-**Scope:** A, HK and US F10 pages. **Not** an official filing source: use
-CNINFO / HKEXnews / SEC EDGAR for citation-grade documents and F10 for coverage
-and cross-checks. Eastmoney data is proprietary — internal research with
-attribution only, never bulk redistribution.
+**Scope:** A, HK and US F10 pages, plus two P1.4 filing helpers: HKEXnews
+announcement search and deterministic PDF text/table extraction. F10 is still a
+coverage layer; use CNINFO / HKEXnews / SEC EDGAR for citation-grade documents.
+Eastmoney data is proprietary — internal research with attribution only, never
+bulk redistribution.
 
 ## What changed vs. the original scraper
 
@@ -96,6 +97,42 @@ holdings, percent, event_date, detail URL) and `errors[]`. The TypeScript
 `@occ/sources-ownership` planner uses only the `(L)` long-position line.
 `OCC_DION_TIMEOUT_MS`, `OCC_DION_SETTLE_MS`, `OCC_DION_MAX_PAGES` and
 `OCC_DION_RATE_PER_SEC` tune it.
+
+### HKEXnews (P1.4)
+
+The public title-search page is a JSF form; the old plain-HTTP servlet now
+returns an empty result set. This sidecar drives the normal search form with
+Playwright and reads the server-rendered result table:
+
+```bash
+uv run occ-f10 hkexnews 00700 --days 365 --max-items 30
+curl -s -X POST localhost:8090/v1/hkexnews/search \
+  -H 'content-type: application/json' \
+  -d '{"code":"00700","days":365,"max_items":30}' | jq '.total_records, .items[0]'
+```
+
+Response: `code`, `name`, `from_date`, `to_date`, `total_records`, `returned`,
+`truncated`, `items[]` (`date`, `stock_code`, `stock_name`, `category`,
+`title`, PDF `url`, `size`) and `errors[]`. Tune with
+`OCC_HKEXNEWS_TIMEOUT_MS`, `OCC_HKEXNEWS_SETTLE_MS` and
+`OCC_HKEXNEWS_RATE_PER_SEC` (default 1 req/s).
+
+### PDF extraction (P1.4)
+
+`pdfplumber` extracts page text and tables from filing PDFs. The TypeScript
+adapter posts base64 bytes; no LLM is involved.
+
+```bash
+uv run occ-f10 pdf /tmp/announcement.pdf --max-pages 80
+curl -s -X POST localhost:8090/v1/pdf/extract \
+  -H 'content-type: application/json' \
+  -d "{\"base64\":\"$(base64 < /tmp/announcement.pdf | tr -d '\\n')\",\"max_pages\":80}" \
+  | jq '.page_count, .pages[0].text'
+```
+
+Caps: 30 MB input, 80 pages by default (hard max 200), 20k chars/page,
+20 tables/page, 200 rows/table. `truncated` and `warnings[]` are explicit. A
+scanned/image-only PDF yields empty text; the TS layer stores it link-only.
 
 `storage_key` is `f10/{market}/{code}/{page}/{sha256}.html`, ready for MinIO in
 P2. Set `F10_SNAPSHOT_DIR` to also write HTML/text snapshots locally (gitignored).

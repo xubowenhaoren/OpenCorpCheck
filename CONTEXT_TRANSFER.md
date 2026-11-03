@@ -3,19 +3,18 @@
 > Handoff: **2026-11-02**. Current state: foundations through the web UI are
 > complete; automatic news refresh, US EDGAR-only structured financials, the
 > Financials tab, HSI, ChiNext 50, **P1.1 A500/SPX placeholders**, **P1.2
-> sector + entity resolution**, **P1.3 US 13F + HKEX DION ownership** and the
-> **P1.3 dense-graph UI follow-up** are shipped. **The next task is P1.4
-> (official filing adapters); P1.5 remains in §10 and P2 is deferred.** Backfill
-> is out of scope for the current plan.
+> sector + entity resolution**, **P1.3 US 13F + HKEX DION ownership**, the
+> **P1.3 dense-graph UI follow-up**, and **P1.4 official filing adapters** are
+> shipped. **The next task is P1.5 (daily company-data/financial-report
+> refresh); P2 is deferred.** Backfill is out of scope for the current plan.
 >
 > The old 1,394-line document is preserved verbatim in
 > [`context_transfer_history.md`](context_transfer_history.md).
 >
-> **Next agent:** start with **§10 P1.4 — Official filing adapters**. The
-> GOOGL/NVDA/AAPL/BLK hairball is fixed in the web UI (top-10 default +
-> 「其他机构」cluster, two-ring layout, collision-aware labels, low-emphasis
-> 13F edges; see §10 and [docs/UI.md](docs/UI.md) §7.4.1). Do not start P1.5
-> before P1.4 is accepted.
+> **Next agent:** start with **§10 P1.5 — daily company-data / financial-report
+> refresh**. P1.4 ships the discovery adapters and `ingestFilings`; P1.5 adds
+> `company_filing_state`/`filings`, the daily sweep and the automatic
+> `financials.company` enqueue. See [docs/FILINGS.md](docs/FILINGS.md).
 >
 > **Machine constraint:** macOS VM, no Docker. P2 delivery/packaging
 > (Docker/Electron/hosted demo/CI/observability) is deferred. Development uses
@@ -34,10 +33,11 @@
 > **Current state:** foundations through the web UI are complete. Automatic
 > news refresh, structured financials (US EDGAR-only), the Financials tab,
 > HSI, ChiNext 50, the **A500/SPX placeholder layer**, **P1.2 sector +
-> entity resolution**, **P1.3 US 13F + HKEX DION ownership** and the **P1.3
-> dense-graph UI follow-up** are shipped. **Next: P1.4 official filing
-> adapters (see §10).** Backfill and delivery/engineering quality are out of
-> scope for the current P1 plan.
+> entity resolution**, **P1.3 US 13F + HKEX DION ownership**, the **P1.3
+> dense-graph UI follow-up**, and **P1.4 official filing adapters** are
+> shipped. **Next: P1.5 daily company-data/financial-report refresh (see
+> §10).** Backfill and delivery/engineering quality are out of scope for the
+> current P1 plan.
 >
 > **Corpus:** 1,086 non-fixture companies — 236 researched (NDX 100, HSI
 > 85, CYB50 50, plus the discovered set) and **850 A500/SPX searchable
@@ -49,7 +49,9 @@
 > is `HK:00823` 领展房地产投资信托基金, F10 `EmptyRender`); 12 dual-listed
 > A/HK stubs were merged into their researched HK company with an audited
 > merge log. **P1.3:** 503 CUSIP identifiers, 13,009 US 13F edges, and 90
-> HKEX DION edges.
+> HKEX DION edges. **P1.4:** 6 filing documents in the acceptance sample
+> (AAPL 2, 600519 2, 00700 2), 123 chunks; the adapters are operator-run and
+> full-universe ingestion is an explicit batch, not automatic.
 >
 > | Index | Constituents | Memberships | Structured financials | Status |
 > |---|---|---|---|---|
@@ -68,20 +70,21 @@
 > **1,757 index memberships** (SPX refreshed to `2026-10-30`), 1,109
 > securities, 4,888 aliases, **2,994 identifiers** (incl **503 CUSIP**, 183
 > LEI, 186 ISIN, 64 USCC, 98 Wikidata QID); **13,186 pending review items**
-> (13,009 13F + 90 DION + 87 pre-existing).
+> (13,009 13F + 90 DION + 87 pre-existing); **6 filing documents / 123 chunks**
+> (P1.4 acceptance sample: AAPL, 600519, 00700).
 > **Known content gaps:** 1 researched company has `sector = null`
-> (`HK:00823` 领展, F10 `EmptyRender`); **CNINFO/HKEXnews adapters and the daily
-> filing refresh are P1.4/P1.5**; 13F issuer name variants/ADRs without a CUSIP
-> under-match by design (exact names only). P1.2 GLEIF parent coverage is
+> (`HK:00823` 领展, F10 `EmptyRender`); **P1.4 filing adapters are shipped but
+> the daily filing refresh is P1.5**; 13F issuer name variants/ADRs without a
+> CUSIP under-match by design (exact names only). P1.2 GLEIF parent coverage is
 > sparse (see §5). Stubs intentionally have no profile, documents, financials,
 > chunks or embeddings.
 >
-> **Running (2026-11-02, rebuilt for P1.3):**
+> **Running (2026-11-02, rebuilt for P1.4):**
 > - API `node apps/api/dist/server.js` on `:8787`
 > - Vite `corepack pnpm --filter @occ/web dev` on `:5173`
 > - persistent news worker: `scripts/dev-news-worker.sh start` (pid in
 >   `.occ/news-worker.pid`, log `.occ/news-worker.log`)
-> - F10 + DION sidecar `:8090` (`occ-f10 serve`), Postgres `:5432`,
+> - F10 + DION + HKEXnews/PDF sidecar `:8090` (`occ-f10 serve`), Postgres `:5432`,
 >   Qdrant `:6333`, embeddings `:8080`
 > - no research/financials worker, no NIM gateway (official DeepSeek default)
 >
@@ -89,10 +92,11 @@
 > 0 failed, 8m59s; 232 `ok` / 4 `empty`; 3,237 new articles; 0 LLM tokens;
 > history kept 3 days; next due ≈ +23 h.
 >
-> **Tests/build:** all green — API 33, web 33, worker 40, extract 42, ingest
-> 46, agent 17, CLI 7, retrieval 10, db 9, storage 5, sources (F10 9 + news 9),
-> entity 29, **ownership 17** (**306 total**). Web bundle 425.96 KB (gzip
-> 130.93 KB). Python DION tests: 6. Run tests serially:
+> **Tests/build:** all green — API 33, web 43, worker 40, extract 42, ingest
+> 48, agent 17, CLI 7, retrieval 10, db 9, storage 5, sources (F10 9 + news 9),
+> entity 29, ownership 17, **filings 18** (**337 total**). Web bundle 436.58 KB
+> (gzip 134.56 KB); CSS 54.20 KB (gzip 10.69 KB). Python: **30** (F10/API,
+> DION, PDF, HKEXnews). Run tests serially:
 > `corepack pnpm -r --workspace-concurrency=1 test`.
 >
 > **Recent commits:** `03449da` P1.3 US 13F + HKEX DION ownership;
@@ -102,7 +106,8 @@
 > US EDGAR-only + Financials tab; `771490c` news sweep daily. Migrations
 > `0008_global_news_last_update.sql`, `0009_entity_merge_log.sql` and
 > `0010_relation_metadata.sql` are applied; run
-> `node apps/cli/dist/occ.js migrate` after pulling schema changes.
+> `node apps/cli/dist/occ.js migrate` after pulling schema changes. P1.4 adds
+> **no migration**.
 
 ### 0.1 Monitor commands
 
@@ -116,6 +121,8 @@ curl -s 'http://127.0.0.1:8787/v1/news/status?company=AAPL'
 node apps/cli/dist/occ.js ownership coverage
 node apps/cli/dist/occ.js ownership sync --market US          # dry run
 node apps/cli/dist/occ.js ownership sync --market HK --limit 3 --days 365
+node apps/cli/dist/occ.js filings coverage
+node apps/cli/dist/occ.js filings sync --market US --company AAPL --days 90   # dry run
 
 psql postgres://occ@127.0.0.1:5432/occdb -c \
   "select extractor_version,status,count(*) from relations group by 1,2 order by 3 desc;"
@@ -135,6 +142,9 @@ psql postgres://occ@127.0.0.1:5432/occdb -c \
      where index_code in ('A500','SPX') group by 1,2 order by 1,2;"
 psql postgres://occ@127.0.0.1:5432/occdb -c \
   "select status,count(*) from company_research_state group by 1;"
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select metadata->>'source' src, metadata->>'market' market, count(*)
+     from documents where doc_type='filing' group by 1,2 order by 3 desc;"
 ```
 
 ### 0.2 What “normal” looks like
@@ -147,6 +157,12 @@ psql postgres://occ@127.0.0.1:5432/occdb -c \
 - **Structured financials are deterministic and LLM-free.** US = SEC EDGAR
   XBRL only; A/HK = F10. Derived cells (`计算：`) are marked `推导` and must
   not be rendered as reported lines.
+- **Filings are deterministic and LLM-free** (P1.4). Discovery comes from SEC
+  EDGAR submissions, CNINFO (A, covering SSE+SZSE) and HKEXnews (sidecar);
+  PDFs are parsed by `pdfplumber` with page provenance. `doc_type='filing'`
+  documents appear in a separate 公告文件 tab, not mixed into news. These
+  adapters are operator-invoked (`occ filings sync`); the daily check is
+  P1.5.
 - **News is automatic and LLM-free.** A daily sweep + the lazy
   `/v1/news/status` trigger keep the corpus fresh; the UI has no refresh
   control. If the dock shows `排队中`, the news worker is not running. The
@@ -225,6 +241,14 @@ A500/SPX stubs; plus the AI watchlist):
   dual-listed A/HK stubs through the structured `H股代码`. Migration
   `0009_entity_merge_log.sql` records every merge. See
   [docs/ENTITY.md](docs/ENTITY.md).
+- **P1.4 (2026-11-02)**: deterministic official filing layer.
+  `@occ/sources-filings` discovers SEC EDGAR submissions, CNINFO A-share
+  announcements (SSE + SZSE), HKEXnews titles (Playwright sidecar), optional
+  IR RSS and GDELT. `occ filings sync|coverage` writes `doc_type='filing'`
+  documents, page-numbered chunks, Qdrant points and a separate 公告文件
+  block; PDF text/tables are extracted by `pdfplumber` (`POST
+  /v1/pdf/extract`). No LLM, no schema migration. See
+  [docs/FILINGS.md](docs/FILINGS.md).
 - **P1.3 (2026-11-02)**: deterministic ownership layer. `@occ/sources-ownership`
   streams SEC Form 13F data sets (13F-HR only; filer by CIK, issuer by CUSIP
   with an exact-name fallback; options/non-share rows skipped) and the HKEX
@@ -340,7 +364,7 @@ OpenCorpCheck/
     aliases/zh.yaml                # curated Chinese aliases
   docs/
     ARCHITECTURE.md  SEARCH.md  EVAL.md  DATA_SOURCES.md  PRIOR_ART.md
-    UI.md  EXTRACT.md  AGENT.md  NEWS.md  ENTITY.md  OWNERSHIP.md
+    UI.md  EXTRACT.md  AGENT.md  NEWS.md  ENTITY.md  OWNERSHIP.md  FILINGS.md
   apps/
     web/                           # React 19 + Vite 8 consumer UI
     api/                           # Hono + Zod API, SSE agent, OpenAPI
@@ -358,6 +382,7 @@ OpenCorpCheck/
     sources/eastmoney-f10/         # F10 adapter
     sources/entity/                # sector taxonomy, F10/EDGAR profiles, GLEIF, Wikidata
     sources/ownership/             # US 13F data sets, HKEX DION planner, ZIP reader
+    sources/filings/               # EDGAR/CNINFO/HKEXnews/RSS/GDELT + PDF client (P1.4)
     sources/news/                  # Google News RSS adapter
   services/
     finance-analyst/               # Python sidecar: A/HK/US F10 (uv + Playwright)
@@ -403,6 +428,15 @@ node apps/cli/dist/occ.js ownership sync --market US [--apply] [--limit N] [--da
 node apps/cli/dist/occ.js ownership sync --market HK [--apply] [--limit N] [--days 365] [--max-pages 10]
 node apps/cli/dist/occ.js ownership coverage [--json]
 
+# P1.4 official filings (dry-run by default; --apply fetches PDFs + indexes)
+node apps/cli/dist/occ.js filings sync --market US --company AAPL --days 90 --max-items 5
+node apps/cli/dist/occ.js filings sync --market all --limit 5 --max-items 5 --apply
+node apps/cli/dist/occ.js filings sync --market A --company 600519 --days 180 --skip-pdf --apply
+node apps/cli/dist/occ.js filings coverage [--json]
+#   default excludes A500/SPX stubs; --include-stubs opts in
+#   --sources official|all|edgar,cninfo,hkexnews,ir-rss,gdelt
+#   --skip-pdf, --full-text (EDGAR HTML), --max-pages N, --refresh, --skip-index
+
 # optional F10 sidecar
 cd services/finance-analyst && uv run occ-f10 serve --port 8090
 
@@ -438,6 +472,10 @@ Key env:
 | `OCC_DION_SETTLE_MS` | `1500` (P1.3) |
 | `OCC_DION_MAX_PAGES` | `10` (P1.3) |
 | `OCC_DION_RATE_PER_SEC` | `1.0` (P1.3; keep polite) |
+| `OCC_FILINGS_DIR` | `.occ/filings` (P1.4 raw PDFs + extraction JSON) |
+| `OCC_IR_FEEDS` | `config/ir-feeds.yaml` (P1.4 opt-in IR feeds) |
+| `OCC_HKEXNEWS_TIMEOUT_MS` / `_SETTLE_MS` | `60000` / `1500` (P1.4) |
+| `OCC_HKEXNEWS_RATE_PER_SEC` | `1.0` (P1.4; sidecar serializes searches) |
 | `OCC_GLEIF_BASE_URL` | `https://api.gleif.org/api/v1` (P1.2) |
 | `OCC_WIKIDATA_API_URL` | `https://www.wikidata.org/w/api.php` (P1.2) |
 | `OCC_NEWS_SWEEP` | on; `none` disables the automatic sweep (no public refresh control) |
@@ -472,8 +510,8 @@ Pages:
   and open the placeholder page (no graph action). Short Chinese queries with
   no exact/alias/fuzzy hit and a low dense score show “没找到 + 问助手” instead
   of unrelated vector neighbours.
-- `/c/:ref` — ticker, slug, Chinese alias or ULID. Five tabs:
-  基本资料 / 财务数据 / 关系图谱 / 新闻动态 / 资料来源. A `stub` company
+- `/c/:ref` — ticker, slug, Chinese alias or ULID. Six tabs:
+  基本资料 / 财务数据 / 关系图谱 / 新闻动态 / 公告文件 / 资料来源. A `stub` company
   returns a **dedicated read-only placeholder page** (no tabs, no follow/agent
   CTA): names, ticker/exchange, market, index membership + weight, and a
   neutral “尚未收录 / 数据由运营侧批量补充” note.
@@ -490,6 +528,10 @@ Pages:
   - Graph: 1/2 hops, type filter, verified-only, graph/list toggle, zoom/drag,
     node/edge inspector with evidence quote + source, empty state.
   - News: timeline with source popovers.
+  - Filings (P1.4): official announcements in a separate tab, newest first;
+    each row shows date/title/form-category and a **来源** button that opens
+    the original PDF or SEC filing page. Kept separate from News so a busy
+    news day cannot bury announcements.
   - Sources: grouped by trust tier, deduped, copy-all-citations.
 - **Top-nav TaskDock** (2026-11-01): last control after `EN` / 深色. Collapsed
   34 px ring with the active sweep's progress and a count badge; expanded card
@@ -553,6 +595,12 @@ Known limitations:
   asset managers; out-of-universe filers/issuers are counted, never created.
   A/HK F10 top-10 edges and the GLEIF parent edge remain additive and
   unchanged. See [OWNERSHIP.md](OWNERSHIP.md). Do not fake edges in the UI.
+- **Filings are an operator-run layer (P1.4):** the acceptance sample has
+  6 documents / 123 chunks (AAPL, 600519, 00700). Discovery is official-first
+  (EDGAR/CNINFO/HKEXnews) and PDF extraction is deterministic; EDGAR HTML is
+  link-only unless `--full-text`. There is **no daily filing sweep** until
+  P1.5, and A500/SPX stubs are excluded unless `--include-stubs`. See
+  [FILINGS.md](FILINGS.md).
 - **Sector coverage is complete except one HK REIT:** 235/236 researched
   companies have a canonical 11-sector value (`信息技术` … `房地产`); the only
   gap is `HK:00823` 领展房地产投资信托基金 (F10 `EmptyRender`, same documented
@@ -850,6 +898,17 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
   `invests_in` edges with `relations.metadata`, evidence and a pending review
   item; `ownership_sync_runs` stores the last report per market. Deterministic,
   0 LLM tokens. See [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
+- **Filings (P1.4, 2026-11-02)**: `packages/sources/filings` discovers SEC
+  EDGAR submissions, CNINFO announcements (SSE + SZSE), HKEXnews titles via
+  the Playwright sidecar, optional IR RSS and GDELT. `occ filings sync` writes
+  `documents` with `doc_type='filing'`, page-numbered chunks and Qdrant
+  points; PDFs are cached under `.occ/filings/` and parsed by `pdfplumber`
+  (`POST /v1/pdf/extract`) with text + tables and page provenance. Dedupe is
+  `(companyId, source, externalId, canonicalUrl)` + content hash; reruns
+  insert 0. A failed/skipped Qdrant index leaves `metadata.indexed=false` and
+  the next normal run retries it.
+  Deterministic, 0 LLM tokens, no migration. See
+  [docs/FILINGS.md](docs/FILINGS.md).
 - **Structured financial statements** (`apps/worker/src/financials/` +
   `packages/extract/src/financials/`): `financials.company` fetches F10
   `cwfx` (HK `NewFinancialAnalysis`) for **A/HK only** and SEC EDGAR
@@ -1162,6 +1221,43 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     per-source Chinese/English labels; unknown extractors fall back to
     `已报告`. Relations sort by confidence then `amount` so the largest
     holdings surface first.
+57. **Filings are documents, not facts** (decision 2026-11-02): a P1.4 filing
+    is a `documents` row (`doc_type='filing'`) with `sources` provenance,
+    page-numbered `chunks` and Qdrant points. It does **not** enter the review
+    queue and does not write `facts`; the document itself is the evidence.
+    `metadata.source/externalId/form/category/pdfUrl/linkOnly/pages/warnings`
+    carry the source-specific provenance. No migration.
+58. **CNINFO is the A-share adapter for both boards** (decision 2026-11-02):
+    CNINFO is the CSRC-designated disclosure platform for SSE and SZSE; one
+    adapter covers both and links the exchange-published PDFs. The `orgId` is
+    resolved through `new/information/topSearch/query` (form-encoded), because
+    it is not always derivable from the ticker (e.g. 601318 → `9900002221`).
+    Do not add direct SSE/SZSE scrapers unless CNINFO coverage proves
+    insufficient.
+59. **HKEXnews is browser-only; HKEX DION remains separate** (decision
+    2026-11-02): the public title-search page is a JSF form and the old
+    `titleSearchServlet` returns empty. Drive it through the Playwright
+    sidecar at 1 request/second and read the result table. DION is ownership
+    (P1.3); HKEXnews is announcements (P1.4).
+60. **PDF extraction is deterministic and capped** (decision 2026-11-02):
+    `pdfplumber` text + tables, page provenance, 0 LLM tokens. Caps: 30 MB,
+    80 pages default (hard 200), 20k chars/page, 20 tables/page; truncation is
+    reported, never silent. No OCR: image-only PDFs stay link-only.
+61. **Filing identity is company + source + external id + canonical URL**
+    (decision 2026-11-02): `(companyId, source, accession/announcementId/PDF
+    URL/article URL, canonicalUrl)` determines the document id; content hash
+    (`rawSha256`, `textSha256`) is stored. A rerun skips an existing complete
+    document and never refetches its PDF. A link-only document is retried when
+    a new content path appears (a PDF or `--full-text`), after a content error,
+    or while `metadata.indexed=false`; a scanned/no-text PDF is marked
+    `contentAttempted` so it is not re-fetched every run. `--refresh` forces
+    re-ingestion.
+62. **Official-first, link-only supplements** (decision 2026-11-02): the
+    default `--sources official` set is EDGAR + CNINFO + HKEXnews. IR RSS and
+    GDELT are opt-in (`--sources all`) and remain link-only `media`/`company_ir`
+    sources; no article-body scraping, no paywall bypass, no bulk
+    redistribution. The 公告文件 tab is separate from News so official
+    announcements are not buried (decision 2026-11-02).
 
 ---
 
@@ -1215,6 +1311,12 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 | Name fallback matches a wrong company | Only exact normalized names are used. Pinyin/ticker aliases are excluded from the ownership index (`sndl` for 深南电路 vs SNDL Inc.). If a new collision appears, fix the alias kind/source, not the matcher with fuzzy rules. |
 | HKEX DION “temporarily unavailable” | The site's JS bot defense rejects plain HTTP. Use the Playwright sidecar (`occ-f10 serve` + `occ ownership sync --market HK`); do not retry with curl/requests. |
 | DION run takes too long | 1 req/s is deliberate; a 365-day window over 85 companies can take tens of minutes. Use `--limit`/`--days`/`--max-pages` for a quick sample. |
+| HKEXnews search returns 0 or `fetch failed` | The sidecar must run (`uv run occ-f10 serve --port 8090`); the old plain-HTTP title-search servlet is dead. The sidecar drives the JSF form and returns the first result page. A missing stock id means the code is not on HKEXnews. |
+| CNINFO returns 0 announcements for a valid code | The `orgId` is not derivable for many 601xxx codes. `fetchCninfoFilings` resolves it through `topSearch/query`; do not hardcode `gssh0` + ticker. |
+| PDF extraction returns empty text | The PDF is scanned/image-only (no OCR in P1.4) or hit the page/char cap. Check `metadata.warnings`/`truncated`; the document is still stored as link-only. |
+| Qdrant indexing fails after a filing write | The documents/chunks are already committed; a rerun would skip them. Start Qdrant/embeddings and rerun the same command with `--refresh`, or use `--skip-index` for a Postgres-only run. |
+| Filing rerun refetches PDFs / churns | Existing complete documents are skipped by `(companyId, source, externalId, canonicalUrl)`. A link-only document is retried when a PDF/`--full-text` path appears, after a content error, or while `metadata.indexed=false`; a scanned PDF is marked `contentAttempted` and is not re-fetched every run. `--refresh` forces a re-fetch, and a failed refresh preserves the existing full text instead of downgrading to link-only. |
+| Filings missing from the News tab | By design: `listEvents` is news/profile events; filings live in `listFilingEvents` and the 公告文件 tab (`include=filings`). Do not merge them back into the 10-item news list. |
 | Ownership edges are missing after a rerun | The writer is additive and dedupes by `(holder, issuer, type)`; a same-pair edge from another extractor is reported as a duplicate. Check `occ ownership coverage` and the run's `duplicates` count, not the graph alone. |
 | Large-cap graph is a hairball | Fixed in the web UI (2026-11-02): top-10 default +「其他机构」cluster, two-ring layout, collision-aware labels, faint 13F edges. The data/API still contain every edge. Do not reduce data or hide 13F edges in the API; adjust the web layout in `apps/web/src/lib/graph-layout.ts` instead. |
 
@@ -1222,11 +1324,11 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 
 ## 10. Next tasks — active plan (2026-11-01)
 
-> **Scope rule:** P1 is the only active list. **The next task is P1.4** (the
-> P1.3 dense-graph UI follow-up is done); do not start P1.5 before P1.4 is
-> accepted. **Backfill is out of scope** (STAR 50, any remaining HSI/CYB50
-> gaps, A500/SPX bulk research). Delivery/engineering quality is P2 and
-> explicitly deferred. Do not start P2 before P1 is accepted.
+> **Scope rule:** P1 is the only active list. **The next task is P1.5**
+> (P1.4 is done and accepted); do not start P2 before P1.5 is accepted.
+> **Backfill is out of scope** (STAR 50, any remaining HSI/CYB50 gaps,
+> A500/SPX bulk research). Delivery/engineering quality is P2 and explicitly
+> deferred.
 >
 > **Cancelled / permanently deferred** (do not re-propose): manual news
 > refresh, on-demand research, page-entry nudge, first-class sub-agent card,
@@ -1413,7 +1515,42 @@ change relation status/types, or alter the API.
   S&P 500 stub and is verified through `/graph?company=blackrock`.
 - Web tests/typecheck/build green (43 web tests).
 
-### P1.4 — Official filing adapters (NEXT)
+### P1.4 — Official filing adapters ✅ done 2026-11-02
+
+Shipped end-to-end; **no migration**. Details in
+[`docs/FILINGS.md`](docs/FILINGS.md).
+
+- New `@occ/sources-filings` package: SEC EDGAR submissions parser (8-K,
+  10-K/10-Q, 20-F/40-F, 6-K, proxy, SC 13D/G; routine Form 3/4/5, 144, 13F,
+  N-PORT excluded), CNINFO orgId + announcement query (SSE + SZSE), HKEXnews
+  result mapping, RSS/Atom, GDELT, PDF bytes fetch + sidecar extraction
+  client. 18 tests.
+- Sidecar: `POST /v1/hkexnews/search` (Playwright, JSF form, 1 req/s) and
+  `POST /v1/pdf/extract` (`pdfplumber`, text + tables, page provenance,
+  30 MB / 80-page / 20k-char / 20-table caps). CLI: `occ-f10 hkexnews`,
+  `occ-f10 pdf`. Python tests 30.
+- `occ filings sync --market A|HK|US|all [--apply] [--company REF] [--limit N]
+  [--days N] [--max-items N] [--sources official|all|...] [--include-stubs]
+  [--skip-pdf] [--full-text] [--max-pages N] [--refresh] [--skip-index]
+  [--json]` and `occ filings coverage [--json]`. Dry run is the default;
+  A500/SPX stubs are excluded unless `--include-stubs`.
+- Ingest: `ingestFilings` writes `documents` (`doc_type='filing'`), one
+  source row, page-numbered chunks (600/800/90 token chunking), Qdrant points
+  and a `metadata` provenance block. Dedupe by `(companyId, source,
+  externalId, canonicalUrl)` + content hash; reruns insert 0. Raw PDFs/extraction JSON are
+  cached under `.occ/filings/`.
+- UI/API: `listFilingEvents` + `include=filings` (`filing_limit` 30) and a
+  separate 公告文件 tab; every row opens the original PDF/SEC filing. News
+  stays news-only. Sources tab includes filing sources.
+- Acceptance sample: AAPL 2 EDGAR filings (4 chunks), 600519 2 CNINFO PDFs
+  (3 chunks), 00700 2 HKEXnews PDFs (116 chunks); `documents '茅台 第三季度
+  经营数据'` returns the filing chunk as top hit; reruns insert 0. Coverage:
+  6 documents / 123 chunks.
+- Known limits: EDGAR recent window only; EDGAR HTML link-only unless
+  `--full-text`; CNINFO orgId resolved per run; HKEXnews first result page;
+  PDF caps; no OCR; GDELT/IR RSS opt-in and link-only; no daily sweep (P1.5).
+
+### P1.4 original scope (kept for reference)
 
 **Goal:** announcements and filing-level events, not just F10/research/news.
 
@@ -1526,6 +1663,9 @@ is per process.
 
 ### Done index (details live in the linked docs)
 
+- 2026-11-02 — P1.4 official filing adapters (EDGAR + CNINFO + HKEXnews +
+  IR RSS/GDELT, PDF text/tables, 公告文件 tab, 0 LLM tokens) →
+  [docs/FILINGS.md](docs/FILINGS.md).
 - 2026-11-02 — P1.3 US 13F + HKEX DION ownership (13,009 US edges + 90 HK
   edges, 503 CUSIP ids, per-source labels, 0 LLM tokens) →
   [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
@@ -1559,6 +1699,10 @@ Current invariants (verify before a demo):
   `entity_merge_log`; `company_ids` has 0 duplicates; 183 LEI / 64 USCC /
   184 ISIN / 98 QID; 1 GLEIF `parent_of` edge with source + review item;
   `search?sector=` returns the 11 canonical values.
+- [x] P1.4: filing documents are `doc_type='filing'` with official sources,
+  page-numbered chunks and a pending-free provenance block; the 公告文件 tab
+  opens the original PDF/filing; rerunning a filing sync inserts 0; the
+  acceptance sample is AAPL/600519/00700 (6 docs / 123 chunks). No migration.
 - [x] `company_research_state`: 104 `ready` / 31 `needs_review`; review is
   operator work, not a bug.
 - [x] Automatic news refresh: `global_news_last_update` is the only cursor;
@@ -1570,16 +1714,17 @@ Current invariants (verify before a demo):
 
 P1 (active; see §10):
 
-**Next agent (P1.4):**
+**Next agent (P1.5):**
 
-- [x] Fix the dense ownership graph UI (§10 **P1.3 follow-up**): top-10 default
-  +「其他机构」cluster, two-ring layout, collision-aware labels, faint 13F
-  edges; verified GOOGL/NVDA/AAPL/BLK/02318 at desktop + mobile. Web-only; no
-  13F edge hidden from the API/list.
-- [ ] Read §10 P1.4 and [docs/OWNERSHIP.md](docs/OWNERSHIP.md); reuse the
-  source/evidence/review writer and the news-sweep cursor/lease pattern.
-- [ ] Add the CNINFO/SSE/SZSE/HKEXnews/IR RSS/GDELT adapters + PDF; do not
-  start P1.5 before P1.4 is accepted.
+- [x] P1.4 official filing adapters: EDGAR + CNINFO + HKEXnews + IR RSS/GDELT,
+  PDF text/tables via the sidecar, separate 公告文件 tab, no migration. See
+  [docs/FILINGS.md](docs/FILINGS.md).
+- [ ] Read §10 P1.5 and [docs/FILINGS.md](docs/FILINGS.md); reuse
+  `ingestFilings`, the news-sweep cursor/lease pattern and the existing
+  `financials.company` queue.
+- [ ] Add `company_filing_state` + `filings` detection, `data.sweep` and
+  `data.source.check`; a new periodic report enqueues `financials.company`.
+  Do not start P2 before P1.5 is accepted.
 
 - [x] P1.1 A500 + SPX placeholders: 500 + 500 memberships, 862 stubs at
   P1.1, `occ indices sync` idempotent, searchable `未收录` pages; existing
@@ -1596,8 +1741,11 @@ P1 (active; see §10):
 - [x] **P1.3 follow-up: dense ownership graph readability (web-only).**
   `apps/web/src/lib/graph-layout.ts` + `CompanyGraph.tsx`; 43 web tests;
   screenshots/overlap report in `docs/screenshots/p1.3/`.
-- [ ] **NEXT — P1.4 CNINFO/SSE/SZSE/HKEXnews/IR RSS/GDELT adapters + PDF.**
-- [ ] P1.5 daily company-data/financial-report refresh (`data.sweep`,
+- [x] **P1.4 official filing adapters + PDF** (`@occ/sources-filings`,
+  `ingestFilings`, `occ filings sync|coverage`, sidecar HKEXnews/PDF,
+  公告文件 tab). Acceptance sample 6 documents / 123 chunks; reruns insert 0;
+  0 LLM tokens; no migration.
+- [ ] **NEXT — P1.5 daily company-data/financial-report refresh** (`data.sweep`,
   `company_filing_state`, `filings`, deterministic detection, 0 LLM tokens).
 
 P2 (deferred; do not start):
@@ -1625,6 +1773,8 @@ Active docs:
 - [`docs/EXTRACT.md`](docs/EXTRACT.md)
 - [`docs/NEWS.md`](docs/NEWS.md)
 - [`docs/ENTITY.md`](docs/ENTITY.md)
+- [`docs/OWNERSHIP.md`](docs/OWNERSHIP.md)
+- [`docs/FILINGS.md`](docs/FILINGS.md)
 - [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)
 - [`docs/PRIOR_ART.md`](docs/PRIOR_ART.md)
 - [`docs/NVIDIA_NIM_MIGRATION.md`](docs/NVIDIA_NIM_MIGRATION.md) — P0

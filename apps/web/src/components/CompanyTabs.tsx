@@ -7,6 +7,7 @@ export type CompanyTab =
   | "financials"
   | "graph"
   | "news"
+  | "filings"
   | "sources";
 
 export function CompanyTabs({
@@ -20,6 +21,7 @@ export function CompanyTabs({
     financials: number;
     relations: number;
     events: number;
+    filings: number;
     sources: number;
   };
 }) {
@@ -49,6 +51,12 @@ export function CompanyTabs({
       label: t("tabs.news"),
       to: `${base}/news`,
       count: counts.events,
+    },
+    {
+      key: "filings",
+      label: t("tabs.filings"),
+      to: `${base}/filings`,
+      count: counts.filings,
     },
     {
       key: "sources",

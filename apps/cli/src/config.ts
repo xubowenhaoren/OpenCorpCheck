@@ -72,6 +72,10 @@ export const config = {
   f10Dir: pathEnv("OCC_F10_DIR", ".occ/f10"),
   /** SEC EDGAR cache (ticker map, submissions, companyfacts, 13F data sets). */
   edgarDir: pathEnv("OCC_EDGAR_DIR", ".occ/edgar"),
+  /** Raw filing PDFs and extraction caches (P1.4). */
+  filingsDir: pathEnv("OCC_FILINGS_DIR", ".occ/filings"),
+  /** Optional IR RSS feed registry. */
+  irFeedsFile: pathEnv("OCC_IR_FEEDS", "config/ir-feeds.yaml"),
   /** SEC requires a descriptive User-Agent with a contact address. */
   edgarUserAgent:
     process.env.OCC_EDGAR_USER_AGENT?.trim() ||

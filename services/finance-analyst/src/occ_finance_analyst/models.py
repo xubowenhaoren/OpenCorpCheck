@@ -137,3 +137,60 @@ class DionResponse(BaseModel):
     truncated: bool = False
     notices: list[DionNotice] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+
+
+class HkexNewsRequest(BaseModel):
+    code: str = Field(
+        min_length=1,
+        max_length=5,
+        pattern=r"^\d{1,5}$",
+        description="HKEX stock code, e.g. 00700",
+    )
+    days: int = Field(default=365, ge=1, le=3650)
+    max_items: int = Field(default=30, ge=1, le=200)
+
+
+class HkexNewsItem(BaseModel):
+    date: str | None = None
+    stock_code: str | None = None
+    stock_name: str | None = None
+    category: str | None = None
+    title: str | None = None
+    url: str | None = None
+    size: str | None = None
+
+
+class HkexNewsResponse(BaseModel):
+    code: str
+    name: str | None = None
+    stock_id: int | None = None
+    from_date: str
+    to_date: str
+    total_records: int = 0
+    returned: int = 0
+    truncated: bool = False
+    items: list[HkexNewsItem] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+
+
+class PdfExtractRequest(BaseModel):
+    base64: str = Field(min_length=8, max_length=60_000_000)
+    max_pages: int = Field(default=80, ge=1, le=200)
+
+
+class PdfTableData(BaseModel):
+    headers: list[str] = Field(default_factory=list)
+    rows: list[list[str]] = Field(default_factory=list)
+
+
+class PdfPageData(BaseModel):
+    page: int
+    text: str = ""
+    tables: list[PdfTableData] = Field(default_factory=list)
+
+
+class PdfExtractResponse(BaseModel):
+    page_count: int
+    pages: list[PdfPageData] = Field(default_factory=list)
+    truncated: bool = False
+    warnings: list[str] = Field(default_factory=list)

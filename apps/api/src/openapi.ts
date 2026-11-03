@@ -146,7 +146,7 @@ export function openApiDocument() {
               in: "query",
               schema: { type: "string" },
               description:
-                "Comma-separated: financials,facts,relations,events. Omit for all.",
+                "Comma-separated: financials,facts,relations,events,filings. Omit for all.",
             },
             {
               name: "financial_limit",
@@ -177,6 +177,11 @@ export function openApiDocument() {
               name: "event_limit",
               in: "query",
               schema: { type: "integer", minimum: 1, maximum: 100, default: 10 },
+            },
+            {
+              name: "filing_limit",
+              in: "query",
+              schema: { type: "integer", minimum: 1, maximum: 200, default: 30 },
             },
             {
               name: "relation_status",
