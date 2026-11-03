@@ -48,7 +48,7 @@ export interface ResearchJobView {
 
 export interface ResearchRunView {
   id: string;
-  kind: "research" | "f10" | "news" | "financials";
+  kind: "research" | "f10" | "news" | "financials" | "data";
   status: RunStatus;
   totalJobs: number;
   completedJobs: number;

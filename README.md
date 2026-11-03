@@ -3,20 +3,20 @@
 **Open, agentic company intelligence for NASDAQ-100 · S&P 500 · CSI A500 · Hang Seng Index · ChiNext 50.**
 
 > Status: 2026-11-03 — search, company pages (profile / financials / relationship
-> graph / news / filings / sources), automatic news refresh + task dock (news
-> live; the shared news+financial dock is a follow-up), all five index
+> graph / news / filings / sources), automatic news refresh + **shared task dock
+> (news + financials)**, all five index
 > pages (NDX/SPX/A500/HSI/CYB50), `occ` CLI, MCP server, and the DeepSeek
 > Harness ACP sidebar. **P1.1 A500/SPX placeholder pages, P1.2 sector + entity
 > resolution, P1.3 US 13F + HKEX DION ownership, the P1.3 dense-graph UI
-> follow-up, P1.4 official filing adapters, and P1.5 daily company-data /
-> financial-report refresh are shipped** (850 searchable stubs; 235/236
-> researched companies have a canonical sector; 13,009 US 13F + 90 HKEX DION
-> ownership edges; SEC EDGAR + CNINFO + HKEXnews filing discovery with PDF
-> text/tables and a separate 公告文件 tab; 251 daily filing checks over 236
-> companies, with new periodic reports automatically updating structured
-> financials at 0 LLM tokens). **Two P1.5 follow-ups remain** (financials
-> verification/retry and the restored shared TaskDock); P2 is deferred. The
-> roadmap is in [`CONTEXT_TRANSFER.md`](CONTEXT_TRANSFER.md) §10.
+> follow-up, P1.4 official filing adapters, P1.5 daily company-data /
+> financial-report refresh, and both P1.5 follow-ups are shipped** (850
+> searchable stubs; 235/236 researched companies have a canonical sector;
+> 13,009 US 13F + 90 HKEX DION ownership edges; SEC EDGAR + CNINFO + HKEXnews
+> filing discovery with PDF text/tables and a separate 公告文件 tab; 251 daily
+> filing checks over 236 companies, with new periodic reports automatically
+> updating structured financials at 0 LLM tokens, and a verified expected
+> period with bounded A/HK F10 retry). P2 is deferred. The roadmap is in
+> [`CONTEXT_TRANSFER.md`](CONTEXT_TRANSFER.md) §10.
 
 OpenCorpCheck is an open-source, AI-native alternative to commercial company-intelligence
 products (the "企查查" category). It builds a cited, queryable profile for every company in
@@ -30,8 +30,8 @@ skill that produces cited company profiles. No UI, no database. See
 [phase0/README.md](phase0/README.md).
 
 The web UI is implemented in [`apps/web`](apps/web/README.md): search, company pages with
-financials / relationship graph / news / sources, NDX/SPX/A500/HSI/CYB50 index pages, an
-automatic news task dock, and the live ACP assistant sidebar. Tool-use trajectory (live
+financials / relationship graph / news / sources, NDX/SPX/A500/HSI/CYB50 index pages, a
+shared automatic news + financials task dock, and the live ACP assistant sidebar. Tool-use trajectory (live
 activity panel + grouped static trace) and GFM Markdown are built; the sidebar replays
 dsh's persisted session log and resumes the same session after a restart. A first-class
 sub-agent card is **permanently deferred**.
@@ -62,10 +62,13 @@ sub-agent card is **permanently deferred**.
   with source + quote + a pending review item. Deterministic, 0 LLM tokens; no
   counterparty is created outside `companies`. See
   [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
-- **Daily refresh (P1.5)**: `data.sweep` checks every researched company's
-  EDGAR/CNINFO/HKEXnews filing index once a day; new announcements become P1.4
-  documents and a new periodic report re-runs the deterministic financials
-  pipeline. The first check is a baseline, not a backfill. 0 LLM tokens. See
+- **Daily refresh (P1.5 + follow-ups)**: `data.sweep` checks every researched
+  company's EDGAR/CNINFO/HKEXnews filing index once a day; new announcements
+  become P1.4 documents and a new periodic report re-runs the deterministic
+  financials pipeline. The expected period is verified against structured
+  facts; while A/HK F10 lags it stays pending and retries 1h/6h/1d (max 7
+  days). The shared task dock shows `更新新闻` + `财报更新`. The first check is
+  a baseline, not a backfill. 0 LLM tokens. See
   [docs/REFRESH.md](docs/REFRESH.md).
 - **Providers**: official **DeepSeek** is the default for headless research, the
   reviewer, and the ACP sidebar. NVIDIA NIM + Parallel Search is opt-in with

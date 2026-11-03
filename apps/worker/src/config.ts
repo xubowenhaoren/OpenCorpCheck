@@ -128,6 +128,12 @@ export const config = {
   dataMaxItems: intEnv("OCC_DATA_MAX_ITEMS", 20),
   /** Steady-state lookback cap; a long worker outage still covers this window. */
   dataMaxSteadyDays: intEnv("OCC_DATA_MAX_STEADY_DAYS", 30),
+  /**
+   * P1.5 follow-up: A/HK F10 can lag the CNINFO/HKEXnews announcement. Keep
+   * retrying the same expected period for at most this many days, then mark
+   * the verification failed instead of retrying forever.
+   */
+  dataFinancialsRetryMaxDays: intEnv("OCC_DATA_FIN_RETRY_MAX_DAYS", 7),
   filingsConcurrency: intEnv("OCC_FILINGS_CONCURRENCY", 2),
   filingsDir: pathEnv("OCC_FILINGS_DIR", ".occ/filings"),
   filingsFullText:
@@ -239,6 +245,7 @@ export function publicConfig(): Record<string, unknown> {
     dataConcurrency: config.dataConcurrency,
     dataColdDays: config.dataColdDays,
     dataMaxItems: config.dataMaxItems,
+    dataFinancialsRetryMaxDays: config.dataFinancialsRetryMaxDays,
     filingsDir: config.filingsDir,
     dshHome: config.dshHome,
     runsDir: config.runsDir,

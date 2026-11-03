@@ -1422,6 +1422,23 @@
   }
   .dock-next { margin-top: 8px; color: var(--muted); font-size: 11px; }
 
+  /* Shared dock: news + data-refresh filter tabs (2026-11-03 decision 33). */
+  .dock-tabs {
+    display: flex; gap: 4px; padding: 0 12px 10px; overflow-x: auto;
+  }
+  .dock-tab {
+    border: 0; background: transparent; color: var(--muted);
+    font-size: 11.5px; padding: 5px 9px; border-radius: 7px; cursor: pointer;
+    white-space: nowrap; display: inline-flex; align-items: center; gap: 5px;
+  }
+  .dock-tab:hover { background: var(--bg-soft); color: var(--ink-2); }
+  .dock-tab[aria-selected="true"] {
+    background: var(--bg-soft); color: var(--ink); font-weight: 500;
+  }
+  .dock-tab-count {
+    color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums;
+  }
+
   .dock-list {
     overflow-y: auto; overscroll-behavior: contain;
     border-top: 1px solid var(--line);
@@ -1440,6 +1457,8 @@
     flex: none; display: grid; place-items: center; width: 32px; height: 32px;
     border-radius: 9px; margin-top: 1px; background: var(--info-bg); color: var(--info);
   }
+  .dock-task-icon.news { background: var(--info-bg); color: var(--info); }
+  .dock-task-icon.data { background: var(--accent-2); color: var(--accent); }
   .dock-task-main { min-width: 0; flex: 1; }
   .dock-task-title-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
   .dock-task-title { font-size: 12.5px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
@@ -1448,6 +1467,8 @@
     padding: 1px 6px; border-radius: 5px; font-size: 9.5px; font-weight: 500;
     background: var(--info-bg); color: var(--info); white-space: nowrap;
   }
+  .dock-badge.news { background: var(--info-bg); color: var(--info); }
+  .dock-badge.data { background: var(--accent-2); color: var(--accent); }
   .dock-task-status {
     margin-top: 3px; display: flex; align-items: center; gap: 5px;
     color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums;
@@ -1489,6 +1510,7 @@
   }
   .dock-subtask-ticker { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
   .dock-subtask-detail { color: var(--muted); font-size: 10.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .dock-subtask-detail.running { color: var(--accent); }
   .dock-subtask-detail.completed { color: var(--ok); }
   .dock-subtask-detail.failed { color: var(--danger); }
   .dock-mini-link {

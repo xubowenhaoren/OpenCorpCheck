@@ -216,6 +216,43 @@ export interface NewsCompanyStatusView {
   } | null;
 }
 
+export interface DataRunView {
+  runId: string;
+  status: "queued" | "running" | "completed" | "partial" | "failed";
+  total: number;
+  done: number;
+  failed: number;
+  companies: number;
+  inserted: number;
+  documents: number;
+  financials: number;
+  startedAt: string;
+  finishedAt: string | null;
+  elapsedMs: number | null;
+  source: string | null;
+  sweepSource: string | null;
+  active: boolean;
+}
+
+export interface DataRefreshStatusView {
+  active: DataRunView | null;
+  lastRun: DataRunView | null;
+  runs: DataRunView[];
+  dueChecks: number;
+  pendingFinancials: number;
+  dueFinancials: number;
+  appliedFinancials: number;
+  failedFinancials: number;
+  nextDueAt: string | null;
+  nextRetryAt: string | null;
+  totalChecks: number;
+  ttlMs: number;
+  sweepCron: string;
+  historyMs: number;
+  serverTime: string;
+  pendingSweep: boolean;
+}
+
 export interface NewsStatusView {
   active: NewsSweepView | null;
   lastSweep: NewsSweepView | null;
@@ -229,6 +266,7 @@ export interface NewsStatusView {
   serverTime: string;
   triggered: boolean;
   pendingSweep: boolean;
+  dataRefresh?: DataRefreshStatusView;
   company?: NewsCompanyStatusView;
 }
 

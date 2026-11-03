@@ -650,6 +650,50 @@ export const filings = pgTable(
   ],
 );
 
+/**
+ * Financials verification / retry state (P1.5 follow-up).
+ *
+ * One row per company: the period the newest periodic filing expects and a
+ * bounded retry schedule. `data.sweep` leases due `pending` rows and enqueues
+ * `financials.company`; the job verifies `max(financial_facts.period_end)` and
+ * marks the row applied, or schedules the next retry.
+ */
+export const financialsRefreshState = pgTable(
+  "financials_refresh_state",
+  {
+    companyId: text("company_id")
+      .primaryKey()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    expectedPeriodEnd: date("expected_period_end", { mode: "string" }).notNull(),
+    market: text("market").notNull(),
+    ticker: text("ticker").notNull(),
+    code: text("code").notNull(),
+    /** Display name for the task dock (optional; older rows may be null). */
+    name: text("name"),
+    source: text("source").notNull(),
+    filingId: text("filing_id").references(() => filings.id, {
+      onDelete: "set null",
+    }),
+    status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("financials_refresh_state_due_idx").on(
+      table.status,
+      table.nextRetryAt,
+    ),
+    index("financials_refresh_state_updated_idx").on(table.updatedAt),
+  ],
+);
+
 export const schema = {
   companies,
   companyIds,
@@ -669,6 +713,7 @@ export const schema = {
   globalNewsLastUpdate,
   companyFilingState,
   filings,
+  financialsRefreshState,
   entityMergeLog,
   ownershipSyncRuns,
 };

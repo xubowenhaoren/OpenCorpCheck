@@ -8,6 +8,8 @@
  */
 import { AppError } from "@occ/core";
 import {
+  getFilingStateTotals,
+  getFinancialsRefreshTotals,
   getNewsCompanyKey,
   getNewsDueSummary,
   getNewsRefreshState,
@@ -33,6 +35,54 @@ export interface NewsSweepView {
   source: string | null;
   sweepSource: string | null;
   active: boolean;
+}
+
+export interface DataRunView {
+  runId: string;
+  status: string;
+  total: number;
+  done: number;
+  failed: number;
+  /** Distinct companies checked in this run. */
+  companies: number;
+  /** Filings detected by `data.source.check` (new announcements). */
+  inserted: number;
+  /** Filing documents written by `ingest.filing`. */
+  documents: number;
+  /** Follow-up financials jobs (new periodic reports + catch-ups). */
+  financials: number;
+  startedAt: string;
+  finishedAt: string | null;
+  elapsedMs: number | null;
+  source: string | null;
+  sweepSource: string | null;
+  active: boolean;
+}
+
+/**
+ * Automatic daily company-data refresh block (P1.5 follow-up). Read-only;
+ * unlike news there is no lazy trigger — the data worker owns the cron.
+ */
+export interface DataRefreshStatusView {
+  active: DataRunView | null;
+  lastRun: DataRunView | null;
+  runs: DataRunView[];
+  /** Company/source checks due at the next sweep. */
+  dueChecks: number;
+  /** Verified periods still pending (A/HK F10 lag) and due now. */
+  pendingFinancials: number;
+  dueFinancials: number;
+  appliedFinancials: number;
+  failedFinancials: number;
+  nextDueAt: string | null;
+  nextRetryAt: string | null;
+  totalChecks: number;
+  ttlMs: number;
+  sweepCron: string;
+  historyMs: number;
+  serverTime: string;
+  /** True while a `data.sweep` producer is queued/running. */
+  pendingSweep: boolean;
 }
 
 export interface NewsCompanyStatusView {
@@ -72,6 +122,8 @@ export interface NewsStatusView {
   triggered: boolean;
   /** True when a `news.sweep` job is queued/active but no run exists yet. */
   pendingSweep: boolean;
+  /** Automatic daily filing/financials refresh block (P1.5 follow-up). */
+  dataRefresh: DataRefreshStatusView;
   company?: NewsCompanyStatusView;
 }
 
@@ -87,9 +139,10 @@ export class NewsService {
   async getStatus(companyRef?: string): Promise<NewsStatusView> {
     const pendingSweep = await this.ensureSweep();
 
-    const [due, sweepRows] = await Promise.all([
+    const [due, sweepRows, dataRefresh] = await Promise.all([
       getNewsDueSummary(this.deps.db),
       this.deps.store.listNewsSweeps(config.newsHistoryMs, 20),
+      this.buildDataRefresh(),
     ]);
     const sweeps = sweepRows.map((row) => toSweepView(row));
     const active = sweeps.find((sweep) => sweep.active) ?? null;
@@ -106,6 +159,7 @@ export class NewsService {
       serverTime: new Date().toISOString(),
       triggered: due.dueCount > 0,
       pendingSweep,
+      dataRefresh,
     };
     if (!companyRef) return base;
 
@@ -144,6 +198,43 @@ export class NewsService {
         : null,
     };
     return { ...base, company };
+  }
+
+  /**
+   * Daily data/filing refresh block for the shared TaskDock. Runs come from
+   * `backfill_runs(kind='data')`; per-company subtasks come from
+   * `GET /v1/runs/:id`. The API never fetches filings.
+   */
+  private async buildDataRefresh(): Promise<DataRefreshStatusView> {
+    const [rows, checks, financials, queues] = await Promise.all([
+      this.deps.store.listDataRuns(config.dataHistoryMs, 20),
+      getFilingStateTotals(this.deps.db),
+      getFinancialsRefreshTotals(this.deps.db),
+      queueCounts(this.deps.boss, [QUEUES.DATA_SWEEP]).catch(() => []),
+    ]);
+    const runs = rows.map((row) => toDataRunView(row));
+    const sweepQueue = queues[0];
+    const pendingSweep =
+      !!sweepQueue &&
+      sweepQueue.created + sweepQueue.retry + sweepQueue.active > 0;
+    return {
+      active: runs.find((run) => run.active) ?? null,
+      lastRun: runs[0] ?? null,
+      runs,
+      dueChecks: checks.dueCount,
+      pendingFinancials: financials.pending,
+      dueFinancials: financials.due,
+      appliedFinancials: financials.applied,
+      failedFinancials: financials.failed,
+      nextDueAt: iso(checks.nextDueAt),
+      nextRetryAt: iso(financials.nextRetryAt),
+      totalChecks: checks.total,
+      ttlMs: config.dataTtlMs,
+      sweepCron: config.dataSweepCron,
+      historyMs: config.dataHistoryMs,
+      serverTime: new Date().toISOString(),
+      pendingSweep,
+    };
   }
 
   /**
@@ -222,6 +313,38 @@ function toSweepView(row: Record<string, unknown>): NewsSweepView {
     elapsedMs: active
       ? null
       : Math.max(0, new Date(updatedAt ?? createdAt).getTime() - new Date(createdAt).getTime()),
+    source: typeof options.source === "string" ? options.source : null,
+    sweepSource:
+      typeof options.sweepSource === "string" ? options.sweepSource : null,
+    active,
+  };
+}
+
+function toDataRunView(row: Record<string, unknown>): DataRunView {
+  const status = String(row.status ?? "queued");
+  const active = status === "queued" || status === "running";
+  const createdAt = iso(row.created_at) ?? new Date(0).toISOString();
+  const updatedAt = iso(row.updated_at);
+  const options = asRecord(row.options);
+  return {
+    runId: String(row.id ?? ""),
+    status,
+    total: Number(row.total_jobs ?? 0),
+    done: Number(row.completed_jobs ?? 0),
+    failed: Number(row.failed_jobs ?? 0),
+    companies: Number(row.companies ?? 0),
+    inserted: Number(row.inserted ?? 0),
+    documents: Number(row.documents ?? 0),
+    financials: Number(row.financials ?? 0),
+    startedAt: createdAt,
+    finishedAt: active ? null : updatedAt,
+    elapsedMs: active
+      ? null
+      : Math.max(
+          0,
+          new Date(updatedAt ?? createdAt).getTime() -
+            new Date(createdAt).getTime(),
+        ),
     source: typeof options.source === "string" ? options.source : null,
     sweepSource:
       typeof options.sweepSource === "string" ? options.sweepSource : null,

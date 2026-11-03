@@ -7,4 +7,5 @@ export * from "./rss.js";
 export * from "./gdelt.js";
 export * from "./pdf.js";
 export * from "./periodic.js";
+export * from "./expected-period.js";
 export * from "./content.js";

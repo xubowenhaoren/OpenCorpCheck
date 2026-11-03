@@ -133,6 +133,11 @@ export const config = {
   newsTtlMs: intEnv("OCC_NEWS_TTL_MS", 82_800_000),
   newsClaimTimeoutMs: intEnv("OCC_NEWS_CLAIM_TIMEOUT_MS", 1_800_000),
   newsHistoryMs: intEnv("OCC_NEWS_HISTORY_MS", 259_200_000),
+  /** Automatic daily company-data / financials refresh (P1.5). */
+  dataSweepCron: process.env.OCC_DATA_SWEEP_CRON ?? "0 8 * * *",
+  dataTtlMs: intEnv("OCC_DATA_TTL_MS", 82_800_000),
+  dataHistoryMs: intEnv("OCC_DATA_HISTORY_MS", 259_200_000),
+  dataFinancialsRetryMaxDays: intEnv("OCC_DATA_FIN_RETRY_MAX_DAYS", 7),
   fusion: (process.env.OCC_FUSION ?? "rrf") as "rrf" | "dbsf",
   rrfK: intEnv("OCC_RRF_K", 60),
   prefetchLimit: intEnv("OCC_PREFETCH_LIMIT", 100),

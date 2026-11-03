@@ -744,6 +744,46 @@ export class JobStore {
     );
   }
 
+  /**
+   * Automatic daily data/filing runs inside the retention window, newest
+   * first (shared TaskDock). `companies` counts the distinct checked
+   * companies; `inserted` is the number of newly detected filings;
+   * `documents` is the number of filing documents ingested; `financials`
+   * counts the follow-up financials jobs (periodic reports + catch-ups).
+   */
+  async listDataRuns(
+    sinceMs: number,
+    limit = 20,
+  ): Promise<Array<Record<string, unknown>>> {
+    return this.query<Record<string, unknown>>(
+      `SELECT r.id, r.kind, r.status, r.total_jobs, r.completed_jobs,
+              r.failed_jobs, r.options, r.created_at, r.updated_at,
+              (SELECT count(DISTINCT j.company_id)
+                 FROM backfill_jobs j
+                 WHERE j.run_id = r.id
+                   AND j.queue IN ('data.source.check', 'financials.company'))::int
+                AS companies,
+              coalesce((SELECT sum((j.meta->>'inserted')::int)
+                          FROM backfill_jobs j
+                          WHERE j.run_id = r.id AND j.queue = 'data.source.check'),
+                       0)::int AS inserted,
+              coalesce((SELECT sum((j.meta->>'inserted')::int)
+                          FROM backfill_jobs j
+                          WHERE j.run_id = r.id AND j.queue = 'ingest.filing'),
+                       0)::int AS documents,
+              (SELECT count(*)
+                 FROM backfill_jobs j
+                 WHERE j.run_id = r.id AND j.queue = 'financials.company')::int
+                AS financials
+       FROM backfill_runs r
+       WHERE r.kind = 'data'
+         AND r.created_at >= now() - ($1::int * interval '1 millisecond')
+       ORDER BY r.created_at DESC
+       LIMIT $2`,
+      [sinceMs, limit],
+    );
+  }
+
   /** The most recent news sweep, active or finished. */
   async getLatestNewsSweep(): Promise<Record<string, unknown> | null> {
     const rows = await this.query<Record<string, unknown>>(

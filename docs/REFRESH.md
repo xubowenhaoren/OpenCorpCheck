@@ -1,8 +1,9 @@
 # Daily company-data / filing refresh (P1.5)
 
-> Status: implemented 2026-11-03 · Related: [FILINGS](FILINGS.md),
-> [NEWS](NEWS.md), [EXTRACT](EXTRACT.md), [OWNERSHIP](OWNERSHIP.md),
-> [CONTEXT_TRANSFER](../CONTEXT_TRANSFER.md) §10
+> Status: implemented 2026-11-03; follow-ups **financials verification/retry**
+> and the **shared TaskDock** shipped 2026-11-03 · Related:
+> [FILINGS](FILINGS.md), [NEWS](NEWS.md), [EXTRACT](EXTRACT.md),
+> [OWNERSHIP](OWNERSHIP.md), [CONTEXT_TRANSFER](../CONTEXT_TRANSFER.md) §10
 
 ## 1. Goal
 
@@ -13,7 +14,11 @@ without an operator running `occ filings sync` / `enqueue financials` by hand:
 - a **new** periodic report (10-K/10-Q/20-F/40-F, annual/interim/quarterly
   report) triggers the deterministic `financials.company` pipeline;
 - a **new** announcement is ingested as a P1.4 filing document (`ingest.filing`);
-- the company page shows the latest report line and the last check time;
+- **verify that the expected period actually landed** in structured
+  financials; while A/HK F10 lags, keep the company `pending` and retry on a
+  bounded 1h/6h/1d schedule instead of treating the one-shot run as success;
+- the company page and the top-nav TaskDock show the latest report line, the
+  check time and whether financials are still pending;
 - unchanged days do no writes and spend **0 LLM tokens**.
 
 This is pure code. The optional LLM fallback for discovery/conflicts remains a
@@ -25,13 +30,16 @@ P2 idea and is **not** part of P1.5.
 data.sweep (daily cron / occ-refresh sweep --now; advisory-locked singleton)
   → plan due (company, source) pairs from securities + identifiers
   → lease company_filing_state rows (claim timeout)
-  → create a backfill_runs(kind='data') row + one data.source.check per pair
-data.source.check (concurrency 4)
+  → lease due pending `financials_refresh_state` rows (catch-up pass)
+  → create a backfill_runs(kind='data') row + one job per unit:
+      data.source.check (concurrency 4) and financials.company (catch-up)
+data.source.check
   → EDGAR submissions / CNINFO announcements / HKEXnews titles
   → insert only unseen (source, accession) rows into `filings`
+  → derive the expected statement period and upsert financials_refresh_state
   → enqueue ingest.filing for announcements (P1.4 document layer)
-  → enqueue financials.company(force data fetch, bypassCache) for a new
-    periodic report
+  → lease the financials state, then enqueue financials.company
+    (bypassCache) for a new periodic report — only once per company per run
   → stamp cursor / next_due_at / status
 ingest.filing (concurrency 2)
   → build FilingItems from `filings` rows
@@ -39,17 +47,19 @@ ingest.filing (concurrency 2)
   → mark rows applied/failed
 financials.company (existing pipeline)
   → EDGAR companyfacts for US; F10 cwfx/NewFinancialAnalysis for A/HK
-  → upsert financial_facts; the company page shows the new period
+  → upsert financial_facts
+  → verify max(financial_facts.period_end) against the expected period
+  → applied, or pending with backoff, or failed after OCC_DATA_FIN_RETRY_MAX_DAYS
 ```
 
-The **current production TaskDock is news-only**; the 2026-11-03 decision
-restores the shared design (`更新新闻` + `财报更新`) as a P1.5 follow-up
-(§14). Until it ships, the filing refresh is visible on the company page, not
-as a dock producer.
+The **TaskDock is shared** (2026-11-03 decision 33): `更新新闻` and
+`财报更新` are two automatic producers in one top-right dock, with
+`全部 / 更新新闻 / 财报更新` filters and per-company subtasks. There is still
+no manual refresh control (decision 34).
 
 ## 3. Data model
 
-Migration `0011_filing_refresh.sql`.
+Migrations `0011_filing_refresh.sql` and `0012_financials_verification.sql`.
 
 ### `company_filing_state` — one row per (company, source)
 
@@ -89,6 +99,31 @@ participate.
 `documents(doc_type='filing')` exactly as P1.4 does; the 公告文件 tab still reads
 documents. Keeping the inbox separate lets the daily diff use
 `(source, accession)` without touching user documents.
+
+### `financials_refresh_state` — one row per company
+
+| Column | Meaning |
+|---|---|
+| `company_id` | primary key; the expected period is a company-level fact |
+| `expected_period_end` | `YYYY-MM-DD` the newest periodic report should add |
+| `market`, `ticker`, `code`, `name`, `source`, `filing_id` | how to run the catch-up financials job and label it in the dock |
+| `status` | `pending` / `applied` / `failed` |
+| `attempts` | verification attempts that did not cover the period |
+| `next_retry_at` | retry schedule, and a lease while a catch-up is queued |
+| `first_seen_at` | bounded retry window start (`OCC_DATA_FIN_RETRY_MAX_DAYS`) |
+| `last_error` | last verification/fetch error (truncated) |
+
+`expected_period_end` is derived deterministically
+(`@occ/sources-filings` `expected-period.ts`):
+
+1. adapter `periodEnd` (EDGAR `reportDate`);
+2. an explicit title date (`... ended 30 June 2026`, `截至2025年12月31日止年度`);
+3. a CNINFO title with a year + quarter/half/year (`2026年第三季度报告`);
+4. a bounded fallback from the period kind and filing date (A/HK issuers are
+   mostly December year-end).
+
+The period is also written to `filings.period_end`, so the company page and the
+dock can show `2026-09-30` even when the source publishes only a title.
 
 ## 4. Source selection
 
@@ -135,6 +170,32 @@ Current corpus: **236 researched companies → 251 checks** (100 EDGAR,
   fetch). `force` stays false so a check retry cannot re-run a completed
   financials job.
 
+### Financials verification (P1.5 follow-up)
+
+A periodic report can arrive days before F10 publishes the structured
+statements. The one-shot run used to finish "successfully" without the new
+period, and nothing re-triggered it because the accession was already consumed.
+
+- When a periodic report is detected, the expected period is stored in
+  `financials_refresh_state` (`pending`).
+- After every `financials.company` run, the worker reads
+  `max(financial_facts.period_end)` **for structured methods only**
+  (`xbrl`/`f10`; profile-derived rows are ignored) and compares it with the
+  expected period. A 7-day tolerance covers 52/53-week fiscal years (Apple's
+  10-K ends `2026-09-26` for a `2026-09-30` expectation) without accepting the
+  previous quarter.
+- Covered → `applied`; not covered → `pending` with `attempts + 1` and the
+  next retry; after `OCC_DATA_FIN_RETRY_MAX_DAYS` (7) → `failed`. The job row
+  records `meta.financialsStatus`, so the dock can say `财报待更新` instead of
+  `已完成`.
+- The daily `data.sweep` has a **catch-up pass**: due `pending` rows are
+  leased and enqueued as `financials.company` in the same data run. It does
+  not re-fetch the filing index or re-ingest the document.
+- The check leases the state before enqueuing its own financials job. If a
+  catch-up already leased it in that sweep, the check does not enqueue a
+  second pg-boss job for the same period (both could otherwise be active
+  before either marks the run row completed).
+
 ### Why `bypassCache`
 
 EDGAR `companyfacts`/`submissions` and F10 snapshots are cached for 24 h. A
@@ -161,6 +222,11 @@ completed-job guard.
 - `data.source.check` runs `OCC_DATA_CONCURRENCY` (4) in parallel;
   `ingest.filing` runs `OCC_FILINGS_CONCURRENCY` (2) because PDF extraction is
   heavy. Keep the F10 sidecar's browser concurrency at 2.
+- **Financials retry:** 1 h after the first miss, then 6 h, then daily. The
+  window is `OCC_DATA_FIN_RETRY_MAX_DAYS` (7) from `first_seen_at`; a next retry
+  that would land past the deadline marks the row `failed` instead. A
+  `financials.company` failure also schedules the same backoff, so a temporary
+  F10/sidecar error is retried by the next sweep even if pg-boss is done.
 - Run the `financials` queue in **one process per host**: the EDGAR 110 ms
   limiter is per process, so a second financials worker doubles the SEC request
   rate. `scripts/dev-data-worker.sh` (`data,financials`) is that process; do
@@ -186,14 +252,21 @@ completed-job guard.
   "sources": [
     { "source": "edgar", "market": "US", "lastStatus": "changed",
       "lastCheckedAt": "...", "lastChangedAt": "...", "nextDueAt": "..." }
-  ]
+  ],
+  "financials": {
+    "expectedPeriodEnd": "2026-09-30", "status": "pending", "attempts": 1,
+    "source": "hkexnews", "nextRetryAt": "2026-11-04T00:29:36.478Z"
+  }
 }
 ```
 
 - The 公告文件 tab shows `最新报告 2026-09-26 (10-K) · 财报更新于 …`; while a
-  check is queued/active it shows `披露检查排队中…`; after a failure it shows
-  `披露检查失败，将自动重试（连续 N 次）` in the warning colour.
-- The 财务数据 coverage line adds `财报更新于 <date>` when a latest periodic
+  check is queued/active it shows `披露检查排队中…`; after a source failure it
+  shows `披露检查失败，将自动重试（连续 N 次）` in the warning colour.
+- While `financials.status = pending`, the 公告文件 tab shows
+  `财报更新中 — 等待 <period> 结构化财报` (and `财报更新失败 …` after the
+  bounded window) instead of claiming the financials were updated. The
+  财务数据 coverage line adds `财报更新于 <date>` when a latest periodic
   filing exists.
 - `pending` comes from queued/active/retrying `data.source.check` and follow-up
   rows (`ingest.filing` / `financials.company`) in `backfill_jobs`; a failed
@@ -201,15 +274,13 @@ completed-job guard.
   every 15 s while pending.
 - A dead-lettered follow-up job is visible in `backfill_jobs` and the worker
   log; `filingRefresh` reflects the source check, not downstream job death.
-- **Target UI: shared TaskDock (P1.5 follow-up).** The current production dock
-  is news-only; the 2026-11-03 decision restores the original shared design
-  with a `财报更新` group (automatic `data.sweep` / `data.source.check` /
-  `ingest.filing` / `financials.company`) next to `更新新闻`, plus
-  `全部 / 更新新闻 / 财报更新` filter tabs and per-company subtasks. The
-  manual refresh-news button stays cancelled (decision 34); there is no
-  `POST /v1/news/refresh` and no page-entry nudge. See §14.
-- **Current production:** the dock is news-only; the target shared design is a
-  P1.5 follow-up (§14). Until it ships, do not describe the dock as shared.
+- **Shared TaskDock (shipped 2026-11-03):** `GET /v1/news/status` returns a
+  `dataRefresh` block (`active`, `lastRun`, `runs[20]`, `dueChecks`,
+  `pendingFinancials`, `dueFinancials`, `appliedFinancials`,
+  `failedFinancials`, `nextDueAt`, `nextRetryAt`, `pendingSweep`). Run details
+  and per-company subtasks still come from `GET /v1/runs/:id`. The dock has
+  `全部 / 更新新闻 / 财报更新` filters; there is still no `POST
+  /v1/news/refresh`, no page-entry nudge and no manual control (decision 34).
 
 ## 8. Commands
 
@@ -261,6 +332,7 @@ company page shows `重试中` rather than fake success.
 | `OCC_DATA_COLD_DAYS` | `30` |
 | `OCC_DATA_MAX_STEADY_DAYS` | `30` (lookback cap after an outage) |
 | `OCC_DATA_MAX_ITEMS` | `20` discovered/ingested filings per source per check |
+| `OCC_DATA_FIN_RETRY_MAX_DAYS` | `7` days to wait for a lagging A/HK F10 period |
 | `OCC_FILINGS_CONCURRENCY` | `2` |
 | `OCC_FILINGS_FULL_TEXT` | off; `1`/`on` follows EDGAR HTML in the automatic path |
 | `OCC_FILINGS_MAX_PAGES` | `80` |
@@ -289,6 +361,26 @@ company page shows `重试中` rather than fake success.
   the company card showed `lastStatus=failed` (UI would render `重试中`).
 - All runs report **0 LLM tokens**; no LLM call is on the path.
 
+### Follow-up acceptance (2026-11-03)
+
+- Migration `0012_financials_verification.sql` applied.
+- **Deliberate F10 lag (HK 00700):** a pending state expecting `2026-09-30`
+  ran the catch-up; F10's newest period was `2026-06-30`, so the job completed
+  with `meta.financialsStatus=pending`, the state stayed `pending` with
+  `attempts=1` and `next_retry_at=+1h`; `financialRefresh.financials` exposed it
+  and the 公告文件 tab read `财报更新中 — 等待 2026-09-30 结构化财报`.
+- **Covered period (A 600519):** the same catch-up with expected `2026-09-30`
+  and F10 max `2026-09-30` marked the state `applied`, `next_retry_at` null,
+  and the job meta `financialsStatus=applied`.
+- **No duplicate financials job:** a sweep with both a due check and a due
+  catch-up for 600519 produced exactly one `financials.company` execution
+  (the check's lease lost to the catch-up; `enqueuedFinancials=0` on the
+  check).
+- **Dock:** `/v1/news/status.dataRefresh` showed 11 recent runs,
+  `pendingFinancials=1`, `appliedFinancials=1`; the desktop/mobile/dark dock
+  rendered both tabs and the per-company `已完成` row with no console errors
+  and no horizontal scroll.
+
 ## 11. Known limits
 
 - **Baseline, not backfill:** the first check does not ingest historical
@@ -310,67 +402,86 @@ company page shows `重试中` rather than fake success.
   cause is fixed reuses the rows only if they are re-detected or the operator
   runs `occ filings sync`. The rows are internal, so no user document is
   silently lost.
-- **Current TaskDock is news-only; the shared news + `财报更新` dock is a
-  follow-up.** The 2026-11-03 decision restores the original shared design
-  (§14); until it ships, filing/financials state is per-company on the company
-  page. The manual refresh-news button stays cancelled.
+- **Shared TaskDock shipped.** `GET /v1/news/status` carries `dataRefresh`;
+  the dock renders `更新新闻` + `财报更新` with filter tabs and per-company
+  rows. It remains read-only: no manual refresh/retry buttons (decision 34).
 - **The data worker must be running** for the cron/lazy follow-ups. With no
   worker, `data.source.check` / `ingest.filing` jobs stay queued and the page
   shows `排队中`.
-- **Financials verification is not closed (P1.5 follow-up).** The auto-run is
-  one-shot: it does not confirm the expected period landed. US EDGAR is
-  verified; A/HK can miss a period while F10 lags. See §13.
+- **A lagging F10 period stays pending, then fails honestly.** Verification
+  retries for `OCC_DATA_FIN_RETRY_MAX_DAYS` (7 days); after that the state is
+  `failed` and the page/dock say so. The period still needs an operator run of
+  `occ filings sync` / a fixed F10 source once available. Verification only
+  sees `xbrl`/`f10` facts, never profile-derived periods.
+- **The catch-up pass is bounded by the sweep batch** and one row per company;
+  it never re-fetches the filing index or creates documents.
+- **Period derivation can only be as good as the title.** A title with no date
+  uses the period-kind fallback (December year-end for annual reports); if an
+  issuer uses a non-calendar fiscal year and the title omits the date, the
+  expected period can be off by up to a quarter. EDGAR and most A/HK titles
+  carry an explicit period, so this is a bounded fallback, not the norm.
 
 ## 12. Tests
 
-- `packages/sources/filings`: 25 tests (periodic EDGAR/CNINFO/HKEXnews
-  classification, content loader link-only/HTML).
-- `apps/worker`: 52 tests (source planning, due/lease filtering, cold/steady
-  window; existing research/reviewer/universe tests).
+- `packages/sources/filings`: 30 tests (periodic EDGAR/CNINFO/HKEXnews
+  classification, expected-period derivation, content loader link-only/HTML).
+- `apps/worker`: 58 tests (source planning, due/lease filtering, cold/steady
+  window, financials verification/backoff; existing
+  research/reviewer/universe tests).
 - `packages/db`: 11 tests (run store, companies, deterministic filing id).
-- `apps/web`: 48 tests (filing status branches).
-- Full serial suite: **363 TypeScript tests** green;
+- `apps/web`: 53 tests (filing status branches, data-run/subtask mapping,
+  dual-listed aggregation).
+- Full serial suite: **379 TypeScript tests** green;
   `corepack pnpm -r --workspace-concurrency=1 test`.
 - Python sidecar unchanged at 30 tests.
 
-## 13. Follow-up — financials verification/retry (not done)
+## 13. Follow-up — financials verification/retry ✅ done 2026-11-03
 
-P1.5 ships detection + one automatic `financials.company` enqueue per new
-periodic report. It does **not** verify that the expected period landed. That
-is enough for US EDGAR (`companyfacts` is current when the filing appears;
-verified live with AAPL/MSFT) but **not for A/HK**, where F10 commonly lags the
-CNINFO/HKEXnews announcement. The one-shot job can complete "successfully"
-while writing only the old periods, and nothing re-triggers it because the
-`filings` row is already `applied` and the accession is no longer new.
+Shipped with migration `0012_financials_verification.sql`; see §5 and §6.
 
-Proposed shape (next agent):
-
-1. Persist `expected_period_end`, `financials_status`
-   (`pending|applied|failed`) and `next_retry_at` — on `filings` or a separate
-   `financials_refresh_state` table.
-2. Derive `expected_period_end` when a periodic report is detected: EDGAR
-   `periodEnd`; CNINFO title (`2026年第三季度报告` → `2026-09-30`, etc.);
-   HKEXnews results title (`... six months ended 30 June 2026` → `2026-06-30`).
-3. After `financials.company`, check
-   `max(financial_facts.period_end) >= expected_period_end`. If not, keep
-   `pending` and retry with 1h/6h/1d backoff (bounded, e.g. 7 days). Do not
-   re-fetch the filing index or re-ingest the document.
-4. Add a `data.sweep` "financials catch-up" pass that enqueues pending rows
-   only. Keep it deterministic and 0 LLM tokens.
-5. Live-accept A/HK with the sidecar running: `600519` / `00700`, including one
-   deliberate F10-lag run (first pending, later applied). This also closes the
-   A/HK live-acceptance gap from §10.
+- `financials_refresh_state` (one row per company) stores
+  `expected_period_end`, `status`, `attempts`, `next_retry_at`,
+  `first_seen_at` and the market/ticker/code/name needed for a catch-up job.
+- `@occ/sources-filings` `expected-period.ts` derives the period from the
+  adapter, an explicit title date, a CNINFO year+quarter title, or a bounded
+  period-kind fallback. It is written to `filings.period_end` too.
+- After every `financials.company` run, `max(financial_facts.period_end)`
+  (structured methods only) is compared to the expectation; 7-day tolerance.
+  Covered → `applied`; otherwise `pending` with 1h/6h/1d backoff and a
+  `OCC_DATA_FIN_RETRY_MAX_DAYS` (7) deadline, then `failed`.
+- `data.sweep` gained a catch-up pass; the check leases the same state so a
+  catch-up and a check in one sweep cannot enqueue two financials jobs for the
+  same period.
+- `filingRefresh.financials` and the 公告文件 status line surface the state;
+  the dock shows `财报更新中` / `财报待更新` / `财报更新失败` honestly.
+- Live-accepted A/HK: 00700 pending (`max=2026-06-30` vs expected
+  `2026-09-30`, retry +1h), 600519 applied (`max=2026-09-30`); no duplicate
+  financials execution.
 
 Separately, the P1.5 cadence note about a **weekly/monthly profile,
 description and sector refresh** (content-hash gated, re-extract only on
-change) was not implemented. It is not part of the daily filing poll.
+change) was **not** implemented. It is not part of the daily filing poll.
 
-The current UI is per-company (`filingRefresh`). The 2026-11-03 decision
-restores the shared TaskDock (news + `财报更新`) as a separate follow-up; see
-§14. Until it ships, do not describe the dock as shared. The manual
-refresh-news button stays cancelled.
+## 14. Follow-up — restore shared TaskDock (news + data refresh) ✅ done 2026-11-03
 
-## 14. Follow-up — restore shared TaskDock (news + data refresh, not done)
+Shipped: one top-nav dock with `全部 / 更新新闻 / 财报更新`, the shared ring
+(aggregate progress across active producers), per-company data subtasks
+(`检查中` / `无更新` / `发现 N 条` / `财报更新中` / `财报待更新` /
+`公告入库中` / `重试中` / `已完成`) and dual-listed A/HK checks merged into
+one row without hiding a failure.
+
+- API: `GET /v1/news/status` gained `dataRefresh` (active/last/recent data
+  runs, due checks, pending/applied/failed financials, next due/retry,
+  `pendingSweep`); `GET /v1/runs/:id` remains the subtask source. No new POST
+  route and no lazy data trigger (the data worker owns its cron).
+- Web: `TaskDock.tsx` + pure `lib/task-dock.ts`; tests cover run state,
+  descriptions, grouping and the dual-listed failure case.
+- No manual refresh-news button, no `POST /v1/news/refresh`, no page-entry
+  nudge (decision 34). Retry/review buttons are not restored because both
+  producers retry automatically.
+- `company_research` stays operator-only and is not a dock producer.
+- Verified desktop/mobile/dark with a live 11-run data history: no console
+  errors, no horizontal scroll, `aria-live` announcements present.
 
 ### Decision history
 
@@ -387,7 +498,7 @@ refresh-news button stays cancelled.
   architecture** for the two **automatic** producers. The manual refresh-news
   button stays cancelled.
 
-### Target design
+### Target design (historical)
 
 - Producers: `news_refresh` (automatic `news.sweep`, badge `更新新闻`) and
   `data_refresh` (automatic `data.sweep` → `data.source.check` →

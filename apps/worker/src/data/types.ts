@@ -9,6 +9,8 @@ export type DataSourceCheckJobData = {
   source: DataSource;
   market: DataMarket;
   ticker: string;
+  /** Display name for the task dock; optional for older queued payloads. */
+  name?: string;
   /** Adapter code: CIK-backed ticker (US) or numeric ticker (A/HK). */
   code: string;
   cik?: string;

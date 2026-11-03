@@ -11,7 +11,10 @@ import { randomUUID } from "node:crypto";
 
 import {
   getFilingStateTotals,
+  getFinancialsRefreshTotals,
   leaseFilingSource,
+  leaseFinancialsRefresh,
+  listDueFinancialsRefreshes,
   listEntityCompanies,
   listFilingStates,
   resolveCompanyId,
@@ -23,6 +26,7 @@ import { config } from "./config.js";
 import { DATA_SOURCES, planFilingChecks } from "./data/plan.js";
 import type { DataSourceCheckJobData } from "./data/types.js";
 import { createRun, markJobFailed, store } from "./db.js";
+import type { FinancialsJobData } from "./jobs/financials.js";
 import { getIngestContext } from "./ingest-runtime.js";
 
 export interface DataSweepData {
@@ -45,6 +49,8 @@ export interface DataSweepResult {
   due: number;
   claimed: number;
   enqueued: number;
+  /** P1.5 follow-up: pending financials verifications retried by this sweep. */
+  catchUp: number;
   pruned: number;
 }
 
@@ -117,7 +123,22 @@ export async function runDataSweep(
       ...(companyIds ? { companyIds } : {}),
       ...(requestedSources ? { sources: requestedSources } : {}),
     });
-    if (planned.length === 0) return empty({ pruned });
+
+    // P1.5 follow-up: catch-up pass. A detected periodic report whose expected
+    // period did not land in structured financials stays `pending`; retry it
+    // here without re-fetching the filing index or re-ingesting documents.
+    const now = options.now ?? new Date();
+    const dueFinancials = (
+      await listDueFinancialsRefreshes(ctx.db, now, config.dataSweepBatch)
+    ).filter((state) => {
+      if (companyIds && !companyIds.has(state.companyId)) return false;
+      if (requestedSources && !requestedSources.has(state.source)) return false;
+      return true;
+    });
+
+    if (planned.length === 0 && dueFinancials.length === 0) {
+      return empty({ pruned });
+    }
 
     const runId = randomUUID();
     const claimed: DataSourceCheckJobData[] = [];
@@ -138,6 +159,7 @@ export async function runDataSweep(
         source: candidate.source,
         market: candidate.market,
         ticker: candidate.ticker,
+        name: candidate.name,
         code: candidate.code,
         ...(candidate.cik ? { cik: candidate.cik } : {}),
         lastCheckedAt: candidate.lastCheckedAt?.toISOString() ?? null,
@@ -149,23 +171,54 @@ export async function runDataSweep(
         maxItems: config.dataMaxItems,
       });
     }
-    if (claimed.length === 0) {
+
+    const catchUps: FinancialsJobData[] = [];
+    for (const state of dueFinancials) {
+      const leased = await leaseFinancialsRefresh(ctx.db, {
+        companyId: state.companyId,
+        claimTimeoutMs: config.dataClaimTimeoutMs,
+      });
+      if (!leased) continue;
+      const key = `${leased.market}:${leased.ticker}`;
+      catchUps.push({
+        runId,
+        key,
+        companyId: leased.companyId,
+        ticker: leased.ticker,
+        code: leased.code,
+        market: leased.market as FinancialsJobData["market"],
+        ...(leased.name ? { name: leased.name } : {}),
+        force: false,
+        bypassCache: true,
+        reopenCompleted: false,
+      });
+    }
+
+    if (claimed.length === 0 && catchUps.length === 0) {
       return {
         skipped: false,
         runId: null,
         due: planned.length,
         claimed: 0,
         enqueued: 0,
+        catchUp: 0,
         pruned,
       };
     }
 
-    const specs: JobSpec[] = claimed.map((payload) => ({
+    const checkSpecs: JobSpec[] = claimed.map((payload) => ({
       queue: QUEUES.DATA_SOURCE_CHECK,
       jobKey: payload.key,
       companyId: payload.companyId,
-      payload,
+      payload: payload as unknown as Record<string, unknown>,
     }));
+    const catchUpSpecs: JobSpec[] = catchUps.map((payload) => ({
+      queue: QUEUES.FINANCIALS,
+      jobKey: payload.key,
+      companyId: payload.companyId ?? payload.key,
+      payload: payload as unknown as Record<string, unknown>,
+    }));
+    const specs = [...checkSpecs, ...catchUpSpecs];
     await createRun(
       "data",
       {
@@ -180,6 +233,7 @@ export async function runDataSweep(
         maxDays: config.dataMaxSteadyDays,
         maxItems: config.dataMaxItems,
         concurrency: config.dataConcurrency,
+        catchUp: catchUps.length,
         ...(companyIds
           ? { companyRefs: [...companyIds] }
           : {}),
@@ -195,7 +249,10 @@ export async function runDataSweep(
     for (const spec of specs) {
       try {
         const sent = await sendJob(options.boss, spec.queue, spec.payload, {
-          key: `${runId}:${spec.jobKey}`,
+          key:
+            spec.queue === QUEUES.FINANCIALS
+              ? `${runId}:${spec.jobKey}:financials`
+              : `${runId}:${spec.jobKey}`,
           priority: 45,
         });
         if (sent) enqueued += 1;
@@ -211,6 +268,7 @@ export async function runDataSweep(
       runId,
       due: planned.length,
       claimed: claimed.length,
+      catchUp: catchUps.length,
       enqueued,
       pruned,
     });
@@ -220,6 +278,7 @@ export async function runDataSweep(
       due: planned.length,
       claimed: claimed.length,
       enqueued,
+      catchUp: catchUps.length,
       pruned,
     };
   } finally {
@@ -236,14 +295,17 @@ export async function runDataSweep(
 export async function dataSweepStatus(): Promise<Record<string, unknown>> {
   const ctx = await getIngestContext();
   const states = await getFilingStateTotals(ctx.db);
+  const financials = await getFinancialsRefreshTotals(ctx.db);
   const runs = await store.listRunsByKind("data", 10);
   return {
     due: states,
     paused: states.byStatus.paused ?? 0,
+    financials,
     ttlMs: config.dataTtlMs,
     sweepCron: config.dataSweepCron,
     historyMs: config.dataHistoryMs,
     concurrency: config.dataConcurrency,
+    retryMaxDays: config.dataFinancialsRetryMaxDays,
     runs,
   };
 }
@@ -255,6 +317,7 @@ function empty(partial: Partial<DataSweepResult>): DataSweepResult {
     due: 0,
     claimed: 0,
     enqueued: 0,
+    catchUp: 0,
     pruned: 0,
     ...partial,
   };

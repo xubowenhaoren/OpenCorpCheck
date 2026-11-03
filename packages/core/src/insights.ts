@@ -248,6 +248,18 @@ export interface FilingRefreshView {
   pending: boolean;
   consecutiveFailures: number;
   sources: FilingSourceStateView[];
+  /** P1.5 follow-up: expected period vs. structured financials coverage. */
+  financials?: FinancialsRefreshView;
+}
+
+export interface FinancialsRefreshView {
+  /** `YYYY-MM-DD` reported by the newest periodic filing. */
+  expectedPeriodEnd: string;
+  status: "pending" | "applied" | "failed";
+  attempts: number;
+  source: string;
+  nextRetryAt?: string;
+  lastError?: string;
 }
 
 export interface CompanyCard {

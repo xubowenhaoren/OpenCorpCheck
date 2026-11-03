@@ -15,6 +15,7 @@ import {
   cninfoPublishedAt,
   createFilingContentLoader,
   edgarPeriodicKind,
+  expectedPeriodEnd,
   fetchCninfoFilings,
   filingKey,
   filingPeriodicKind,
@@ -413,6 +414,89 @@ describe("periodic report classification (P1.5)", () => {
         category: "Financial Statements",
       }),
     ).toBe("half");
+  });
+});
+
+describe("expected statement period (P1.5 follow-up)", () => {
+  it("uses EDGAR reportDate when the adapter provides it", () => {
+    expect(
+      expectedPeriodEnd({
+        source: "edgar",
+        form: "10-K",
+        title: "10-K · Annual report",
+        periodEnd: "2026-09-26",
+        publishedAt: "2026-11-03T00:00:00.000Z",
+      }),
+    ).toBe("2026-09-26");
+  });
+
+  it("derives the CNINFO period from the title", () => {
+    expect(
+      expectedPeriodEnd({ source: "cninfo", title: "2026年第三季度报告" }),
+    ).toBe("2026-09-30");
+    expect(
+      expectedPeriodEnd({ source: "cninfo", title: "2026年第一季度报告" }),
+    ).toBe("2026-03-31");
+    expect(
+      expectedPeriodEnd({ source: "cninfo", title: "2025年半年度报告" }),
+    ).toBe("2025-06-30");
+    expect(
+      expectedPeriodEnd({ source: "cninfo", title: "2025年年度报告" }),
+    ).toBe("2025-12-31");
+  });
+
+  it("derives an HKEX period from an explicit title date", () => {
+    expect(
+      expectedPeriodEnd({
+        source: "hkexnews",
+        title:
+          "ANNOUNCEMENT OF INTERIM RESULTS FOR THE SIX MONTHS ENDED 30 JUNE 2026",
+        publishedAt: "2026-08-20T00:00:00.000Z",
+      }),
+    ).toBe("2026-06-30");
+    expect(
+      expectedPeriodEnd({
+        source: "hkexnews",
+        title: "截至2025年12月31日止年度之年度業績",
+        publishedAt: "2026-03-20T00:00:00.000Z",
+      }),
+    ).toBe("2025-12-31");
+  });
+
+  it("falls back deterministically when the title has no period", () => {
+    expect(
+      expectedPeriodEnd({
+        source: "hkexnews",
+        title: "ANNOUNCEMENT OF INTERIM RESULTS",
+        publishedAt: "2026-08-20T00:00:00.000Z",
+      }),
+    ).toBe("2026-06-30");
+    expect(
+      expectedPeriodEnd({
+        source: "hkexnews",
+        title: "QUARTERLY RESULTS ANNOUNCEMENT",
+        publishedAt: "2026-10-25T00:00:00.000Z",
+      }),
+    ).toBe("2026-09-30");
+    expect(
+      expectedPeriodEnd({
+        source: "hkexnews",
+        title: "ANNOUNCEMENT OF ANNUAL RESULTS",
+        publishedAt: "2026-03-20T00:00:00.000Z",
+      }),
+    ).toBe("2025-12-31");
+  });
+
+  it("returns null for announcements that are not periodic reports", () => {
+    expect(
+      expectedPeriodEnd({ source: "edgar", form: "8-K", title: "8-K" }),
+    ).toBeNull();
+    expect(
+      expectedPeriodEnd({ source: "cninfo", title: "2026年年度业绩预告" }),
+    ).toBeNull();
+    expect(
+      expectedPeriodEnd({ source: "hkexnews", title: "PROFIT WARNING" }),
+    ).toBeNull();
   });
 });
 

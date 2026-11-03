@@ -1,7 +1,16 @@
 import type { Job } from "pg-boss";
 
 import type { Market } from "@occ/core";
-import { createDb, resolveCompanyId, type Db } from "@occ/db";
+import {
+  createDb,
+  getFinancialsRefreshState,
+  markFinancialsRefreshApplied,
+  markFinancialsRefreshFailed,
+  markFinancialsRefreshRetry,
+  maxFinancialFactPeriodEnd,
+  resolveCompanyId,
+  type Db,
+} from "@occ/db";
 
 import { config } from "../config.js";
 import {
@@ -11,6 +20,7 @@ import {
   markJobFailed,
 } from "../db.js";
 import { QUEUES } from "../queues.js";
+import { financialsVerification } from "../data/verify.js";
 import { runFinancials } from "../financials/run.js";
 
 export interface FinancialsJobData {
@@ -19,6 +29,8 @@ export interface FinancialsJobData {
   ticker: string;
   code: string;
   market: Market;
+  /** Display name for the task dock (P1.5 follow-up). */
+  name?: string;
   force?: boolean;
   /**
    * P1.5: the real `companies.id` for the run row. The financials job key is
@@ -88,9 +100,10 @@ async function processFinancialsJob(job: Job<FinancialsJobData>): Promise<void> 
 
   await markJobActive(data.runId, queue, data.key);
   const startedAt = Date.now();
+  let companyId: string | null = null;
   try {
     const { db } = await getFinancialsDb();
-    const companyId = await resolveCompanyId(db, data.ticker);
+    companyId = await resolveCompanyId(db, data.ticker);
     if (!companyId) {
       throw new Error(
         `company not ingested (no ticker/alias match for ${data.ticker})`,
@@ -108,7 +121,23 @@ async function processFinancialsJob(job: Job<FinancialsJobData>): Promise<void> 
     if (outcome.written === 0 && outcome.error) {
       throw new Error(outcome.error);
     }
-    await markJobCompleted(data.runId, queue, data.key);
+    const verification = await verifyFinancialsRefresh({
+      db,
+      companyId,
+      ...(outcome.error ? { error: outcome.error } : {}),
+    });
+    await markJobCompleted(
+      data.runId,
+      queue,
+      data.key,
+      verification
+        ? {
+            financialsStatus: verification.status,
+            expectedPeriodEnd: verification.expectedPeriodEnd,
+            maxPeriodEnd: verification.maxPeriodEnd,
+          }
+        : undefined,
+    );
     log({
       event: "financials_job_completed",
       run: data.runId,
@@ -125,6 +154,10 @@ async function processFinancialsJob(job: Job<FinancialsJobData>): Promise<void> 
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (companyId) {
+      const { db } = await getFinancialsDb();
+      await recordFinancialsFailure(db, companyId, message).catch(() => undefined);
+    }
     await markJobFailed(data.runId, queue, data.key, message);
     log({
       event: "financials_job_failed",
@@ -136,6 +169,122 @@ async function processFinancialsJob(job: Job<FinancialsJobData>): Promise<void> 
     });
     throw error;
   }
+}
+
+/**
+ * P1.5 follow-up: a periodic report was detected, but the expected period may
+ * not be in F10 yet. Verify against stored facts; keep the row `pending` with
+ * a bounded retry instead of trusting a "successful" one-shot run.
+ */
+async function verifyFinancialsRefresh(input: {
+  db: Db;
+  companyId: string;
+  error?: string;
+}): Promise<{
+  status: "applied" | "pending" | "failed";
+  expectedPeriodEnd: string;
+  maxPeriodEnd: string | null;
+} | null> {
+  try {
+    const state = await getFinancialsRefreshState(input.db, input.companyId);
+    if (!state || state.status !== "pending") return null;
+    const maxPeriodEnd = await maxFinancialFactPeriodEnd(
+      input.db,
+      input.companyId,
+    );
+    const now = new Date();
+    const decision = financialsVerification({
+      expectedPeriodEnd: state.expectedPeriodEnd,
+      maxPeriodEnd,
+      attempts: state.attempts,
+      firstSeenAt: state.firstSeenAt,
+      now,
+      maxDays: config.dataFinancialsRetryMaxDays,
+    });
+    await applyVerification(input.db, input.companyId, state, decision, input.error);
+    log({
+      event:
+        decision.status === "applied"
+          ? "financials_verified"
+          : decision.status === "pending"
+            ? "financials_verify_pending"
+            : "financials_verify_failed",
+      companyId: input.companyId,
+      expected: state.expectedPeriodEnd,
+      maxPeriodEnd,
+      attempts: decision.attempts,
+      nextRetryAt: decision.nextRetryAt?.toISOString() ?? null,
+    });
+    return {
+      status: decision.status,
+      expectedPeriodEnd: state.expectedPeriodEnd,
+      maxPeriodEnd,
+    };
+  } catch (error) {
+    // Verification is bookkeeping; a failure here must not fail the job.
+    log({
+      event: "financials_verify_error",
+      companyId: input.companyId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+/** A failed financials run keeps the expectation pending with backoff. */
+async function recordFinancialsFailure(
+  db: Db,
+  companyId: string,
+  error: string,
+): Promise<void> {
+  const state = await getFinancialsRefreshState(db, companyId);
+  if (!state || state.status !== "pending") return;
+  const decision = financialsVerification({
+    expectedPeriodEnd: state.expectedPeriodEnd,
+    maxPeriodEnd: null,
+    attempts: state.attempts,
+    firstSeenAt: state.firstSeenAt,
+    now: new Date(),
+    maxDays: config.dataFinancialsRetryMaxDays,
+  });
+  await applyVerification(db, companyId, state, decision, error);
+  log({
+    event: "financials_verify_retry",
+    companyId,
+    expected: state.expectedPeriodEnd,
+    attempts: decision.attempts,
+    status: decision.status,
+    nextRetryAt: decision.nextRetryAt?.toISOString() ?? null,
+  });
+}
+
+async function applyVerification(
+  db: Db,
+  companyId: string,
+  state: { expectedPeriodEnd: string },
+  decision: ReturnType<typeof financialsVerification>,
+  error?: string,
+): Promise<void> {
+  if (decision.status === "applied") {
+    await markFinancialsRefreshApplied(db, companyId);
+    return;
+  }
+  if (decision.status === "failed") {
+    await markFinancialsRefreshFailed(db, {
+      companyId,
+      attempts: decision.attempts,
+      error:
+        error ??
+        `expected period ${state.expectedPeriodEnd} not in structured financials after ${config.dataFinancialsRetryMaxDays} days`,
+    });
+    return;
+  }
+  await markFinancialsRefreshRetry(db, {
+    companyId,
+    attempts: decision.attempts,
+    nextRetryAt: decision.nextRetryAt ?? new Date(),
+    error: error ?? null,
+  });
 }
 
 function log(payload: Record<string, unknown>): void {

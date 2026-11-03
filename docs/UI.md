@@ -1,9 +1,9 @@
 # OpenCorpCheck UI — 企查查式公司情报页
 
-> Status: implemented in [`apps/web`](../apps/web) · updated 2026-11-01
-> (tool-use trajectory + GFM Markdown + session replay; automatic news
-> TaskDock and Financials tab shipped; a first-class sub-agent card is
-> **permanently deferred**, not “reserved”)
+> Status: implemented in [`apps/web`](../apps/web) · updated 2026-11-03
+> (tool-use trajectory + GFM Markdown + session replay; shared automatic-news
+> + financials TaskDock and Financials tab shipped; a first-class sub-agent
+> card is **permanently deferred**, not “reserved”)
 > Audience: 本项目作者 / 前端实现者
 > Related: [Architecture](ARCHITECTURE.md) §1、§7.4、§8.4 · [Search](SEARCH.md) ·
 > [Facts & relations](EXTRACT.md) · [Agent sidebar](AGENT.md) ·
@@ -448,38 +448,41 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 
 ---
 
-### 7.9 顶部任务坞（共享：自动新闻 + 自动财报刷新）
+### 7.9 顶部任务坞（共享：自动新闻 + 自动财报刷新，已实现）
 
-> **状态：目标设计 / P1.5 follow-up。** 当前生产版仍是 news-only；本节是
-> 2026-11-03 恢复的原始共享设计，待实现。**手动刷新新闻按钮不恢复**
-> （决策 34）。
+> **状态：已实现（2026-11-03）。** 一个 dock 同时承载两个自动 producer；
+> **手动刷新新闻按钮不恢复**（决策 34）。实现见
+> `apps/web/src/components/TaskDock.tsx` + `apps/web/src/lib/task-dock.ts`。
 
 - 历史：`08519b1` 原始设计是 news + 公司数据共享 dock；`fa84287` 收窄为
   news-only；2026-11-03 恢复共享的信息架构，但只接两个**自动** producer。
-- 位置：顶部导航最右侧，`EN` / `深色` 之后；折叠为 34 px 圆环按钮，环形进度表示
-  当前活动任务，进行中显示数量角标，空闲时显示上次结果的状态点。
+- 位置：顶部导航最右侧，`EN` / `深色` 之后；折叠为 34 px 圆环按钮。有活动
+  producer 时环形进度为所有活动 run 的聚合完成度，角标显示活动 producer 数
+  （1 或 2）；空闲且近 3 天有失败 run 时显示 `!` 警示角标。
 - 展开：一个卡片（移动端为页头下方全宽 sheet），标题「任务」，带
-  `全部 / 更新新闻 / 财报更新` 筛选 tab：
+  `全部 / 更新新闻 / 财报更新` 筛选 tab（数字为近 3 天该类 run 数）：
   - `更新新闻`：当前/最近 sweep 的 `更新中 27/236 · 11%`、进度条和公司子任务
     （`19 条` / `抓取中` / `队列中` / `查看`）。
-  - `财报更新`：当前/最近 `data.sweep` run 的进度（如 `已检查 180/251`）和
-    公司子任务（`检查中` / `无更新` / `发现 N 条` / `财报更新中` /
-    `公告入库中` / `重试中` / `已完成`）；同一公司的 A/HK 两个 source 合并为一行。
+  - `财报更新`：当前/最近 `data.sweep` run 的进度和公司子任务
+    （`检查中` / `无更新` / `发现 N 条` / `财报更新中` / `财报待更新` /
+    `公告入库中` / `重试中` / `已完成`）。同一公司的 A/HK 两个 source
+    合并为一行；任一 source 失败仍显示 `重试中`，不会因另一个成功而隐藏。
 - 空闲时显示每类最近一次 run 和下次自动更新时间（`最近更新 · 3 分钟前`、
-  `下次自动更新约 23 小时后`）；近 3 天的已完成 run 保留在列表里。
+  `下次自动更新约 23 小时后`，取 news/data 最早的 due）；近 3 天的已完成
+  run 保留在列表里。
 - **不提供手动刷新新闻按钮**（决策 34）：没有刷新、`POST /v1/news/refresh` 或
   页面进入触发。失败由服务端自动退避重试；本轮不恢复手动重试/复核按钮。
 - `company_research` 仍是运营侧任务，不接公共 dock（决策 34）；不要因为原型
   有「公司数据获取」就接上。
-- 轮询：有活动 run 时 5 s，空闲 60 s（关闭卡片不取消任何任务）；展开的 run 会
-  额外读取 `GET /v1/runs/:id` 获取子任务。建议新增/扩展统一状态接口
-  （`GET /v1/tasks/status`，或 `/v1/news/status` 增加 `data` 块），并保留 news
-  的 lazy sweep trigger。
+- 轮询：有活动 run 或 pending producer 时 5 s，空闲 60 s（关闭卡片不取消任何
+  任务）；展开的 run 会额外读取 `GET /v1/runs/:id` 获取子任务。状态来自
+  `GET /v1/news/status`（新增 `dataRefresh` 块），保留 news 的 lazy sweep
+  trigger；data sweep 由 data worker 的 cron 负责，API 不触发。
 - 无障碍：`aria-expanded` / `aria-controls` / `role="progressbar"` /
   `aria-live="polite"` 完成播报；`prefers-reduced-motion` 下关闭动画。
 - 视觉参考：[`docs/prototypes/task-dock.html`](prototypes/task-dock.html)
-  （两种 kind、筛选 tab、移动端）；去掉原型控制条、手动按钮和 research
-  mock 行。
+  （两种 kind、筛选 tab、移动端）；原型控制条、手动按钮和 research mock 行
+  未接入。
 
 ### 7.10 Placeholder 公司页（P1.1，已实现）
 
@@ -692,7 +695,7 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 | 组件 | 职责 |
 |---|---|
 | `TopNav` | logo、常驻搜索、首页/查公司/关系图谱、语言、主题、任务坞 |
-| `TaskDock` | 共享任务坞（目标：自动新闻 + 自动财报刷新；当前生产：仅新闻；无手动刷新按钮） |
+| `TaskDock` | 共享任务坞（自动新闻 + 自动财报刷新；`全部 / 更新新闻 / 财报更新`；无手动刷新按钮） |
 | `HomeSearch` | 首页大搜索、热门、最近查看 |
 | `SearchResults` | 结果列表、市场/行业/指数筛选 |
 | `CompanyHeader` | 名称、代码、地区、行业、关键元数据、关注/问一问 |

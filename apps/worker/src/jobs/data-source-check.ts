@@ -6,14 +6,17 @@ import {
   filingRowId,
   getFilingState,
   insertDetectedFilings,
+  leaseFinancialsRefresh,
   listDetectedFilings,
   markFilingSourceFailure,
   markFilingSourceSuccess,
+  upsertExpectedFinancialsPeriod,
   type FilingStateSnapshot,
   type NewFilingRow,
 } from "@occ/db";
 import { FinanceAnalystClient } from "@occ/sources-eastmoney-f10";
 import {
+  expectedPeriodEnd,
   fetchCninfoFilings,
   fetchEdgarFilings,
   fetchHkexNewsFilings,
@@ -89,6 +92,7 @@ async function processDataSourceCheck(
           ticker: data.ticker,
           code: data.code,
           market: data.market,
+          ...(data.name ? { name: data.name } : {}),
           force: false,
           bypassCache: true,
           reopenCompleted: false,
@@ -172,6 +176,25 @@ async function processDataSourceCheck(
     const periodic = actionable.filter((filing) => filing.periodic);
     let enqueuedFilings = 0;
     let enqueuedFinancials = 0;
+    let financialsTracked = 0;
+
+    // P1.5 follow-up: remember the period this report should add, so a
+    // financials run that finishes while F10 lags stays pending and is retried
+    // by the daily sweep. The accession is already consumed at this point.
+    for (const filing of periodic) {
+      if (!filing.periodEnd) continue;
+      await upsertExpectedFinancialsPeriod(ctx.db, {
+        companyId: data.companyId,
+        expectedPeriodEnd: filing.periodEnd,
+        market: data.market,
+        ticker: data.ticker,
+        code: data.code,
+        name: data.name ?? null,
+        source: data.source,
+        filingId: filing.id,
+      });
+      financialsTracked += 1;
+    }
 
     if (actionable.length > 0) {
       await deps.enqueueFilingIngest({
@@ -185,18 +208,32 @@ async function processDataSourceCheck(
       enqueuedFilings = actionable.length;
     }
     if (periodic.length > 0) {
-      await deps.enqueueFinancials({
-        runId: data.runId,
-        key: `${data.market}:${data.ticker}`,
-        companyId: data.companyId,
-        ticker: data.ticker,
-        code: data.code,
-        market: data.market,
-        force: false,
-        bypassCache: true,
-        reopenCompleted: false,
-      });
-      enqueuedFinancials = 1;
+      // One financials job per company per run. A catch-up may already have
+      // leased the state in this sweep; without this guard the check would
+      // enqueue a second pg-boss job for the same period (both can be active
+      // before either marks the run row completed). No tracked period (rare)
+      // falls back to the pre-follow-up behaviour.
+      const leased =
+        financialsTracked === 0 ||
+        (await leaseFinancialsRefresh(ctx.db, {
+          companyId: data.companyId,
+          claimTimeoutMs: data.claimTimeoutMs,
+        })) !== null;
+      if (leased) {
+        await deps.enqueueFinancials({
+          runId: data.runId,
+          key: `${data.market}:${data.ticker}`,
+          companyId: data.companyId,
+          ticker: data.ticker,
+          code: data.code,
+          market: data.market,
+          ...(data.name ? { name: data.name } : {}),
+          force: false,
+          bypassCache: true,
+          reopenCompleted: false,
+        });
+        enqueuedFinancials = 1;
+      }
     }
 
     const status: "ok" | "changed" | "empty" =
@@ -220,6 +257,7 @@ async function processDataSourceCheck(
       periodic: periodic.length,
       enqueuedFilings,
       enqueuedFinancials,
+      financialsTracked,
       sinceDays: window.sinceDays,
     });
     log({
@@ -234,6 +272,7 @@ async function processDataSourceCheck(
       periodic: periodic.length,
       enqueuedFilings,
       enqueuedFinancials,
+      financialsTracked,
       sinceDays: window.sinceDays,
       durationMs: Date.now() - startedAt,
     });
@@ -366,6 +405,9 @@ function toNewFilingRow(
 ): NewFilingRow {
   const periodKind = filingPeriodicKind(item);
   const filedAt = item.publishedAt ? new Date(item.publishedAt) : null;
+  // EDGAR carries `reportDate`; CNINFO/HKEXnews publish only a title. Derive
+  // the period deterministically so financials can be verified later.
+  const periodEnd = item.periodEnd ?? expectedPeriodEnd(item);
   return {
     id: filingRowId(item.source, item.externalId),
     companyId,
@@ -376,7 +418,7 @@ function toNewFilingRow(
     category: item.category ?? null,
     filedAt:
       filedAt && !Number.isNaN(filedAt.getTime()) ? filedAt : null,
-    periodEnd: item.periodEnd ?? null,
+    periodEnd: periodEnd ? periodEnd.slice(0, 10) : null,
     periodic: periodKind !== null,
     periodKind,
     url: item.url,

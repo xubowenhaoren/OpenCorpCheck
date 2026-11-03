@@ -29,6 +29,23 @@ export function filingStatus(
       warn: true,
     };
   }
+  // P1.5 follow-up: a report was detected but the structured period has not
+  // landed yet (A/HK F10 lag). Never claim the financials are updated.
+  if (refresh.financials?.status === "failed") {
+    return {
+      text: t("filing.financialsFailed", {
+        period: refresh.financials.expectedPeriodEnd,
+      }),
+      warn: true,
+    };
+  }
+  if (refresh.financials?.status === "pending") {
+    return {
+      text: t("filing.financialsPending", {
+        period: refresh.financials.expectedPeriodEnd,
+      }),
+    };
+  }
   if (refresh.pending) return { text: t("filing.pending") };
   if (refresh.latest) {
     const date =
