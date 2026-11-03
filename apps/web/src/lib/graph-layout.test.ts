@@ -132,6 +132,65 @@ describe("dense ownership layout", () => {
     expect(radii.has(302)).toBe(true);
   });
 
+  it("staggers the two rings so centre edges never pass through nodes", () => {
+    const center = company("alphabet", "Alphabet Inc.");
+    const { edges } = thirteenFilers(center, 20);
+    const collapsed = buildGraphLayout(graph(center, edges), edges, {
+      expanded: false,
+      clusterLabel: "其他机构",
+    });
+    const expanded = buildGraphLayout(graph(center, edges), edges, {
+      expanded: true,
+      clusterLabel: "其他机构",
+    });
+
+    const distanceToSegment = (
+      point: { x: number; y: number },
+      start: { x: number; y: number },
+      end: { x: number; y: number },
+    ): number => {
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const lengthSquared = dx * dx + dy * dy || 1;
+      const t = Math.max(
+        0,
+        Math.min(
+          1,
+          ((point.x - start.x) * dx + (point.y - start.y) * dy) /
+            lengthSquared,
+        ),
+      );
+      return Math.hypot(
+        point.x - (start.x + t * dx),
+        point.y - (start.y + t * dy),
+      );
+    };
+
+    for (const layout of [collapsed, expanded]) {
+      const centerPoint = layout.positions.get(center.id);
+      if (!centerPoint) throw new Error("missing centre");
+      const entries = [...layout.positions.entries()].filter(
+        ([id]) => id !== center.id,
+      );
+      // No two nodes share the same angle on different rings.
+      for (let i = 0; i < entries.length; i += 1) {
+        for (let j = i + 1; j < entries.length; j += 1) {
+          const delta = Math.abs(entries[i][1].angle - entries[j][1].angle);
+          expect(Math.min(delta, 360 - delta)).toBeGreaterThan(0.5);
+        }
+      }
+      // A centre edge must pass between nodes, not through another node.
+      for (const [id, end] of entries) {
+        for (const [otherId, point] of entries) {
+          if (id === otherId) continue;
+          expect(
+            distanceToSegment(point, centerPoint, end),
+          ).toBeGreaterThanOrEqual(NODE_RADIUS - 1);
+        }
+      }
+    }
+  });
+
   it("expands to every holder and keeps the amount order", () => {
     const center = company("blackrock", "BlackRock, Inc.");
     const { edges } = thirteenFilers(center, 26);

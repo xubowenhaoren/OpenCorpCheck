@@ -43,6 +43,7 @@
         "BERKSHIRE HAT…",
         "BANK OF AMERI…",
         "Bank of New Y…",
+        "FRANKLIN TEMP…",
         "AMERIPRISE FI…",
         "HSBC Holdings…",
         "RAYMOND JAMES…",
@@ -67,8 +68,7 @@
         "Xcel Energy I…",
         "康卡斯特",
         "英特尔公司",
-        "Walmart Inc.",
-        "Strategy Inc"
+        "Walmart Inc."
       ],
       "labelCollisions": [],
       "nodeCollisions": [],
@@ -108,7 +108,7 @@
     "company": "nvda",
     "desktop": {
       "nodes": 23,
-      "labels": 23,
+      "labels": 22,
       "labelsText": [
         "NVIDIA Corporation",
         "BlackRock, In…",
@@ -122,7 +122,6 @@
         "Bank of New Y…",
         "英特尔公司",
         "Arm Holdings …",
-        "Meta Platform…",
         "Astera Labs, …",
         "Autodesk, Inc.",
         "Cadence Desig…",
@@ -141,7 +140,7 @@
     "desktop_expanded": null,
     "mobile": {
       "nodes": 23,
-      "labels": 23,
+      "labels": 22,
       "labelsText": [
         "NVIDIA Corporation",
         "BlackRock, In…",
@@ -155,7 +154,6 @@
         "Bank of New Y…",
         "英特尔公司",
         "Arm Holdings …",
-        "Meta Platform…",
         "Astera Labs, …",
         "Autodesk, Inc.",
         "Cadence Desig…",

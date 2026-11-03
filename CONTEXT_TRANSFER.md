@@ -1394,7 +1394,10 @@ change relation status/types, or alter the API.
     top 10 plus a synthetic「其他机构 +N」node. F10/GLEIF and non-investment
     edges stay visible.
   - >8 visible direct nodes use two rings (top holders inner, rest outer) with
-    relation-family arcs; ≤8 keeps the previous single ring/radii.
+    relation-family arcs; inner/outer angles are interleaved so an outer
+    holder's edge to the centre passes between inner nodes instead of through
+    one (which would look like the two companies are connected). ≤8 keeps the
+    previous single ring/radii.
   - Labels are single-line, placed in priority order, and hidden when they
     would cover the centre, another node, or another label. Hover shows the full
     name via `<title>`; the inspector shows it on selection.
@@ -1408,7 +1411,7 @@ change relation status/types, or alter the API.
   `overlap-report.json` (0 node collisions, 0 label collisions at the default
   view for every company, including GOOGL's 39-node expanded state). BLK is an
   S&P 500 stub and is verified through `/graph?company=blackrock`.
-- Web tests/typecheck/build green (42 web tests).
+- Web tests/typecheck/build green (43 web tests).
 
 ### P1.4 — Official filing adapters (NEXT)
 
@@ -1591,7 +1594,7 @@ P1 (active; see §10):
   duplicates skipped); reruns insert 0; migration
   `0010_relation_metadata.sql`; per-source labels shipped.
 - [x] **P1.3 follow-up: dense ownership graph readability (web-only).**
-  `apps/web/src/lib/graph-layout.ts` + `CompanyGraph.tsx`; 42 web tests;
+  `apps/web/src/lib/graph-layout.ts` + `CompanyGraph.tsx`; 43 web tests;
   screenshots/overlap report in `docs/screenshots/p1.3/`.
 - [ ] **NEXT — P1.4 CNINFO/SSE/SZSE/HKEXnews/IR RSS/GDELT adapters + PDF.**
 - [ ] P1.5 daily company-data/financial-report refresh (`data.sweep`,

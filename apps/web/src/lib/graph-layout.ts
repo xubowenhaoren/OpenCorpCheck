@@ -197,7 +197,6 @@ interface GroupSplit {
   category: RelationCategory;
   inner: DirectCandidate[];
   outer: DirectCandidate[];
-  slots: number;
 }
 
 /**
@@ -223,7 +222,6 @@ function splitGroups(candidates: DirectCandidate[]): GroupSplit[] {
         category,
         inner,
         outer,
-        slots: Math.max(inner.length, outer.length, 1),
       };
     },
   );
@@ -234,18 +232,35 @@ function placeTwoRings(
   positions: Map<string, Position>,
 ): void {
   const groups = splitGroups(candidates);
-  const totalSlots = groups.reduce((sum, group) => sum + group.slots, 0);
+  const totalSlots = groups.reduce(
+    (sum, group) => sum + group.inner.length + group.outer.length,
+    0,
+  );
   let cursor = START_ANGLE;
   for (const group of groups) {
-    const arc = (360 * group.slots) / Math.max(totalSlots, 1);
-    group.inner.forEach((candidate, index) => {
-      const angle = cursor + (arc * (index + 0.5)) / group.inner.length;
-      setPolarPosition(positions, candidate.id, INNER_RADIUS, angle);
-    });
-    group.outer.forEach((candidate, index) => {
-      const angle = cursor + (arc * (index + 0.5)) / group.outer.length;
-      setPolarPosition(positions, candidate.id, OUTER_RADIUS, angle);
-    });
+    const slots = group.inner.length + group.outer.length;
+    const arc = (360 * slots) / Math.max(totalSlots, 1);
+    const step = arc / Math.max(slots, 1);
+    /**
+     * Interleave inner and outer nodes instead of giving both rings the same
+     * angles. Otherwise an outer holder's edge to the centre runs straight
+     * through the inner node at the same angle, which reads as if the two
+     * companies were connected. Each node now gets its own angle; edges to the
+     * outer ring pass between the inner nodes.
+     */
+    let slot = 0;
+    for (let index = 0; index < Math.max(group.inner.length, group.outer.length); index += 1) {
+      const inner = group.inner[index];
+      if (inner) {
+        setPolarPosition(positions, inner.id, INNER_RADIUS, cursor + step * (slot + 0.5));
+        slot += 1;
+      }
+      const outer = group.outer[index];
+      if (outer) {
+        setPolarPosition(positions, outer.id, OUTER_RADIUS, cursor + step * (slot + 0.5));
+        slot += 1;
+      }
+    }
     cursor += arc;
   }
 }
@@ -268,8 +283,8 @@ function placeSingleRing(
 
 /**
  * Place the collapsed cluster near the last named holder without stacking it
- * on top of another node. Falls back to the preferred angle if the ring is
- * unusually crowded.
+ * on top of a node or running its edge through another node. Falls back to the
+ * preferred angle if the ring is unusually crowded.
  */
 function findClusterAngle(
   positions: Map<string, Position>,
@@ -277,19 +292,59 @@ function findClusterAngle(
   radius: number,
 ): number {
   const minDistance = NODE_RADIUS * 2 + CLUSTER_RADIUS + 8;
-  for (const offset of [
-    0, 18, -18, 28, -28, 38, -38, 48, -48, 60, -60, 90, -90, 120, -120, 180,
-  ]) {
+  const offsets = [0];
+  for (let offset = 6; offset <= 180; offset += 6) {
+    offsets.push(offset, -offset);
+  }
+  for (const offset of offsets) {
     const angle = preferredAngle + offset;
     const radians = (angle * Math.PI) / 180;
     const x = CENTER_X + radius * Math.cos(radians);
     const y = CENTER_Y - radius * Math.sin(radians);
-    const clear = [...positions.values()].every(
-      (position) => Math.hypot(position.x - x, position.y - y) >= minDistance,
-    );
+    const clear = [...positions.values()].every((position) => {
+      // Ignore the centre itself: every candidate edge starts there.
+      if (
+        Math.abs(position.x - CENTER_X) < 0.5 &&
+        Math.abs(position.y - CENTER_Y) < 0.5
+      ) {
+        return true;
+      }
+      const endpointGap = Math.hypot(position.x - x, position.y - y);
+      if (endpointGap < minDistance) return false;
+      // Edges to the outer ring must pass between nodes, not through them.
+      return (
+        distanceToSegment(
+          position,
+          { x: CENTER_X, y: CENTER_Y },
+          { x, y },
+        ) >=
+        NODE_RADIUS + 6
+      );
+    });
     if (clear) return angle;
   }
   return preferredAngle;
+}
+
+function distanceToSegment(
+  point: { x: number; y: number },
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy || 1;
+  const t = Math.max(
+    0,
+    Math.min(
+      1,
+      ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared,
+    ),
+  );
+  return Math.hypot(
+    point.x - (start.x + t * dx),
+    point.y - (start.y + t * dy),
+  );
 }
 
 export function defaultView(nodeCount: number): ViewBox {
@@ -355,9 +410,9 @@ function labelCandidates(
     anchor: "middle" as const,
     box: {
       x: position.x - width / 2,
-      y: position.y + radius + 5,
+      y: position.y + radius + 3,
       w: width,
-      h: 14,
+      h: 20,
     },
   };
   const above = {
@@ -367,9 +422,9 @@ function labelCandidates(
     anchor: "middle" as const,
     box: {
       x: position.x - width / 2,
-      y: position.y - radius - 16,
+      y: position.y - radius - 19,
       w: width,
-      h: 14,
+      h: 20,
     },
   };
   const right = {
@@ -379,9 +434,9 @@ function labelCandidates(
     anchor: "start" as const,
     box: {
       x: position.x + radius + 5,
-      y: position.y - 10,
+      y: position.y - 12,
       w: width,
-      h: 14,
+      h: 20,
     },
   };
   const left = {
@@ -391,9 +446,9 @@ function labelCandidates(
     anchor: "end" as const,
     box: {
       x: position.x - radius - 5 - width,
-      y: position.y - 10,
+      y: position.y - 12,
       w: width,
-      h: 14,
+      h: 20,
     },
   };
   return [below, above, right, left];
