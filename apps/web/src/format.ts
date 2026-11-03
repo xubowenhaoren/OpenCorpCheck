@@ -317,6 +317,33 @@ export function formatPercent(value: number, lang: Lang = "zh"): string {
   return `${formatNumber(value, lang)}%`;
 }
 
+/**
+ * Human-readable magnitude for a relationship: 13F stores market value in
+ * `amount`; HKEX DION stores a long-position percentage in metadata.
+ */
+export function relationMagnitudeLabel(
+  relation: {
+    amount?: number;
+    currency?: string;
+    metadata?: Record<string, unknown>;
+  },
+  lang: Lang = "zh",
+): string | null {
+  if (
+    typeof relation.amount === "number" &&
+    Number.isFinite(relation.amount) &&
+    relation.amount > 0
+  ) {
+    return formatMoney(relation.amount, relation.currency, lang);
+  }
+  const raw = relation.metadata?.percent;
+  const percent = typeof raw === "number" ? raw : Number(raw);
+  if (Number.isFinite(percent) && percent > 0) {
+    return formatPercent(percent, lang);
+  }
+  return null;
+}
+
 export function formatFinancialValue(
   fact: FinancialFactView,
   lang: Lang = "zh",

@@ -8,6 +8,7 @@ import {
   financialSourceLabel,
   isCumulativePeriod,
   isDerivedFact,
+  relationMagnitudeLabel,
 } from "./format";
 
 function fact(overrides: Partial<FinancialFactView> = {}): FinancialFactView {
@@ -89,5 +90,18 @@ describe("financial cell labels", () => {
         fact({ periodKind: "annual", periodStart: "2025-01-01", periodEnd: "2025-12-31" }),
       ),
     ).toBe(false);
+  });
+
+  it("labels 13F dollar values and HKEX percentage holdings", () => {
+    expect(
+      relationMagnitudeLabel(
+        { amount: 295_442_568_084, currency: "USD" },
+        "zh",
+      ),
+    ).toContain("亿美元");
+    expect(relationMagnitudeLabel({ metadata: { percent: 6.76 } }, "zh")).toBe(
+      "6.76%",
+    );
+    expect(relationMagnitudeLabel({}, "zh")).toBeNull();
   });
 });

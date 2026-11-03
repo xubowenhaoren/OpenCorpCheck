@@ -189,7 +189,12 @@ reported edge shows its source instead:
 
 `RelationView` exposes `extractorVersion` and `metadata`; the graph inspector
 and relation list show the source after the status. Relations are sorted by
-confidence and then `amount`, so the largest 13F holdings appear first.
+confidence and then `amount`, so the largest 13F holdings appear first. In the
+graph itself, 13F/DION are low-emphasis dotted edges without arrowheads; when
+more than 12 institutional holders exist the default view shows the 10 largest
+by `amount` (DION falls back to `metadata.percent`) plus an「其他机构 +N」
+cluster.「显示全部」expands; the full list and API are unchanged. See
+[UI.md](UI.md) §7.4.1.
 
 ## 7. Results (2026-11-02)
 

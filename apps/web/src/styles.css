@@ -445,11 +445,19 @@
   .node.cat-partner circle { fill: var(--cat-partner); }
   .node.cat-other circle { fill: var(--cat-other); }
   .node.center circle { fill: var(--accent); }
-  .node-name { fill: var(--ink); font-size: 11px; font-weight: 600; }
-  .node-status { fill: var(--muted); font-size: 9.5px; }
-  .node-status.ok { fill: var(--ok); }
-  .node-status.warn { fill: var(--warn); }
-  .node-status.info { fill: var(--info); }
+  .node.cluster circle {
+    fill: var(--bg-elev); stroke: var(--muted); stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+  }
+  .node.cluster:hover circle { stroke: var(--ink); }
+  .cluster-count { fill: var(--ink); font-size: 11px; font-weight: 700; }
+  .node-label {
+    fill: var(--ink); font-size: 11px; font-weight: 600;
+    paint-order: stroke; stroke: var(--bg-elev); stroke-width: 3px;
+    stroke-linejoin: round;
+  }
+  .node-label.selected-label { font-weight: 700; stroke-width: 4px; }
+  .center-label { font-weight: 700; }
   .center-name { fill: var(--on-accent); font-size: 13px; font-weight: 700; }
   .graph-hint {
     display: none; position: absolute; top: 10px; right: 10px;
@@ -457,7 +465,7 @@
     background: color-mix(in srgb, var(--bg-elev) 86%, transparent);
     color: var(--muted); font-size: 10.5px;
   }
-  .edge { fill: none; stroke-width: 1.8; }
+  .edge { fill: none; stroke-width: 1.8; transition: opacity .15s ease, stroke-width .15s ease; }
   .edge.cat-invest { stroke: var(--cat-invest); }
   .edge.cat-outbound { stroke: var(--cat-outbound); }
   .edge.cat-supplier { stroke: var(--cat-supplier); }
@@ -468,6 +476,12 @@
   .edge.is-inferred { stroke-dasharray: 6 5; }
   .edge.is-reported { stroke-dasharray: 2 4; }
   .edge.is-verified { stroke-dasharray: none; }
+  /* 13F/DION holdings are context, not the headline edge. */
+  .edge.is-ownership { stroke-width: 1.1; opacity: .42; }
+  .edge.is-dimmed { opacity: .08; }
+  .edge.is-highlighted { opacity: 1; stroke-width: 2.2; }
+  .edge-group:hover .edge { opacity: 1; stroke-width: 2.2; }
+  .edge.is-cluster { stroke: var(--muted); stroke-width: 1.1; stroke-dasharray: 3 4; opacity: .65; }
   .edge-hit { stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
   .edge-label {
     fill: var(--ink); font-size: 10px; font-weight: 600;
@@ -523,6 +537,13 @@
   .insp-count { background: var(--bg-soft); border-radius: 8px; padding: 8px; text-align: center; }
   .insp-count strong { display: block; font-size: 18px; }
   .insp-count span { color: var(--muted); font-size: 10.5px; }
+  .insp-magnitude {
+    display: flex; justify-content: space-between; gap: 8px;
+    margin: 10px 0; padding: 7px 9px; border-radius: 8px;
+    background: var(--bg-soft); font-size: 12px;
+  }
+  .insp-magnitude span { color: var(--muted); }
+  .insp-magnitude strong { font-variant-numeric: tabular-nums; }
   .insp-hint { color: var(--muted); font-size: 12px; }
 
   .pill {
@@ -561,6 +582,7 @@
   .rel-dot.cat-other { background: var(--cat-other); }
   .rel-name { font-weight: 600; }
   .rel-meta { color: var(--muted); font-size: 11px; }
+  .rel-amount { color: var(--ink-2); font-variant-numeric: tabular-nums; }
   .empty-note { color: var(--muted); font-size: 13px; padding: 18px; }
 
   .news-list { display: flex; flex-direction: column; }
