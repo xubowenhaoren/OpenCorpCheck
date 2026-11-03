@@ -42,8 +42,10 @@ financials.company (existing pipeline)
   → upsert financial_facts; the company page shows the new period
 ```
 
-The TaskDock stays **news-only** (decision 33). The filing refresh is visible
-on the company page, not as a second dock producer.
+The **current production TaskDock is news-only**; the 2026-11-03 decision
+restores the shared design (`更新新闻` + `财报更新`) as a P1.5 follow-up
+(§14). Until it ships, the filing refresh is visible on the company page, not
+as a dock producer.
 
 ## 3. Data model
 
@@ -199,12 +201,15 @@ completed-job guard.
   every 15 s while pending.
 - A dead-lettered follow-up job is visible in `backfill_jobs` and the worker
   log; `filingRefresh` reflects the source check, not downstream job death.
-- **Not shared with the news refresh UI:** the top-nav TaskDock stays
-  news-only (decision 33); there is no global "财报更新" group and no
-  `/v1/news/status` involvement. Filing/financials state is per-company on the
-  company page, and the card polls itself while `pending`. The two systems
-  share the cursor/lease/backoff *pattern*, not the component or endpoint.
-- The TaskDock is unchanged (news-only, decision 33).
+- **Target UI: shared TaskDock (P1.5 follow-up).** The current production dock
+  is news-only; the 2026-11-03 decision restores the original shared design
+  with a `财报更新` group (automatic `data.sweep` / `data.source.check` /
+  `ingest.filing` / `financials.company`) next to `更新新闻`, plus
+  `全部 / 更新新闻 / 财报更新` filter tabs and per-company subtasks. The
+  manual refresh-news button stays cancelled (decision 34); there is no
+  `POST /v1/news/refresh` and no page-entry nudge. See §14.
+- **Current production:** the dock is news-only; the target shared design is a
+  P1.5 follow-up (§14). Until it ships, do not describe the dock as shared.
 
 ## 8. Commands
 
@@ -305,8 +310,10 @@ company page shows `重试中` rather than fake success.
   cause is fixed reuses the rows only if they are re-detected or the operator
   runs `occ filings sync`. The rows are internal, so no user document is
   silently lost.
-- **The TaskDock remains news-only.** A "财报更新" dock group would be an
-  explicit decision-33 change.
+- **Current TaskDock is news-only; the shared news + `财报更新` dock is a
+  follow-up.** The 2026-11-03 decision restores the original shared design
+  (§14); until it ships, filing/financials state is per-company on the company
+  page. The manual refresh-news button stays cancelled.
 - **The data worker must be running** for the cron/lazy follow-ups. With no
   worker, `data.source.check` / `ingest.filing` jobs stay queued and the page
   shows `排队中`.
@@ -358,5 +365,54 @@ Separately, the P1.5 cadence note about a **weekly/monthly profile,
 description and sector refresh** (content-hash gated, re-extract only on
 change) was not implemented. It is not part of the daily filing poll.
 
-The UI remains per-company (`filingRefresh`); the news TaskDock is intentionally
-not shared (decision 33).
+The current UI is per-company (`filingRefresh`). The 2026-11-03 decision
+restores the shared TaskDock (news + `财报更新`) as a separate follow-up; see
+§14. Until it ships, do not describe the dock as shared. The manual
+refresh-news button stays cancelled.
+
+## 14. Follow-up — restore shared TaskDock (news + data refresh, not done)
+
+### Decision history
+
+- **2026-10-30 (`08519b1`)** — original design: one top-right dock for news
+  **and** company research, with task-kind badges (`更新新闻` /
+  `公司数据获取`), `全部 / 新闻更新 / 公司数据` filter tabs, per-company
+  subtasks and retry/review actions. The prototype
+  [`docs/prototypes/task-dock.html`](prototypes/task-dock.html) still shows
+  both kinds.
+- **2026-11-01 (`fa84287`)** — narrowed to news-only: manual refresh button
+  cancelled, `公司数据` tab and filter tabs out of scope, no retry/review
+  buttons.
+- **2026-11-03 (user decision)** — restore the **shared information
+  architecture** for the two **automatic** producers. The manual refresh-news
+  button stays cancelled.
+
+### Target design
+
+- Producers: `news_refresh` (automatic `news.sweep`, badge `更新新闻`) and
+  `data_refresh` (automatic `data.sweep` → `data.source.check` →
+  `ingest.filing` / `financials.company`, badge `财报更新`).
+- One top-nav dock; collapsed ring/badge; expanded card with
+  `全部 / 更新新闻 / 财报更新` filter tabs and per-company subtasks.
+- Data rows: `检查中` / `无更新` / `发现 N 条` / `财报更新中` / `公告入库中` /
+  `重试中` / `已完成`; text names the state, no fake success.
+- **No manual refresh-news button**, no `POST /v1/news/refresh`, no page-entry
+  nudge (decision 34). Retry/review buttons are not restored in this cut —
+  both producers retry automatically.
+- `company_research` stays operator-only (decision 34); do not wire it just
+  because the prototype has it.
+- API: one `GET /v1/tasks/status` (news + data) or extend `/v1/news/status`
+  with a `data` block; keep the lazy news sweep trigger. `GET /v1/runs/:id`
+  stays the expanded subtask source.
+- Reuse the prototype's two-kind visuals, filters and mobile/dark states;
+  remove its manual controls and research mock rows.
+
+### Acceptance
+
+- With both workers running, the dock shows the active/recent news sweep and
+  the active/recent data run; filters switch between them.
+- A failed HKEXnews check shows `失败/重试中`; an unchanged company shows
+  `无更新`; a detected 10-K shows `财报更新中` then `已完成`.
+- No refresh button anywhere; the News tab still updates automatically.
+- Mobile 390 px, dark mode, `aria-live`/`progressbar`, no horizontal scroll.
+- Tests cover the status mapping and two-kind grouping; 0 LLM tokens.

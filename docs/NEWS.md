@@ -108,6 +108,12 @@ Google News RSS has no `since` cursor, so the window is a hint, never a filter:
   `/v1/news/status` and shows the active sweep plus completed sweeps from the
   last 3 days; an idle dock shows the last sweep and the next due time. It has
   no manual controls.
+- **Shared-dock target (2026-11-03):** the dock will also show the automatic
+  `财报更新` producer (`data.sweep`/`data.source.check`/`financials.company`),
+  with `全部 / 更新新闻 / 财报更新` filters. The current production dock is
+  news-only until the P1.5 follow-up ships; the manual refresh-news button
+  stays cancelled. See [REFRESH.md](REFRESH.md) §14 and
+  [UI.md](UI.md) §7.9.
 - The company News tab shows `更新于 … · 自动更新` / `正在更新…` from
   `/v1/news/status?company=<ref>` and refetches the company card when the
   cursor advances.

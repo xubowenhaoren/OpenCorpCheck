@@ -70,11 +70,17 @@ const ICON_CHEVRON = (
 );
 
 /**
- * Global task dock: automatic news sweeps only (decision 33).
+ * Global task dock.
  *
- * There are no manual controls. Polling `/v1/news/status` both observes the
- * sweep and lets the API lazily start one when companies are due, so opening
- * the site is enough — no refresh button, no operator backfill.
+ * Current production: automatic news sweeps only. The 2026-11-03 decision
+ * restores the original shared design (news + `财报更新` data/filing/financials
+ * groups with `全部 / 更新新闻 / 财报更新` filters); that is a P1.5 follow-up,
+ * not implemented here yet. See CONTEXT_TRANSFER §10 and docs/UI.md §7.9.
+ *
+ * There are no manual controls, and the manual refresh-news button stays
+ * cancelled (decision 34). Polling `/v1/news/status` both observes the sweep and
+ * lets the API lazily start one when companies are due, so opening the site is
+ * enough — no refresh button, no operator backfill.
  */
 export function TaskDock() {
   const { t, lang } = useLang();

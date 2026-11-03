@@ -5,13 +5,16 @@
 > Financials tab, HSI, ChiNext 50, **P1.1 A500/SPX placeholders**, **P1.2
 > sector + entity resolution**, **P1.3 US 13F + HKEX DION ownership**, the
 > **P1.3 dense-graph UI follow-up**, **P1.4 official filing adapters**, and
-> **P1.5 daily company-data/financial-report refresh** are shipped. **P1 is
-> complete; P2 is deferred.** Backfill is out of scope for the current plan.
+> **P1.5 daily company-data/financial-report refresh** are shipped, with two
+> **P1.5 follow-ups pending: financials verification/retry (A/HK F10 lag) and
+> the restored shared TaskDock (news + `财报更新`).** **P2 is deferred.**
+> Backfill is out of scope for the current plan.
 >
 > The old 1,394-line document is preserved verbatim in
 > [`context_transfer_history.md`](context_transfer_history.md).
 >
-> **Next agent:** P1.5 is the last active P1 item. Do not start P2 (delivery /
+> **Next agent:** do the two P1.5 follow-ups first (financials
+> verification/retry, then the shared TaskDock). Do not start P2 (delivery /
 > packaging) unless the user explicitly reopens it. The automatic refresh
 > needs a running `scripts/dev-data-worker.sh` (queues `data,financials`) and
 > the F10/PDF/HKEXnews sidecar for A/HK; see [docs/REFRESH.md](docs/REFRESH.md).
@@ -36,9 +39,10 @@
 > HSI, ChiNext 50, the **A500/SPX placeholder layer**, **P1.2 sector +
 > entity resolution**, **P1.3 US 13F + HKEX DION ownership**, the **P1.3
 > dense-graph UI follow-up**, **P1.4 official filing adapters**, and **P1.5
-> daily company-data/financial-report refresh** are shipped. **P1 is
-> complete; P2 is deferred.** Backfill and delivery/engineering quality are
-> out of scope for the current plan.
+> daily company-data/financial-report refresh** are shipped. **Two P1.5
+> follow-ups remain: financials verification/retry (A/HK F10 lag) and the
+> restored shared TaskDock (news + `财报更新`). P2 is deferred.** Backfill and
+> delivery/engineering quality are out of scope for the current plan.
 >
 > **Corpus:** 1,086 non-fixture companies — 236 researched (NDX 100, HSI
 > 85, CYB50 50, plus the discovered set) and **850 A500/SPX searchable
@@ -641,12 +645,17 @@ Pages:
     coverage line adds `财报更新于 <date>`. The card polls every 15 s while a
     check is pending.
   - Sources: grouped by trust tier, deduped, copy-all-citations.
-- **Top-nav TaskDock** (2026-11-01): last control after `EN` / 深色. Collapsed
-  34 px ring with the active sweep's progress and a count badge; expanded card
+- **Top-nav TaskDock** (2026-11-01; **shared design restored 2026-11-03**):
+  last control after `EN` / 深色. **Current production is news-only**: a 34 px
+  ring with the active sweep's progress and a count badge; the expanded card
   shows the active sweep, per-company subtasks (`19 条` / `抓取中` / `队列中`,
-  link to `/c/:ticker`) and completed sweeps within the last 3 days. Idle shows
+  link to `/c/:ticker`) and completed sweeps within the last 3 days; idle shows
   the last sweep and next due time. **No manual controls**; polling
-  `/v1/news/status` is also what lazily starts a due sweep. The News tab adds
+  `/v1/news/status` is also what lazily starts a due sweep. The target restored
+  design adds the automatic `财报更新` group (data/filing/financials sweep) and
+  `全部 / 更新新闻 / 财报更新` filter tabs to the same dock; the manual
+  refresh-news button stays cancelled. This is a **P1.5 follow-up** (§10), not
+  yet in production; see [docs/UI.md](docs/UI.md) §7.9. The News tab adds
   `更新于 … · 自动更新` / `正在更新…` and refetches the card when the cursor
   advances.
 - `/graph?company=` — global ego network with company picker.
@@ -721,8 +730,9 @@ Known limitations:
   `ingest.filing` progress only while `scripts/dev-data-worker.sh` runs
   (`work --queues data,financials`). A/HK PDF/announcement checks also need the
   sidecar (`occ-f10 serve`). With no worker the company page shows `排队中`;
-  with a failing source it shows `重试中` after a 15 min backoff. The TaskDock
-  stays news-only (decision 33).
+  with a failing source it shows `重试中` after a 15 min backoff. The current
+  production TaskDock is news-only; the shared `更新新闻` + `财报更新` dock is
+  a P1.5 follow-up (see §10), not yet shipped.
 - **Sector coverage is complete except one HK REIT:** 235/236 researched
   companies have a canonical 11-sector value (`信息技术` … `房地产`); the only
   gap is `HK:00823` 领展房地产投资信托基金 (F10 `EmptyRender`, same documented
@@ -1177,14 +1187,27 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     (c) volume is 1–3 runs per company. A failed reviewer would block `ready`,
     so reliability matters more than the marginal cost. Never show reviewer
     internals or fake success in the UI.
-33. **One shared task dock, news-only** (decision 2026-10-31, revised
-    2026-11-01): the **top-nav** control (last item after `EN` / `深色`) has
-    exactly one producer, the automatic news sweep (badge “更新新闻”). No
-    `company_research` rows, no filter tabs, and **no retry/review buttons**
-    (failures retry automatically). The production dock shows the active sweep,
-    the last completed one, and completed sweeps from the **last 3 days**; it
-    drops all manual controls. The prototype (commit `dd465fc`) is the visual
-    reference only.
+33. **One shared task dock, news + automatic data refresh** (decision
+    2026-10-30; revised to news-only 2026-11-01; **restored 2026-11-03**).
+    History: the original design (`08519b1`) was one top-right dock for news
+    and company research, with task-kind badges and filter tabs. `fa84287`
+    narrowed it to news-only and cancelled the manual refresh button. The
+    2026-11-03 decision restores the **shared information architecture** for
+    the two **automatic** producers only:
+    - `news_refresh` — the automatic news sweep; badge `更新新闻`;
+    - `data_refresh` — the daily filing/financials sweep
+      (`data.sweep` → `data.source.check` → `ingest.filing` /
+      `financials.company`); badge `财报更新`.
+    The dock keeps the original kind badges, `全部 / 更新新闻 / 财报更新`
+    filter tabs, expandable per-company subtasks and the
+    queued/running/completed/partial/failed states. **The manual
+    refresh-news button stays cancelled** (decision 34); no public control
+    triggers a fetch. Retry/review buttons are not restored in this cut
+    because both producers retry automatically; add them only with a separate
+    decision. `company_research` remains operator-only and is **not** a public
+    dock producer. **Implementation is a P1.5 follow-up (see §10); the
+    production dock is still news-only until it ships.** The prototype
+    (`docs/prototypes/task-dock.html`, `dd465fc`) is the visual reference.
 34. **No in-app on-demand stock research** (decision 2026-10-31): the
     placeholder CTA and `POST /v1/companies/:ref/research` are cancelled.
     Research is operator-initiated through the local worker pool (explicit,
@@ -1430,9 +1453,14 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     EDGAR, SSE/SZSE → CNINFO, HKEX → HKEXnews); F10 content-hash fallback only
     when no official feed exists (e.g. BSE-only). Stubs and fixtures are never
     polled. Dual-listed A/HK companies get both legs.
-70. **The TaskDock stays news-only** (decision 2026-11-03): P1.5 shows filing
-    state on the company page; a "财报更新" dock group would be an explicit
-    decision-33 change and is not part of this cut.
+70. **The TaskDock is being restored to shared news + data refresh**
+    (decision 2026-11-03): the original shared-dock design (`08519b1`) is
+    re-opened for the two automatic producers. `更新新闻` (news sweep) and
+    `财报更新` (data/filing/financials sweep) share the top-nav dock, badges,
+    filter tabs and per-company subtasks. The manual refresh-news button stays
+    cancelled (decision 34); research remains operator-only and is not a public
+    producer. **The current production dock is still news-only; the shared
+    version is a P1.5 follow-up (§10) until it ships.**
 
 ---
 
@@ -1504,15 +1532,17 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 | F10 fallback never appears | Expected for the current corpus: every A/HK researched company has a CNINFO/HKEXnews feed. The fallback is only for companies with no official feed (e.g. BSE-only). |
 | Filing detection window misses a late filing | The steady window is the previous check + 2 days, capped at `OCC_DATA_MAX_STEADY_DAYS` (30). A worker outage longer than 30 days only re-reads 30 days; older items need `occ filings sync`. |
 | Two financials workers double the EDGAR request rate | The EDGAR 110 ms limiter is per process. Run `financials` in one process per host (`scripts/dev-data-worker.sh` runs `data,financials`); stop it before starting another worker with `financials`. |
+| TaskDock only shows news | Current production is news-only. The 2026-11-03 decision restores the shared `更新新闻` + `财报更新` dock as a P1.5 follow-up (see §10); do not describe it as shared until it ships. The manual refresh-news button stays cancelled. |
 
 ---
 
 ## 10. Next tasks — active plan (2026-11-03)
 
-> **Scope rule:** P1 is complete (P1.1–P1.5 shipped). **P2 is deferred**; do
-> not start it unless the user explicitly reopens delivery/engineering quality.
-> **Backfill is out of scope** (STAR 50, any remaining HSI/CYB50 gaps,
-> A500/SPX bulk research).
+> **Scope rule:** P1.1–P1.5 are shipped; the active list is the **two P1.5
+> follow-ups** (financials verification/retry, then the restored shared
+> TaskDock). **P2 is deferred**; do not start it unless the user explicitly
+> reopens delivery/engineering quality. **Backfill is out of scope** (STAR 50,
+> any remaining HSI/CYB50 gaps, A500/SPX bulk research).
 >
 > **Cancelled / permanently deferred** (do not re-propose): manual news
 > refresh, on-demand research, page-entry nudge, first-class sub-agent card,
@@ -1781,7 +1811,8 @@ Shipped end-to-end; migration `0011_filing_refresh.sql`; details in
 - UI/API: `CompanyCard.filingRefresh` (latest periodic/any filing, per-source
   cursors, `lastStatus`, `pending`); the 公告文件 tab shows
   `最新报告 … · 财报更新于 …` / `排队中` / `重试中`; the Financials coverage
-  line adds `财报更新于 …`. TaskDock stays news-only.
+  line adds `财报更新于 …`. TaskDock stays news-only in the shipped cut; the
+  restored shared TaskDock (`更新新闻` + `财报更新`) is the follow-up below.
 - Acceptance: planned **251 checks for 236 companies** (100 EDGAR / 66
   CNINFO / 85 HKEXnews; 850 stubs excluded); cold sample AAPL 10-K + MSFT 10-Q
   detected, ingested and **340 EDGAR facts** written per company (AAPL latest
@@ -1815,10 +1846,51 @@ Required follow-up (next agent):
   (weekly/monthly, content-hash gated) was **not** implemented either; it is
   separate from the daily filing poll.
 
-The current UI is deliberately **not** shared with the news refresh: the
-TaskDock stays news-only (decision 33/70); filing/financials state lives on the
-company page (`filingRefresh`). A global "财报更新" dock group would be an
-explicit decision-33 change.
+The shipped UI is per-company (`filingRefresh`); the news TaskDock remains
+news-only in production. The **2026-11-03 decision restores the shared dock**
+(news + `财报更新`) as a separate follow-up below; the manual refresh-news
+button stays cancelled. Until that follow-up ships, do not describe the dock as
+shared.
+
+### P1.5 follow-up — restore shared TaskDock (news + data refresh, not done)
+
+**Decision.** The original 2026-10-30 design (`08519b1`) was one shared
+top-right dock for news + research. `fa84287` (2026-11-01) narrowed it to
+news-only and cancelled the manual refresh button. On 2026-11-03 the user
+restored the **shared information architecture** for the two automatic
+producers; the manual refresh-news button stays cancelled.
+
+**Target design:**
+
+- Producers: `news_refresh` (automatic news sweep, badge `更新新闻`) and
+  `data_refresh` (daily `data.sweep` → `data.source.check` →
+  `ingest.filing` / `financials.company`, badge `财报更新`).
+- Dock: same top-nav placement; collapsed ring/badge; expanded card with
+  `全部 / 更新新闻 / 财报更新` filter tabs, per-company subtasks and the
+  `queued / running / completed / partial / failed` states. Data rows should
+  read like `检查中` / `无更新` / `发现 N 条` / `财报更新中` / `公告入库中` /
+  `重试中`; never fake success.
+- **Do not add a manual refresh-news button** (decision 34), and do not add
+  `POST /v1/news/refresh` or a page-entry nudge. Retry/review buttons are not
+  restored in this cut because both producers retry automatically.
+- `company_research` remains operator-only (decision 34) and is not a public
+  dock producer; do not wire it just because the prototype shows it.
+- API: prefer one `GET /v1/tasks/status` (news + data) or extend
+  `/v1/news/status` with a `data` block; keep the lazy news sweep trigger.
+  `GET /v1/runs/:id` stays the per-company subtask source.
+- Reuse the prototype [`docs/prototypes/task-dock.html`](docs/prototypes/task-dock.html)
+  for the two-kind visual, filters and mobile/dark states; remove its manual
+  controls and the `company_research` mock rows.
+
+**Acceptance:**
+
+- With both workers running, the dock shows the active/recent news sweep and
+  the active/recent data run; the filter tabs switch between them.
+- A failed HKEXnews check shows `失败/重试中`; an unchanged company shows
+  `无更新`; a detected 10-K shows `财报更新中` then `已完成`.
+- No refresh button anywhere; the News tab still updates automatically.
+- Mobile (390 px), dark mode, `aria-live`/`progressbar`; no horizontal scroll.
+- Tests cover the status mapping and the two-kind grouping; 0 LLM tokens.
 
 ### P1.5 original scope (kept for reference)
 
@@ -1881,6 +1953,9 @@ is per process.
 - The top-nav TaskDock stays **news-only** for the first cut (decision 33).
   If the product wants a “财报更新” group, that is an explicit decision-33
   change with a second producer.
+  **Update 2026-11-03:** the user restored the shared design; see the
+  “P1.5 follow-up — restore shared TaskDock” section above. The manual
+  refresh-news button remains cancelled.
 - CLI: `occ-refresh status`, `occ-refresh sweep --now` (operator, still
   advisory-locked).
 
@@ -1977,7 +2052,7 @@ Current invariants (verify before a demo):
 - [x] No key/token/`.env` tracked; no NIM gateway on the default path.
 - [x] `corepack pnpm -r --workspace-concurrency=1 test` green; web build green.
 
-P1 (complete; see §10):
+P1 (shipped P1.1–P1.5; two follow-ups active; see §10):
 
 - [x] P1.1 A500 + SPX placeholders: 500 + 500 memberships, 862 stubs at
   P1.1, `occ indices sync` idempotent, searchable `未收录` pages; existing
@@ -2003,6 +2078,12 @@ P1 (complete; see §10):
   deterministic periodic detection, `financials.company` auto-enqueue,
   `occ-refresh`, company-page status line, 0 LLM tokens). Migration
   `0011_filing_refresh.sql`. See [docs/REFRESH.md](docs/REFRESH.md).
+- [ ] **P1.5 follow-up: financials verification/retry** — one-shot auto-run
+  does not confirm the expected period landed; A/HK F10 lag can miss it.
+  Add pending/retry state and a catch-up pass; live-accept with the sidecar.
+- [ ] **P1.5 follow-up: restore shared TaskDock** — `更新新闻` + `财报更新`
+  groups, filter tabs, per-company subtasks; manual refresh-news button stays
+  cancelled. See §10.
 
 P2 (deferred; do not start):
 
