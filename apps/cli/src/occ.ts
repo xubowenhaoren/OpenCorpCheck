@@ -16,6 +16,10 @@ import {
   indicesCommand,
   USAGE_OPTIONS as INDICES_OPTIONS,
 } from "./indices-command.js";
+import {
+  ownershipCommand,
+  USAGE_OPTIONS as OWNERSHIP_OPTIONS,
+} from "./ownership-command.js";
 import { seed } from "./seed.js";
 import {
   snapshotsCommand,
@@ -37,6 +41,8 @@ Usage:
   occ entities gleif [--apply] [--limit N] [--json]
   occ entities wikidata [--apply] [--limit N] [--json]
   occ entities coverage [--json]
+  occ ownership sync [--market US|HK|all] [--apply] [--limit N] [--days N] [--max-pages N] [--dataset NAME] [--refresh] [--json]
+  occ ownership coverage [--json]
   occ snapshots upload|check|list [options]
   occ search <query> [--mode hybrid|keyword|semantic] [--limit N] [--explain] [--json]
   occ documents <query> [--mode ...] [--limit N] [--company ID] [--json]
@@ -55,6 +61,7 @@ ${EXTRACT_OPTIONS}
 ${ALIASES_OPTIONS}
 ${INDICES_OPTIONS}
 ${ENTITIES_OPTIONS}
+${OWNERSHIP_OPTIONS}
 ${SNAPSHOTS_OPTIONS}
 Environment:
   OCC_API_URL           default http://127.0.0.1:8787
@@ -110,6 +117,9 @@ async function main(): Promise<void> {
       return;
     case "entities":
       await entitiesCommand(rest);
+      return;
+    case "ownership":
+      await ownershipCommand(rest);
       return;
     case "snapshots":
       await snapshotsCommand(rest);

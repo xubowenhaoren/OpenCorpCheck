@@ -31,13 +31,14 @@ must change before it becomes a database source, and the licensing constraints.
 | Entity spine | GLEIF (LEI, parent relationships), Wikidata | OpenCorporates (BYO token) | GLEIF is CC0; use it for ownership edges |
 | News | Company IR RSS, GDELT, credible outlets | dsh `web_search` | Dedupe + entity link |
 
-**Current adapter coverage (2026-11-01):** implemented = SEC EDGAR XBRL,
-Eastmoney F10 (A/HK), Google News RSS, and the **P1.2 entity spine**
+**Current adapter coverage (2026-11-02):** implemented = SEC EDGAR XBRL,
+Eastmoney F10 (A/HK), Google News RSS, the **P1.2 entity spine**
 (Eastmoney F10 profile sectors + ISIN/USCC, SEC EDGAR SIC/LEI/EIN, GLEIF LEI
-parent lookup, Wikidata exact-label QID). **Next (P1.3)** = US Form 13F data
-sets + HKEX DION ownership. **Planned P1.4** = CNINFO/SSE/SZSE
-announcements, HKEXnews + PDF, company IR RSS, GDELT. See
-[ENTITY.md](ENTITY.md) for the taxonomy, identifier precedence and commands.
+parent lookup, Wikidata exact-label QID), and the **P1.3 ownership layer**
+(US SEC Form 13F-HR data sets + HKEX DION substantial-shareholder notices).
+**Planned P1.4** = CNINFO/SSE/SZSE announcements, HKEXnews + PDF, company IR
+RSS, GDELT. See [ENTITY.md](ENTITY.md) for the taxonomy, identifier precedence
+and commands, and [OWNERSHIP.md](OWNERSHIP.md) for 13F/DION.
 
 ### 2.1 Index constituent snapshots
 
@@ -69,7 +70,19 @@ announcements, HKEXnews + PDF, company IR RSS, GDELT. See
   `occ indices sync` creates `coverage_tier='stub'` rows (ticker + names +
   market + weight only), searchable with a `未收录` badge, and never modifies
   a real profile. Share-class weights are summed into one company-level
-  membership weight. License: internal snapshot, no bulk redistribution.
+  membership weight. The SPY holdings workbook's `Identifier` column is the
+  issuer **CUSIP**; `occ indices sync` writes it to `company_ids` as the
+  deterministic 13F issuer key (P1.3). The snapshot was refreshed to
+  `as_of 2026-10-30` so the CUSIPs are current; older membership snapshots are
+  retained as history and the API serves the newest per company. License:
+  internal snapshot, no bulk redistribution.
+- **Ownership (implemented 2026-11-02).** US = SEC **Form 13F data sets**
+  (public domain; one ZIP per filing window; cached under `.occ/edgar/13f/`
+  with SHA-256; streamed, never committed). HK = **HKEX DION** substantial-
+  shareholder notices, scraped through the Playwright sidecar at 1 req/s with
+  the notice link + quoted percentage. Both are additive `invests_in` edges
+  with evidence and a pending review item; counterparties outside `companies`
+  are counted, never created. See [OWNERSHIP.md](OWNERSHIP.md).
 - **STAR 50** (`000688`, SSE) is deferred backfill and out of the current
   plan.
 - **Structured financial statements (implemented 2026-11-01, US cleanup done

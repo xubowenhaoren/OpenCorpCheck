@@ -2,14 +2,14 @@
 
 **Open, agentic company intelligence for NASDAQ-100 · S&P 500 · CSI A500 · Hang Seng Index · ChiNext 50.**
 
-> Status: 2026-11-01 — search, company pages (profile / financials / relationship
+> Status: 2026-11-02 — search, company pages (profile / financials / relationship
 > graph / news / sources), automatic news refresh + task dock, all five index
 > pages (NDX/SPX/A500/HSI/CYB50), `occ` CLI, MCP server, and the DeepSeek
-> Harness ACP sidebar. **P1.1 A500/SPX placeholder pages and P1.2 sector +
-> entity resolution are shipped** (850 searchable stubs; 235/236 researched
-> companies have a canonical sector). The active roadmap (ownership graph,
-> official filing adapters, daily refresh) is in
-> [`CONTEXT_TRANSFER.md`](CONTEXT_TRANSFER.md) §10.
+> Harness ACP sidebar. **P1.1 A500/SPX placeholder pages, P1.2 sector + entity
+> resolution and P1.3 US 13F + HKEX DION ownership are shipped** (850 searchable
+> stubs; 235/236 researched companies have a canonical sector; 13,009 US 13F +
+> 90 HKEX DION ownership edges). The active roadmap (official filing adapters,
+> daily refresh) is in [`CONTEXT_TRANSFER.md`](CONTEXT_TRANSFER.md) §10.
 
 OpenCorpCheck is an open-source, AI-native alternative to commercial company-intelligence
 products (the "企查查" category). It builds a cited, queryable profile for every company in
@@ -50,6 +50,11 @@ sub-agent card is **permanently deferred**.
   ticker/CIK/domain/ISIN/USCC/EIN/LEI/Wikidata identifiers, audited A/HK
   dual-listing merges, and GLEIF parent edges with source + review queue. See
   [docs/ENTITY.md](docs/ENTITY.md).
+- **Ownership graph (P1.3)**: US SEC Form 13F-HR institutional holdings and
+  HKEX DION substantial-shareholder notices become additive `invests_in` edges
+  with source + quote + a pending review item. Deterministic, 0 LLM tokens; no
+  counterparty is created outside `companies`. See
+  [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
 - **Providers**: official **DeepSeek** is the default for headless research, the
   reviewer, and the ACP sidebar. NVIDIA NIM + Parallel Search is opt-in with
   `OCC_LLM_PROVIDER=nvidia` (after per-model 429s it is not the default).

@@ -30,6 +30,7 @@ const ConstituentSchema = z.object({
   primary: z.boolean().default(true),
   weight: z.number().nonnegative().optional(),
   cik: z.string().regex(/^\d{10}$/).optional(),
+  cusip: z.string().regex(/^[0-9A-Z]{9}$/).optional(),
 });
 
 const IndexSnapshotSchema = z.object({

@@ -24,6 +24,7 @@ SPX:  SPDR S&P 500 ETF Trust (SPY) daily holdings, published by State Street.
 
 from __future__ import annotations
 
+import argparse
 import io
 import json
 import re
@@ -62,12 +63,17 @@ class Ticker(str):
     """Force quotes: A-share tickers are numeric strings, not YAML numbers."""
 
 
+class Cusip(str):
+    """Force quotes: a CUSIP can be all digits and must keep leading zeros."""
+
+
 def represent_quoted(dumper: yaml.SafeDumper, data: str):
     return dumper.represent_scalar("tag:yaml.org,2002:str", str(data), style="'")
 
 
 yaml.add_representer(Cik, represent_quoted, Dumper=yaml.SafeDumper)
 yaml.add_representer(Ticker, represent_quoted, Dumper=yaml.SafeDumper)
+yaml.add_representer(Cusip, represent_quoted, Dumper=yaml.SafeDumper)
 
 US_EXCHANGES = {
     "nasdaq": "NASDAQ",
@@ -209,6 +215,13 @@ def load_spx() -> dict:
             exchange = normalise_us_exchange(str(sec_record["exchange"]))
             # Prefer the SEC's mixed-case legal name over SPY's ALL CAPS.
             name = str(sec_record["name"]).strip() or name
+        # State Street's "Identifier" column is the 9-character CUSIP. It is
+        # the deterministic issuer key for 13F matching; do not derive it.
+        cusip = None
+        if len(row) > 2 and row[2] is not None:
+            candidate = str(row[2]).strip().upper()
+            if re.fullmatch(r"[0-9A-Z]{9}", candidate):
+                cusip = Cusip(candidate)
         records.append(
             {
                 "ticker": Ticker(ticker),
@@ -217,6 +230,7 @@ def load_spx() -> dict:
                 "primary": True,
                 "weight": round(float(row[4]), 6),
                 **({"cik": cik} if cik else {}),
+                **({"cusip": cusip} if cusip else {}),
             }
         )
 
@@ -259,7 +273,9 @@ def load_spx() -> dict:
                 "files": [SPY_HOLDINGS, SEC_TICKERS],
                 "note": (
                     "S&P DJI does not publish a stable public constituent API; "
-                    "SPY holdings are the documented fallback (same as HSI)."
+                    "SPY holdings are the documented fallback (same as HSI). "
+                    "The holdings 'Identifier' column is the issuer CUSIP used "
+                    "for 13F ownership matching; it is not derived."
                 ),
             },
         },
@@ -303,9 +319,18 @@ def write_yaml(path: Path, payload: dict) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--only",
+        choices=["a500", "spx"],
+        help="refresh only one snapshot (default: both)",
+    )
+    args = parser.parse_args()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    write_yaml(OUT_DIR / "a500.yaml", load_a500())
-    write_yaml(OUT_DIR / "sp500.yaml", load_spx())
+    if args.only in (None, "a500"):
+        write_yaml(OUT_DIR / "a500.yaml", load_a500())
+    if args.only in (None, "spx"):
+        write_yaml(OUT_DIR / "sp500.yaml", load_spx())
 
 
 if __name__ == "__main__":

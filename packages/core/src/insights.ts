@@ -163,6 +163,10 @@ export interface RelationView {
   currency?: string;
   validFrom?: string;
   validTo?: string;
+  /** Deterministic extractor id, e.g. `sec-13f-v1`, `hkex-dion-v1`. */
+  extractorVersion?: string;
+  /** Source-specific provenance (quarter, shares, percentage, CUSIP, …). */
+  metadata?: Record<string, unknown>;
   evidence: RelationEvidenceView[];
 }
 

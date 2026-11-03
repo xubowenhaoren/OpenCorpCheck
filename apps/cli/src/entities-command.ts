@@ -618,6 +618,7 @@ interface CoverageReport {
 const IDENTIFIER_TYPES = [
   "ticker",
   "cik",
+  "cusip",
   "domain",
   "isin",
   "uscc",

@@ -13,8 +13,11 @@ from typing import AsyncIterator
 from fastapi import FastAPI, HTTPException
 
 from . import __version__, presets
+from .dion import DionScraper
 from .f10 import F10Scraper, Settings
 from .models import (
+    DionRequest,
+    DionResponse,
     HealthResponse,
     PagesResponse,
     ScrapeRequest,
@@ -29,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 settings = Settings.from_env()
 scraper = F10Scraper(settings)
+dion_scraper = DionScraper(scraper.browser_manager)
 
 
 @asynccontextmanager
@@ -89,3 +93,14 @@ async def scrape(request: ScrapeRequest) -> ScrapeResponse:
         timeout_ms=request.timeout_ms,
     )
     return ScrapeResponse(**result)
+
+
+@app.post("/v1/dion/notices", response_model=DionResponse)
+async def dion_notices(request: DionRequest) -> DionResponse:
+    """Substantial-shareholder notices for one HKEX stock code."""
+    result = await dion_scraper.notices(
+        request.code,
+        days=request.days,
+        max_pages=request.max_pages,
+    )
+    return DionResponse(**result)

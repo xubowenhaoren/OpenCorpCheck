@@ -101,3 +101,39 @@ class PagesResponse(BaseModel):
     market: Market
     pages: dict[str, str]
     presets: dict[str, list[str]]
+
+
+class DionRequest(BaseModel):
+    code: str = Field(
+        min_length=1,
+        max_length=5,
+        pattern=r"^\d{1,5}$",
+        description="HKEX stock code, e.g. 00700",
+    )
+    days: int = Field(default=365, ge=1, le=3650)
+    max_pages: int = Field(default=10, ge=1, le=20)
+
+
+class DionNotice(BaseModel):
+    serial: str
+    shareholder: str
+    reason_code: str | None = None
+    reason: str | None = None
+    shares: str | None = None
+    avg_price: str | None = None
+    holdings: str | None = None
+    percent: str | None = None
+    event_date: str | None = None
+    url: str | None = None
+
+
+class DionResponse(BaseModel):
+    code: str
+    name: str | None = None
+    from_date: str
+    to_date: str
+    total_records: int = 0
+    pages: int = 0
+    truncated: bool = False
+    notices: list[DionNotice] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)

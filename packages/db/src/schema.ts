@@ -357,6 +357,15 @@ export const relations = pgTable(
       mode: "number",
     }),
     extractorVersion: text("extractor_version"),
+    /**
+     * Source-specific provenance (13F quarter/value/shares/CUSIP, DION
+     * percentage/serial, …). Numeric amount/currency stay for the primary
+     * monetary value; do not overload them.
+     */
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     reviewId: text("review_id").references(() => reviewQueue.id, {
       onDelete: "set null",
     }),
@@ -366,6 +375,7 @@ export const relations = pgTable(
     index("relations_dst_idx").on(table.dstCompanyId),
     index("relations_type_idx").on(table.type),
     index("relations_status_idx").on(table.status),
+    index("relations_extractor_idx").on(table.extractorVersion),
   ],
 );
 
@@ -416,6 +426,25 @@ export const reviewQueue = pgTable(
     uniqueIndex("review_queue_dedupe_uq")
       .on(table.dedupeKey)
       .where(sql`${table.dedupeKey} IS NOT NULL`),
+  ],
+);
+
+/** Last ownership sync report per market (P1.3). */
+export const ownershipSyncRuns = pgTable(
+  "ownership_sync_runs",
+  {
+    id: text("id").primaryKey(),
+    market: text("market").notNull(),
+    dataset: text("dataset"),
+    ranAt: timestamp("ran_at", { withTimezone: true }).notNull().defaultNow(),
+    applied: boolean("applied").notNull().default(false),
+    stats: jsonb("stats")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+  },
+  (table) => [
+    index("ownership_sync_runs_market_idx").on(table.market, table.ranAt),
   ],
 );
 
@@ -546,4 +575,5 @@ export const schema = {
   outbox,
   globalNewsLastUpdate,
   entityMergeLog,
+  ownershipSyncRuns,
 };

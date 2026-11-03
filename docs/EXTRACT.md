@@ -130,8 +130,8 @@ universe shareholders are counted and logged, never invented as companies.
 - Direction is always shareholder → profiled company.
 - `owns` when the stake is ≥ 50%, otherwise `invests_in`.
 - Rows are written as `relations.status='reported'` with an evidence quote and
-  the F10 URL, plus a `review_queue` item. The UI labels them 媒体报道; only a
-  human decision moves them to `verified`.
+  the F10 URL, plus a `review_queue` item. The UI labels them 已报告 and the
+  pill shows `F10 股东`; only a human decision moves them to `verified`.
 - Extraction is **additive**: refreshing a page never deletes LLM-inferred or
   human-reviewed edges. Unreviewed F10 edges into the same company are replaced
   when the page changes, so stale percentages do not accumulate.

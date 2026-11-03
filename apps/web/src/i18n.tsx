@@ -226,7 +226,7 @@ const MESSAGES: Record<Lang, Record<string, string>> = {
     "common.noData": "暂无数据",
     "status.verified": "已核实",
     "status.inferred": "待核实",
-    "status.reported": "媒体报道",
+    "status.reported": "已报告",
     "status.rejected": "已拒绝",
     "index.title": "指数成分",
     "index.asOf": "快照日期",

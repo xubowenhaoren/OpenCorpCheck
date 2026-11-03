@@ -18,7 +18,9 @@ import { useAgent } from "../contexts/AgentContext";
 import { useSource } from "../contexts/SourceContext";
 import {
   categoryLabel,
+  relationBadgeLabel,
   relationCategory,
+  relationSourceLabel,
   relationTypeLabel,
   statusLabel,
   truncate,
@@ -888,6 +890,9 @@ function GraphInspector({
         <div className="insp-sub">
           {relationTypeLabel(selectedEdge.type, lang)} ·{" "}
           {statusLabel(selectedEdge.status, lang)}
+          {relationSourceLabel(selectedEdge.extractorVersion, lang)
+            ? ` · ${relationSourceLabel(selectedEdge.extractorVersion, lang)}`
+            : ""}
         </div>
         {evidence?.quote ? <blockquote>“{evidence.quote}”</blockquote> : null}
         {evidenceUrl ? (
@@ -1013,6 +1018,9 @@ function GraphInspector({
         <div className="insp-sub">
           {relationTypeLabel(evidenceEdge.type, lang)} ·{" "}
           {statusLabel(evidenceEdge.status, lang)}
+          {relationSourceLabel(evidenceEdge.extractorVersion, lang)
+            ? ` · ${relationSourceLabel(evidenceEdge.extractorVersion, lang)}`
+            : ""}
         </div>
       ) : null}
       {evidence?.quote ? <blockquote>“{evidence.quote}”</blockquote> : null}
@@ -1119,6 +1127,9 @@ function RelationList({
                         {" "}
                         · {relationTypeLabel(edge.type, lang)} ·{" "}
                         {statusLabel(edge.status, lang)}
+                        {relationSourceLabel(edge.extractorVersion, lang)
+                          ? ` · ${relationSourceLabel(edge.extractorVersion, lang)}`
+                          : ""}
                       </span>
                     </span>
                     <span
@@ -1130,7 +1141,7 @@ function RelationList({
                             : "warn"
                       }`}
                     >
-                      {statusLabel(edge.status, lang)}
+                      {relationBadgeLabel(edge, lang)}
                     </span>
                     {evidence?.url ? (
                       <button

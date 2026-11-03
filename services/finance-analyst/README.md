@@ -77,6 +77,26 @@ never fails the whole request; it appears as a page with `error` set.
 
 `GET /health`, `GET /v1/f10/pages/{market}`.
 
+### HKEX DION (P1.3)
+
+The public Disclosure of Interests site is behind a JavaScript bot-defense
+layer, so plain HTTP gets “temporarily unavailable”. This sidecar drives the
+normal search form with Playwright at **1 request/second**:
+
+```bash
+uv run occ-f10 dion 02318 --days 365 --max-pages 10
+curl -s -X POST localhost:8090/v1/dion/notices \
+  -H 'content-type: application/json' \
+  -d '{"code":"02318","days":365,"max_pages":10}' | jq '.total_records, .notices[0]'
+```
+
+Response: `code`, `name`, `from_date`, `to_date`, `total_records`, `pages`,
+`truncated`, `notices[]` (serial, shareholder, reason, shares, avg_price,
+holdings, percent, event_date, detail URL) and `errors[]`. The TypeScript
+`@occ/sources-ownership` planner uses only the `(L)` long-position line.
+`OCC_DION_TIMEOUT_MS`, `OCC_DION_SETTLE_MS`, `OCC_DION_MAX_PAGES` and
+`OCC_DION_RATE_PER_SEC` tune it.
+
 `storage_key` is `f10/{market}/{code}/{page}/{sha256}.html`, ready for MinIO in
 P2. Set `F10_SNAPSHOT_DIR` to also write HTML/text snapshots locally (gitignored).
 

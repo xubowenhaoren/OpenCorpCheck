@@ -46,6 +46,8 @@ export interface EntityCompany {
   securities: EntitySecurity[];
   identifiers: EntityIdentifier[];
   aliases: string[];
+  /** Alias + kind, so callers can exclude pinyin/ticker noise. */
+  aliasEntries: Array<{ alias: string; kind: string }>;
 }
 
 export interface EntityCompanyListOptions {
@@ -104,6 +106,7 @@ export async function listEntityCompanies(
       .select({
         companyId: aliases.companyId,
         alias: aliases.alias,
+        kind: aliases.kind,
       })
       .from(aliases)
       .where(inArray(aliases.companyId, ids)),
@@ -116,6 +119,7 @@ export async function listEntityCompanies(
       securities: [],
       identifiers: [],
       aliases: [],
+      aliasEntries: [],
     });
   }
   for (const row of securityRows) {
@@ -132,7 +136,10 @@ export async function listEntityCompanies(
     });
   }
   for (const row of aliasRows) {
-    byId.get(row.companyId)?.aliases.push(row.alias);
+    const company = byId.get(row.companyId);
+    if (!company) continue;
+    company.aliases.push(row.alias);
+    company.aliasEntries.push({ alias: row.alias, kind: row.kind });
   }
   return [...byId.values()];
 }

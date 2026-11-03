@@ -60,6 +60,7 @@ fill stubs.
 | `ein` | SEC submissions | US only |
 | `lei` | EDGAR `lei` or GLEIF exact-name lookup | 20-char LEI |
 | `wikidata` | Wikidata exact-label lookup | `Q<id>` |
+| `cusip` | SPY holdings workbook `Identifier` via `occ indices sync` (P1.3) | 9-char US CUSIP; 503 ids; never derived |
 
 The global unique key `(id_type, id_value)` is the deterministic entity key. An
 identifier that already belongs to another company is **reported as a conflict
@@ -160,6 +161,10 @@ Env:
   exact-label matching; the rest are unmatched, not guessed).
 - 12 dual-listed A/HK stubs merged into their researched HK company; 850 stubs
   remain. `entity_merge_log` has one row per merge.
+- P1.3 adds `cusip`: **503 ids on 500 US companies** (SPX snapshot), so
+  `occ entities coverage` shows 85/236 researched companies (the rest are
+  A/HK-only and have no US CUSIP). `occ ownership coverage` reports the full US
+  picture (500/515 non-fixture US companies).
 - Stubs remain sector-null by design; `occ entities coverage` prints them as
   excluded.
 - No migration for sectors/identifiers; migration
@@ -174,5 +179,6 @@ Env:
 - Wikidata matching is deliberately strict (exact label + company-like
   description); ambiguities are reported.
 - Stub resolution is limited to dual-listed A/HK names with a structured
-  `H股代码`. Other cross-market duplicates need a deterministic identifier
-  before P1.3 ownership work.
+  `H股代码`. P1.3 adds CUSIP for SPX issuers (from the SPY holdings workbook)
+  and uses it for 13F ownership, but A-share stubs still have no CUSIP/ISIN
+  bridge; other cross-market duplicates need a deterministic identifier.

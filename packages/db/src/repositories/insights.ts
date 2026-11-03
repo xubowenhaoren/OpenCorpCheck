@@ -255,7 +255,11 @@ export async function listRelations(
     .select()
     .from(relations)
     .where(and(...conditions))
-    .orderBy(desc(relations.confidence), relations.id)
+    .orderBy(
+      desc(relations.confidence),
+      sql`${relations.amount} DESC NULLS LAST`,
+      relations.id,
+    )
     .limit(filter.limit ?? 20)
     .offset(filter.offset ?? 0);
   if (rows.length === 0) return [];
@@ -270,7 +274,8 @@ export async function listRelations(
       .select({ evidence: relationEvidence, source: sources })
       .from(relationEvidence)
       .leftJoin(sources, eq(relationEvidence.sourceId, sources.id))
-      .where(inArray(relationEvidence.relationId, ids)),
+      .where(inArray(relationEvidence.relationId, ids))
+      .orderBy(desc(relationEvidence.publishedAt), desc(relationEvidence.id)),
   ]);
 
   const evidenceByRelation = new Map<string, RelationEvidenceView[]>();
@@ -310,6 +315,8 @@ export async function listRelations(
       currency: row.currency ?? undefined,
       validFrom: row.validFrom ?? undefined,
       validTo: row.validTo ?? undefined,
+      extractorVersion: row.extractorVersion ?? undefined,
+      metadata: row.metadata,
       evidence: evidenceByRelation.get(row.id) ?? [],
     };
   });

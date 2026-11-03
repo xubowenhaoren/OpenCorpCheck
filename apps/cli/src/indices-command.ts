@@ -216,6 +216,7 @@ async function syncSnapshot(
     if (lookup.companyId) {
       result.matched += 1;
       await ensureSecurity(ctx, lookup.companyId, entry, market, result, byTickerExchange, tickersByCompany);
+      await ensureCusipIdentifier(ctx, lookup.companyId, entry, byIdentifier, result);
       await upsertMembership(ctx, lookup.companyId, entry, indexCode, asOf, result, membershipWeight);
       continue;
     }
@@ -271,6 +272,7 @@ async function syncSnapshot(
       market,
       byIdentifier,
     );
+    await ensureCusipIdentifier(ctx, companyId, entry, byIdentifier, result);
     result.aliasesInserted += await insertStubAliases(ctx, companyId, entry);
     await upsertMembership(ctx, companyId, entry, indexCode, asOf, result, membershipWeight);
     result.created += 1;
@@ -393,8 +395,48 @@ async function insertIdentifiers(
   return inserted.length;
 }
 
-async function insertStubAliases(
+/**
+ * Add the snapshot's CUSIP as a deterministic issuer key (P1.3). It is
+ * additive: an identifier owned by another company is a reported conflict, and
+ * an existing company row is never modified. State Street's holdings workbook
+ * supplies the CUSIP; it is never derived from a ticker or ISIN.
+ */
+async function ensureCusipIdentifier(
   ctx: SyncContext,
+  companyId: string,
+  entry: IndexConstituent,
+  byIdentifier: Map<string, string>,
+  result: SyncIndexResult,
+): Promise<void> {
+  const cusip = entry.cusip?.trim().toUpperCase();
+  if (!cusip) return;
+  const key = identifierKey("cusip", cusip);
+  const owner = byIdentifier.get(key);
+  if (owner) {
+    if (owner !== companyId) {
+      result.conflicts.push(
+        `${entry.ticker}/${entry.exchange}: CUSIP ${cusip} already belongs to ${owner}, snapshot wants ${companyId}`,
+      );
+    }
+    return;
+  }
+  if (ctx.dryRun) {
+    result.identifiersInserted += 1;
+    byIdentifier.set(key, companyId);
+    return;
+  }
+  const inserted = await ctx.db
+    .insert(companyIds)
+    .values({ companyId, idType: "cusip", idValue: cusip })
+    .onConflictDoNothing()
+    .returning({ id: companyIds.id });
+  if (inserted.length > 0) {
+    result.identifiersInserted += 1;
+    byIdentifier.set(key, companyId);
+  }
+}
+
+async function insertStubAliases(  ctx: SyncContext,
   companyId: string,
   entry: IndexConstituent,
 ): Promise<number> {

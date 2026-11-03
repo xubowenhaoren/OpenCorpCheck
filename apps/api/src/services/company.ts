@@ -223,7 +223,8 @@ export class CompanyService {
     all.sort(
       (a, b) =>
         (statusRank[a.status] ?? 9) - (statusRank[b.status] ?? 9) ||
-        (b.confidence ?? 0) - (a.confidence ?? 0),
+        (b.confidence ?? 0) - (a.confidence ?? 0) ||
+        (b.amount ?? 0) - (a.amount ?? 0),
     );
     if (all.length > query.limit) {
       all = all.slice(0, query.limit);

@@ -122,8 +122,20 @@ const CATEGORY_LABEL: Record<RelationCategory, { zh: string; en: string }> = {
 const STATUS_LABEL: Record<RelationStatus, { zh: string; en: string }> = {
   verified: { zh: "已核实", en: "Verified" },
   inferred: { zh: "待核实", en: "Unreviewed" },
-  reported: { zh: "媒体报道", en: "Reported" },
+  reported: { zh: "已报告", en: "Reported" },
   rejected: { zh: "已拒绝", en: "Rejected" },
+};
+
+/**
+ * `reported` is a status, not a source. Filing/registry edges (13F, HKEX DI,
+ * GLEIF, F10) are shown with their actual source so "媒体报道" never appears on
+ * a regulatory disclosure.
+ */
+const RELATION_SOURCE_LABEL: Record<string, { zh: string; en: string }> = {
+  "sec-13f-v1": { zh: "13F 持仓", en: "13F holding" },
+  "hkex-dion-v1": { zh: "HKEX 权益披露", en: "HKEX DI notice" },
+  "gleif-lei-v1": { zh: "GLEIF 母公司", en: "GLEIF parent" },
+  "f10-table-v1": { zh: "F10 股东", en: "F10 shareholder" },
 };
 
 const TRUST_LABEL: Record<string, { zh: string; en: string }> = {
@@ -221,6 +233,27 @@ export function categoryLabel(
 
 export function statusLabel(status: string, lang: Lang = "zh"): string {
   return STATUS_LABEL[status as RelationStatus]?.[lang] ?? status;
+}
+
+/** Source label for a `reported` edge, or null when the extractor is unknown. */
+export function relationSourceLabel(
+  extractorVersion: string | undefined,
+  lang: Lang = "zh",
+): string | null {
+  if (!extractorVersion) return null;
+  return RELATION_SOURCE_LABEL[extractorVersion]?.[lang] ?? null;
+}
+
+/** Pill text: the filing source for reported edges, the status otherwise. */
+export function relationBadgeLabel(
+  relation: { status: string; extractorVersion?: string },
+  lang: Lang = "zh",
+): string {
+  if (relation.status === "reported") {
+    const source = relationSourceLabel(relation.extractorVersion, lang);
+    if (source) return source;
+  }
+  return statusLabel(relation.status, lang);
 }
 
 export function trustLabel(tier: string | undefined, lang: Lang = "zh"): string {

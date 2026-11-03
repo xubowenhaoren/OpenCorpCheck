@@ -15,8 +15,8 @@ import {
   formatDate,
   formatFinancialValue,
   latestFact,
+  relationBadgeLabel,
   relationTypeLabel,
-  statusLabel,
   periodLabel,
 } from "../format";
 import { useLang } from "../i18n";
@@ -334,7 +334,7 @@ export function CompanyOverview({ card }: { card: CompanyCard }) {
                     <span
                       className={`pill ${relationStatusClass(relation.status)}`}
                     >
-                      {statusLabel(relation.status, lang)}
+                      {relationBadgeLabel(relation, lang)}
                     </span>
                   </span>
                 </button>

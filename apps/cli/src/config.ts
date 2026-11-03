@@ -70,8 +70,12 @@ export const config = {
   sp500File: path.join(repoRoot, "config", "indices", "sp500.yaml"),
   /** F10 page JSON snapshots (also written by the worker/backfill). */
   f10Dir: pathEnv("OCC_F10_DIR", ".occ/f10"),
-  /** SEC EDGAR cache (ticker map, submissions, companyfacts). */
+  /** SEC EDGAR cache (ticker map, submissions, companyfacts, 13F data sets). */
   edgarDir: pathEnv("OCC_EDGAR_DIR", ".occ/edgar"),
+  /** SEC requires a descriptive User-Agent with a contact address. */
+  edgarUserAgent:
+    process.env.OCC_EDGAR_USER_AGENT?.trim() ||
+    "OpenCorpCheck/0.1 (Bowen Xu; xubowenhaoren@gmail.com)",
   financeAnalystUrl:
     process.env.OCC_FINANCE_ANALYST_URL ?? "http://127.0.0.1:8090",
   gleifBaseUrl:
