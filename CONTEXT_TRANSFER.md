@@ -10,10 +10,12 @@
 > The old 1,394-line document is preserved verbatim in
 > [`context_transfer_history.md`](context_transfer_history.md).
 >
-> **Next agent:** start at **§10 P1.4 — Official filing adapters**. P1.3
-> shipped the 13F/DION owner edge writer and per-source labels; P1.4 reuses
-> the same provenance/review pattern for announcements. Do not start P1.5
-> before P1.4 is accepted.
+> **Next agent:** start with the **P1.3 dense-graph UI follow-up** (small,
+> user-visible: GOOGL/NVDA/AAPL graphs are unreadable with 25–35 holders on one
+> ring), then **§10 P1.4 — Official filing adapters**. P1.3 shipped the 13F/DION
+> owner edge writer and per-source labels; P1.4 reuses the same
+> provenance/review pattern for announcements. Do not start P1.5 before P1.4
+> is accepted.
 >
 > **Machine constraint:** macOS VM, no Docker. P2 delivery/packaging
 > (Docker/Electron/hosted demo/CI/observability) is deferred. Development uses
@@ -33,8 +35,9 @@
 > news refresh, structured financials (US EDGAR-only), the Financials tab,
 > HSI, ChiNext 50, the **A500/SPX placeholder layer**, **P1.2 sector +
 > entity resolution** and **P1.3 US 13F + HKEX DION ownership** are shipped.
-> **Next: P1.4 official filing adapters (see §10).** Backfill and
-> delivery/engineering quality are out of scope for the current P1 plan.
+> **Next: P1.3 dense-graph UI follow-up, then P1.4 official filing adapters
+> (see §10).** Backfill and delivery/engineering quality are out of scope for
+> the current P1 plan.
 >
 > **Corpus:** 1,086 non-fixture companies — 236 researched (NDX 100, HSI
 > 85, CYB50 50, plus the discovered set) and **850 A500/SPX searchable
@@ -567,6 +570,12 @@ Known limitations:
   (Arm→SoftBank, T-Mobile US→Deutsche Telekom, 中国人寿→中国人寿保险（集团）,
   联想集团→联想控股). The command reports out-of-universe parents instead of
   inventing edges; P1.3 adds 13F/DION ownership separately.
+- **Dense ownership graphs are unreadable (P1.3 follow-up):** 13F adds 25–35
+  holders to large caps (GOOGL/NVDA/AAPL/BLK). The current equal-angle ring,
+  colliding labels and dotted edges crossing the center are a known UI debt.
+  The data is correct; do not hide 13F edges or change the API. The fix is
+  web-only: top-N default, adaptive layout/clusters, collision-aware labels.
+  See §10 **P1.3 follow-up — dense ownership graph readability**.
 - **Relation labels are per-source (fixed 2026-11-02):** `reported` renders as
   `已报告`; the pill shows `13F 持仓` / `HKEX 权益披露` / `GLEIF 母公司` /
   `F10 股东` from `extractorVersion`. Unknown extractors fall back to `已报告`.
@@ -1207,13 +1216,15 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 | HKEX DION “temporarily unavailable” | The site's JS bot defense rejects plain HTTP. Use the Playwright sidecar (`occ-f10 serve` + `occ ownership sync --market HK`); do not retry with curl/requests. |
 | DION run takes too long | 1 req/s is deliberate; a 365-day window over 85 companies can take tens of minutes. Use `--limit`/`--days`/`--max-pages` for a quick sample. |
 | Ownership edges are missing after a rerun | The writer is additive and dedupes by `(holder, issuer, type)`; a same-pair edge from another extractor is reported as a duplicate. Check `occ ownership coverage` and the run's `duplicates` count, not the graph alone. |
+| Large-cap graph is a hairball | 13F adds 25–35 holders to GOOGL/NVDA/AAPL; use the top-N/cluster/adaptive layout in §10 **P1.3 follow-up**. Do not reduce data or hide 13F edges in the API. |
 
 ---
 
 ## 10. Next tasks — active plan (2026-11-01)
 
-> **Scope rule:** P1 is the only active list. **Next task is P1.4**; do not
-> start P1.5 before P1.4 is accepted. **Backfill is out of scope**
+> **Scope rule:** P1 is the only active list. **Next tasks are the P1.3
+> dense-graph UI follow-up and P1.4**; finish the UI follow-up first, and do
+> not start P1.5 before P1.4 is accepted. **Backfill is out of scope**
 > (STAR 50, any remaining HSI/CYB50 gaps, A500/SPX bulk research). Delivery/
 > engineering quality is P2 and explicitly deferred. Do not start P2 before P1
 > is accepted.
@@ -1345,6 +1356,36 @@ Shipped end-to-end; migration `0010_relation_metadata.sql`; details in
 - Acceptance: no counterparty outside `companies` is created; every edge opens
   to its source and has a pending review; reruns are idempotent; graph API/UI
   render the edges with source labels.
+
+### P1.3 follow-up — dense ownership graph readability (NEXT UI task)
+
+**Problem (user report 2026-11-02):** GOOGL/NVDA-style graphs are a hairball.
+13F adds 25–35 institutional holders; the current layout puts every neighbour on
+one equal-angle ring, so labels collide, dotted edges cross the center, and
+bottom nodes overlap the center label. The data is correct; the **layout and
+default density** are wrong. This is a web-only task; do not hide 13F edges,
+change relation status/types, or alter the API.
+
+**Acceptance:**
+
+- Default view shows a readable subset: the **top N holders by
+  `relation.amount`** (suggest N=8–10) and an “其他机构 (N)” cluster/row for the
+  rest. A “显示全部” control expands; the full relation list stays available.
+- No one-ring layout for >12 nodes. Use one of: two rings (top holders inner,
+  others outer), radial grouping by relation family, or a force/collision
+  layout. Keep the existing ≤6/≤8 layout intact where it already reads well.
+- Collision-aware labels: one line, hide overlapping labels, show the full name
+  on hover/selection; no label may cover the center node.
+- 13F edges are lower-emphasis by default (thinner/lower opacity, no arrow
+  clutter); the selected/hovered edge highlights. Consider hiding non-selected
+  families or edge bundling.
+- Preserve amount ordering, the source pill (`13F 持仓` etc.) and the source
+  button; clicking a cluster opens the full relation list.
+- Verify at 1440px and mobile with **GOOGL, NVDA, AAPL, BLK, 02318**; no
+  node/label overlap at the default view. Add screenshots to this handoff or
+  `docs/UI.md`.
+- If a top-N parameter is needed, add it to `@occ/core` first and fetch more on
+  demand; do not change relation semantics.
 
 ### P1.4 — Official filing adapters (NEXT)
 
@@ -1503,8 +1544,11 @@ Current invariants (verify before a demo):
 
 P1 (active; see §10):
 
-**Next agent (P1.4):**
+**Next agent (P1.3 follow-up + P1.4):**
 
+- [ ] Fix the dense ownership graph UI (§10 **P1.3 follow-up**): top-N default,
+  adaptive layout/clusters, collision-aware labels; verify GOOGL/NVDA/AAPL/BLK/
+  02318 at desktop + mobile. Web-only; do not hide 13F edges.
 - [ ] Read §10 P1.4 and [docs/OWNERSHIP.md](docs/OWNERSHIP.md); reuse the
   source/evidence/review writer and the news-sweep cursor/lease pattern.
 - [ ] Add the CNINFO/SSE/SZSE/HKEXnews/IR RSS/GDELT adapters + PDF; do not
@@ -1522,6 +1566,7 @@ P1 (active; see §10):
   pending reviews; HK DION → **90 edges** (14 holders matched, 45 issuers, 10
   duplicates skipped); reruns insert 0; migration
   `0010_relation_metadata.sql`; per-source labels shipped.
+- [ ] **NEXT — P1.3 follow-up: dense ownership graph readability (web-only).**
 - [ ] **NEXT — P1.4 CNINFO/SSE/SZSE/HKEXnews/IR RSS/GDELT adapters + PDF.**
 - [ ] P1.5 daily company-data/financial-report refresh (`data.sweep`,
   `company_filing_state`, `filings`, deterministic detection, 0 LLM tokens).
