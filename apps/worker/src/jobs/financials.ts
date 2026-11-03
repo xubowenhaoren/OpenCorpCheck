@@ -20,6 +20,23 @@ export interface FinancialsJobData {
   code: string;
   market: Market;
   force?: boolean;
+  /**
+   * P1.5: the real `companies.id` for the run row. The financials job key is
+   * `US:AAPL`, but the company-page refresh watcher queries by company id.
+   */
+  companyId?: string;
+  /**
+   * P1.5: bypass the EDGAR/F10 on-disk caches because a new filing was just
+   * detected, but do NOT bypass the completed-job guard. A check retry must
+   * not re-run an already completed financials job.
+   */
+  bypassCache?: boolean;
+  /**
+   * Internal: reopen a completed `backfill_jobs` row before enqueueing. The
+   * ingest path relies on this for a re-ingest; the P1.5 data path sets it to
+   * false so a check retry cannot redo a finished financials run.
+   */
+  reopenCompleted?: boolean;
 }
 
 let runtime: Promise<{ db: Db; close: () => Promise<void> }> | null = null;
@@ -85,7 +102,7 @@ async function processFinancialsJob(job: Job<FinancialsJobData>): Promise<void> 
       ticker: data.ticker,
       code: data.code,
       market: data.market,
-      force: Boolean(data.force),
+      force: Boolean(data.force || data.bypassCache),
       ...(job.signal ? { signal: job.signal } : {}),
     });
     if (outcome.written === 0 && outcome.error) {

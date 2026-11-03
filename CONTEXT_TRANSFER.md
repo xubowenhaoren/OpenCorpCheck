@@ -1,20 +1,21 @@
 # OpenCorpCheck — Context Transfer
 
-> Handoff: **2026-11-02**. Current state: foundations through the web UI are
+> Handoff: **2026-11-03**. Current state: foundations through the web UI are
 > complete; automatic news refresh, US EDGAR-only structured financials, the
 > Financials tab, HSI, ChiNext 50, **P1.1 A500/SPX placeholders**, **P1.2
 > sector + entity resolution**, **P1.3 US 13F + HKEX DION ownership**, the
-> **P1.3 dense-graph UI follow-up**, and **P1.4 official filing adapters** are
-> shipped. **The next task is P1.5 (daily company-data/financial-report
-> refresh); P2 is deferred.** Backfill is out of scope for the current plan.
+> **P1.3 dense-graph UI follow-up**, **P1.4 official filing adapters**, and
+> **P1.5 daily company-data/financial-report refresh** are shipped. **P1 is
+> complete; P2 is deferred.** Backfill is out of scope for the current plan.
 >
 > The old 1,394-line document is preserved verbatim in
 > [`context_transfer_history.md`](context_transfer_history.md).
 >
-> **Next agent:** start with **§10 P1.5 — daily company-data / financial-report
-> refresh**. P1.4 ships the discovery adapters and `ingestFilings`; P1.5 adds
-> `company_filing_state`/`filings`, the daily sweep and the automatic
-> `financials.company` enqueue. See [docs/FILINGS.md](docs/FILINGS.md).
+> **Next agent:** P1.5 is the last active P1 item. Do not start P2 (delivery /
+> packaging) unless the user explicitly reopens it. The automatic refresh
+> needs a running `scripts/dev-data-worker.sh` (queues `data,financials`) and
+> the F10/PDF/HKEXnews sidecar for A/HK; see [docs/REFRESH.md](docs/REFRESH.md).
+> The daily filing check is deterministic and 0 LLM tokens.
 >
 > **Machine constraint:** macOS VM, no Docker. P2 delivery/packaging
 > (Docker/Electron/hosted demo/CI/observability) is deferred. Development uses
@@ -28,16 +29,16 @@
 
 ---
 
-## 0. LIVE STATE — 2026-11-02 (read first)
+## 0. LIVE STATE — 2026-11-03 (read first)
 
 > **Current state:** foundations through the web UI are complete. Automatic
 > news refresh, structured financials (US EDGAR-only), the Financials tab,
 > HSI, ChiNext 50, the **A500/SPX placeholder layer**, **P1.2 sector +
 > entity resolution**, **P1.3 US 13F + HKEX DION ownership**, the **P1.3
-> dense-graph UI follow-up**, and **P1.4 official filing adapters** are
-> shipped. **Next: P1.5 daily company-data/financial-report refresh (see
-> §10).** Backfill and delivery/engineering quality are out of scope for the
-> current P1 plan.
+> dense-graph UI follow-up**, **P1.4 official filing adapters**, and **P1.5
+> daily company-data/financial-report refresh** are shipped. **P1 is
+> complete; P2 is deferred.** Backfill and delivery/engineering quality are
+> out of scope for the current plan.
 >
 > **Corpus:** 1,086 non-fixture companies — 236 researched (NDX 100, HSI
 > 85, CYB50 50, plus the discovered set) and **850 A500/SPX searchable
@@ -51,7 +52,10 @@
 > merge log. **P1.3:** 503 CUSIP identifiers, 13,009 US 13F edges, and 90
 > HKEX DION edges. **P1.4:** 6 filing documents in the acceptance sample
 > (AAPL 2, 600519 2, 00700 2), 123 chunks; the adapters are operator-run and
-> full-universe ingestion is an explicit batch, not automatic.
+> full-universe ingestion is an explicit batch, not automatic. **P1.5:** the
+> daily sweep plans **251 checks for the 236 researched companies** (100
+> `edgar`, 66 `cninfo`, 85 `hkexnews`; stubs excluded), diffs official
+> indexes against `filings` and re-runs financials for a new periodic report.
 >
 > | Index | Constituents | Memberships | Structured financials | Status |
 > |---|---|---|---|---|
@@ -63,51 +67,69 @@
 > | STAR50 | — | — | — | deferred backfill, not in the current plan |
 >
 > **Data:** `financial_facts` 46,880 (29,683 `xbrl`, 15,767 `f10`, 1,430
-> profile); financials cache 234 ok / 1 failed; 3,245 news documents (last
-> sweep: 232 `ok` / 4 `empty` companies); **relations 13,186** (13,009
-> `sec-13f-v1`, 90 `hkex-dion-v1`, 22 `reported` F10, 64 `inferred`, 1 GLEIF
-> `parent_of`); 1,097 companies (1,086 non-fixture + 11 fixtures),
-> **1,757 index memberships** (SPX refreshed to `2026-10-30`), 1,109
-> securities, 4,888 aliases, **2,994 identifiers** (incl **503 CUSIP**, 183
-> LEI, 186 ISIN, 64 USCC, 98 Wikidata QID); **13,186 pending review items**
-> (13,009 13F + 90 DION + 87 pre-existing); **6 filing documents / 123 chunks**
-> (P1.4 acceptance sample: AAPL, 600519, 00700).
+> profile; the P1.5 acceptance sample rewrote AAPL/MSFT EDGAR rows with the
+> new 10-K/10-Q periods: 340 facts each; AAPL FY2026 revenue is now
+> **478.834B USD** for period 2026-09-26); financials cache 234 ok / 1 failed;
+> 3,245 news documents (last sweep: 232 `ok` / 4 `empty` companies);
+> **relations 13,186** (13,009 `sec-13f-v1`, 90 `hkex-dion-v1`, 22 `reported`
+> F10, 64 `inferred`, 1 GLEIF `parent_of`); 1,097 companies (1,086
+> non-fixture + 11 fixtures), **1,757 index memberships** (SPX refreshed to
+> `2026-10-30`), 1,109 securities, 4,888 aliases, **2,994 identifiers** (incl
+> **503 CUSIP**, 183 LEI, 186 ISIN, 64 USCC, 98 Wikidata QID); **13,186
+> pending review items** (13,009 13F + 90 DION + 87 pre-existing); **8 filing
+> documents / 125 chunks** (P1.4 acceptance sample 6/123 plus the P1.5
+> sample's link-only AAPL 10-K and MSFT 10-Q documents, 2/2); **2
+> `company_filing_state` rows / 10 `filings` rows** (P1.5 EDGAR sample: AAPL,
+> MSFT).
 > **Known content gaps:** 1 researched company has `sector = null`
-> (`HK:00823` 领展, F10 `EmptyRender`); **P1.4 filing adapters are shipped but
-> the daily filing refresh is P1.5**; 13F issuer name variants/ADRs without a
-> CUSIP under-match by design (exact names only). P1.2 GLEIF parent coverage is
-> sparse (see §5). Stubs intentionally have no profile, documents, financials,
-> chunks or embeddings.
+> (`HK:00823` 领展, F10 `EmptyRender`); **P1.5's first sweep is a baseline,
+> not a backfill** — historical announcements are not ingested automatically;
+> 13F issuer name variants/ADRs without a CUSIP under-match by design (exact
+> names only). P1.2 GLEIF parent coverage is sparse (see §5). Stubs
+> intentionally have no profile, documents, financials, chunks or embeddings.
 >
-> **Running (2026-11-02, rebuilt for P1.4):**
+> **Running (2026-11-03, rebuilt for P1.5):**
 > - API `node apps/api/dist/server.js` on `:8787`
 > - Vite `corepack pnpm --filter @occ/web dev` on `:5173`
 > - persistent news worker: `scripts/dev-news-worker.sh start` (pid in
 >   `.occ/news-worker.pid`, log `.occ/news-worker.log`)
-> - F10 + DION + HKEXnews/PDF sidecar `:8090` (`occ-f10 serve`), Postgres `:5432`,
->   Qdrant `:6333`, embeddings `:8080`
+> - **persistent data worker: `scripts/dev-data-worker.sh start`** (queues
+>   `data,financials`; pid in `.occ/data-worker.pid`, log
+>   `.occ/data-worker.log`) — required for the daily filing/financials loop
+> - F10 + DION + HKEXnews/PDF sidecar `:8090` (`occ-f10 serve`), Postgres
+>   `:5432`, Qdrant `:6333`, embeddings `:8080`
 > - no research/financials worker, no NIM gateway (official DeepSeek default)
 >
 > **Last news run** `b892648d-4537-4b73-8916-aaeca32bfedc`: completed 236/236,
 > 0 failed, 8m59s; 232 `ok` / 4 `empty`; 3,237 new articles; 0 LLM tokens;
 > history kept 3 days; next due ≈ +23 h.
 >
-> **Tests/build:** all green — API 33, web 43, worker 40, extract 42, ingest
-> 48, agent 17, CLI 7, retrieval 10, db 9, storage 5, sources (F10 9 + news 9),
-> entity 29, ownership 17, **filings 18** (**337 total**). Web bundle 436.58 KB
-> (gzip 134.56 KB); CSS 54.20 KB (gzip 10.69 KB). Python: **30** (F10/API,
-> DION, PDF, HKEXnews). Run tests serially:
+> **Last data run** `8898e0a4-1713-47d1-8e76-32b71dda89f5` (CLI sample,
+> `--company AAPL --source edgar`): 1 `data.source.check` + 1
+> `ingest.filing` + 1 `financials.company`, **3/3 completed**; AAPL's 10-K
+> (period 2026-09-26) was detected, its existing document was skipped
+> idempotently, and 340 EDGAR facts were rewritten; 0 LLM tokens. The earlier
+> two-company cold sample (`61e6ac7e-…`, AAPL + MSFT) produced the same result
+> for both.
+>
+> **Tests/build:** all green — API 33, web 48, worker 52, extract 42, ingest
+> 49, agent 17, CLI 7, retrieval 10, db 11, storage 5, sources (F10 9 + news 9
+> + **filings 25**), entity 29, ownership 17 (**363 total**). Web bundle
+> 439.06 KB (gzip 135.29 KB); CSS 54.24 KB (gzip 10.70 KB). Python: **30**
+> (F10/API, DION, PDF, HKEXnews). Run tests serially:
 > `corepack pnpm -r --workspace-concurrency=1 test`.
 >
-> **Recent commits:** `03449da` P1.3 US 13F + HKEX DION ownership;
-> `b19a8ef` fixture sector normalization + P1.2 docs;
-> `e6217ab` P1.2 sector + entity resolution; `8f795d5` P1.1 A500/SPX
-> placeholder layer; `0eec66f` automatic news refresh + TaskDock; `75864fb`
-> US EDGAR-only + Financials tab; `771490c` news sweep daily. Migrations
-> `0008_global_news_last_update.sql`, `0009_entity_merge_log.sql` and
-> `0010_relation_metadata.sql` are applied; run
-> `node apps/cli/dist/occ.js migrate` after pulling schema changes. P1.4 adds
-> **no migration**.
+> **Recent commits:** `faaa499` filings: add official filing adapters + PDF
+> (P1.4); `926365b` web: stagger inner/outer rings in dense ownership graph;
+> `eead595` web: make dense ownership graphs readable (P1.3 follow-up);
+> `a6c0289` docs: add P1.3 dense-graph UI follow-up; `01c9909` docs: record
+> P1.3 commit and live numbers; `03449da` P1.3 US 13F + HKEX DION ownership;
+> `b19a8ef` fixture sector normalization + P1.2 docs. Migrations
+> `0008_global_news_last_update.sql`, `0009_entity_merge_log.sql`,
+> `0010_relation_metadata.sql` and **`0011_filing_refresh.sql`** are applied;
+> run `node apps/cli/dist/occ.js migrate` after pulling schema changes.
+> **P1.5 adds migration `0011_filing_refresh.sql`** (`company_filing_state`,
+> `filings`, `backfill_runs.kind='data'`).
 
 ### 0.1 Monitor commands
 
@@ -118,6 +140,11 @@ node apps/worker/dist/cli.js news status
 scripts/dev-news-worker.sh status
 tail -n 20 .occ/news-worker.log
 curl -s 'http://127.0.0.1:8787/v1/news/status?company=AAPL'
+node apps/worker/dist/refresh-cli.js status
+#   or: node apps/worker/dist/cli.js data status
+scripts/dev-data-worker.sh status
+tail -n 20 .occ/data-worker.log
+node apps/worker/dist/refresh-cli.js sweep --now [--limit N] [--company REF] [--source LIST]
 node apps/cli/dist/occ.js ownership coverage
 node apps/cli/dist/occ.js ownership sync --market US          # dry run
 node apps/cli/dist/occ.js ownership sync --market HK --limit 3 --days 365
@@ -145,6 +172,18 @@ psql postgres://occ@127.0.0.1:5432/occdb -c \
 psql postgres://occ@127.0.0.1:5432/occdb -c \
   "select metadata->>'source' src, metadata->>'market' market, count(*)
      from documents where doc_type='filing' group by 1,2 order by 3 desc;"
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select last_status,count(*) from company_filing_state group by 1 order by 2 desc;"
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select source,periodic,count(*) from filings group by 1,2 order by 1,2;"
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select id,kind,status,total_jobs,completed_jobs,failed_jobs
+     from backfill_runs where kind='data' order by created_at desc limit 5;"
+psql postgres://occ@127.0.0.1:5432/occdb -c \
+  "select queue,status,count(*) from backfill_jobs
+     where run_id=(select id from backfill_runs where kind='data'
+                    order by created_at desc limit 1)
+     group by 1,2 order by 1,2;"
 ```
 
 ### 0.2 What “normal” looks like
@@ -157,12 +196,20 @@ psql postgres://occ@127.0.0.1:5432/occdb -c \
 - **Structured financials are deterministic and LLM-free.** US = SEC EDGAR
   XBRL only; A/HK = F10. Derived cells (`计算：`) are marked `推导` and must
   not be rendered as reported lines.
-- **Filings are deterministic and LLM-free** (P1.4). Discovery comes from SEC
-  EDGAR submissions, CNINFO (A, covering SSE+SZSE) and HKEXnews (sidecar);
-  PDFs are parsed by `pdfplumber` with page provenance. `doc_type='filing'`
-  documents appear in a separate 公告文件 tab, not mixed into news. These
-  adapters are operator-invoked (`occ filings sync`); the daily check is
-  P1.5.
+- **Filings are deterministic and LLM-free** (P1.4 + P1.5). Discovery comes
+  from SEC EDGAR submissions, CNINFO (A, covering SSE+SZSE) and HKEXnews
+  (sidecar); PDFs are parsed by `pdfplumber` with page provenance.
+  `doc_type='filing'` documents appear in a separate 公告文件 tab, not mixed
+  into news. The operator path is still `occ filings sync`; the automatic
+  daily path is P1.5.
+- **Daily company data is automatic and LLM-free** (P1.5). `data.sweep` checks
+  every researched (company, source) pair once a day, diffs `filings` by
+  `(source, accession)`, ingests new announcements and re-runs
+  `financials.company` for a new periodic report. The first check is a
+  **baseline**, not a historical backfill; only recent periodic reports are
+  acted on. Keep `scripts/dev-data-worker.sh` running. If the company page
+  shows `排队中`, the data worker is not running; if it shows `重试中`, inspect
+  `occ-refresh status` / `.occ/data-worker.log` (HK checks need the sidecar).
 - **News is automatic and LLM-free.** A daily sweep + the lazy
   `/v1/news/status` trigger keep the corpus fresh; the UI has no refresh
   control. If the dock shows `排队中`, the news worker is not running. The
@@ -249,6 +296,17 @@ A500/SPX stubs; plus the AI watchlist):
   block; PDF text/tables are extracted by `pdfplumber` (`POST
   /v1/pdf/extract`). No LLM, no schema migration. See
   [docs/FILINGS.md](docs/FILINGS.md).
+- **P1.5 (2026-11-03)**: automatic daily company-data/filing refresh.
+  `data.sweep` derives one check per researched (company, source) pair
+  (EDGAR/CNINFO/HKEXnews, F10 fallback for a company with no official feed),
+  leases `company_filing_state`, and enqueues `data.source.check`.
+  `data.source.check` diffs the official index against `filings` by
+  `(source, accession)`; new announcements go to `ingest.filing` (P1.4
+  documents), and a new periodic report (10-K/10-Q/20-F/40-F, annual/interim/
+  quarterly report) enqueues `financials.company` with `bypassCache`.
+  The first check is a baseline; a recent periodic report is still acted on.
+  Migration `0011_filing_refresh.sql`; 0 LLM tokens. See
+  [docs/REFRESH.md](docs/REFRESH.md).
 - **P1.3 (2026-11-02)**: deterministic ownership layer. `@occ/sources-ownership`
   streams SEC Form 13F data sets (13F-HR only; filer by CIK, issuer by CUSIP
   with an exact-name fallback; options/non-share rows skipped) and the HKEX
@@ -323,8 +381,29 @@ Verified numbers worth keeping:
   fix. The old failure was 32 distinct calls in 95 s with no repeats.
 - Graph: AAPL 3 edges, ARM 8, NVDA 14; 2-hop NVDA 26 nodes.
 - Search p95 (no rerank): companies 218–300 ms, documents 366–473 ms.
-- Build: web main JS 425.39 KB (gzip 130.72 KB), lazy Markdown chunk 162.66 KB
-  (gzip 49.05 KB), CSS 53.37 KB (gzip 10.52 KB).
+- Build: web main JS 439.06 KB (gzip 135.29 KB), lazy Markdown chunk 162.66 KB
+  (gzip 49.05 KB), CSS 54.24 KB (gzip 10.70 KB).
+
+Verified 2026-11-03 (P1.5):
+
+- Planned coverage: **236 researched companies → 251 checks** (100 `edgar` /
+  66 `cninfo` / 85 `hkexnews`; 850 stubs excluded; 0 F10 fallback in the
+  current corpus).
+- Cold EDGAR sample (`--limit 2`): AAPL's new **10-K** (period 2026-09-26,
+  filed 2026-11-03) and MSFT's **10-Q** (filed 2026-10-28) were detected as
+  recent periodic reports; `ingest.filing` wrote 1 link-only document + 1
+  chunk each (Qdrant indexed); `financials.company` wrote **340 EDGAR facts**
+  each; AAPL's latest structured period became `2026-09-26` (FY2026 revenue
+  **478.834B USD**, up from FY2025 416.161B); the card's
+  `filingRefresh.latest` was the 10-K with `lastStatus=changed`; **0 LLM
+  tokens**.
+- Steady rerun for AAPL: `discovered=2, inserted=0, enqueuedFilings=0,
+  enqueuedFinancials=0`; 3-day window after a check 1 minute earlier.
+- Failure path (HKEXnews with the sidecar down): `last_status=failed`,
+  `consecutive_failures=1`, `next_due_at` +15 min; the card exposed
+  `lastStatus=failed` so the UI renders `重试中`, never fake success.
+- Migration `0011_filing_refresh.sql` applied; 363 TypeScript tests + 30
+  Python tests green.
 
 Verified 2026-11-01:
 
@@ -365,11 +444,12 @@ OpenCorpCheck/
   docs/
     ARCHITECTURE.md  SEARCH.md  EVAL.md  DATA_SOURCES.md  PRIOR_ART.md
     UI.md  EXTRACT.md  AGENT.md  NEWS.md  ENTITY.md  OWNERSHIP.md  FILINGS.md
+    REFRESH.md
   apps/
     web/                           # React 19 + Vite 8 consumer UI
     api/                           # Hono + Zod API, SSE agent, OpenAPI
     cli/                           # occ CLI + MCP stdio server
-    worker/                        # pg-boss parallel backfill
+    worker/                        # pg-boss parallel backfill + data/* refresh
   packages/
     agent/                         # dsh ACP runtime, event normalization, limits
     core/                          # Zod contracts, types, ULID
@@ -382,13 +462,14 @@ OpenCorpCheck/
     sources/eastmoney-f10/         # F10 adapter
     sources/entity/                # sector taxonomy, F10/EDGAR profiles, GLEIF, Wikidata
     sources/ownership/             # US 13F data sets, HKEX DION planner, ZIP reader
-    sources/filings/               # EDGAR/CNINFO/HKEXnews/RSS/GDELT + PDF client (P1.4)
+    sources/filings/               # EDGAR/CNINFO/HKEXnews/RSS/GDELT + PDF client (P1.4/1.5)
     sources/news/                  # Google News RSS adapter
   services/
     finance-analyst/               # Python sidecar: A/HK/US F10 (uv + Playwright)
     embeddings/                    # local BGE-M3 / reranker sidecar
   scripts/
     dev-db.sh dev-qdrant.sh dev-embeddings.sh dev-minio.sh e2e-search.sh
+    dev-news-worker.sh dev-data-worker.sh   # persistent automatic workers
     snapshot-indices.py             # generate A500/SPX YAML from official sources
   phase0/                          # historical proof-of-concept harness + outputs
 ```
@@ -406,11 +487,20 @@ scripts/dev-minio.sh start          # optional; S3 snapshots
 
 # build everything, then API + web
 corepack pnpm -r build
+node apps/cli/dist/occ.js migrate     # apply SQL migrations (0011 for P1.5)
 node apps/api/dist/server.js        # http://127.0.0.1:8787
 corepack pnpm dev:web               # http://127.0.0.1:5173 (proxy /v1 → 8787)
 
 # persistent automatic-news worker (separate process)
 scripts/dev-news-worker.sh start    # status | stop | restart | logs
+
+# persistent daily data/filing worker (P1.5; queues data,financials)
+scripts/dev-data-worker.sh start    # status | stop | restart | logs
+
+# P1.5 observe / force a sweep (advisory-locked; still leases the cursors)
+node apps/worker/dist/refresh-cli.js status
+node apps/worker/dist/refresh-cli.js sweep --now [--limit N] [--company REF] [--source LIST]
+#   or: node apps/worker/dist/cli.js data status|sweep --now
 
 # refresh index snapshots, then create/update A500/SPX stubs + memberships
 uv run scripts/snapshot-indices.py
@@ -476,6 +566,20 @@ Key env:
 | `OCC_IR_FEEDS` | `config/ir-feeds.yaml` (P1.4 opt-in IR feeds) |
 | `OCC_HKEXNEWS_TIMEOUT_MS` / `_SETTLE_MS` | `60000` / `1500` (P1.4) |
 | `OCC_HKEXNEWS_RATE_PER_SEC` | `1.0` (P1.4; sidecar serializes searches) |
+| `OCC_DATA_SWEEP` | on; `none`/`off` disables the daily data/filing sweep (P1.5) |
+| `OCC_DATA_SWEEP_CRON` / `_TZ` | `0 8 * * *` / machine timezone (P1.5) |
+| `OCC_DATA_TTL_MS` | `82800000` (23 h; shorter than the daily period) |
+| `OCC_DATA_CLAIM_TIMEOUT_MS` | `1800000` (30 min lease) |
+| `OCC_DATA_SWEEP_BATCH` | `500` checks per sweep |
+| `OCC_DATA_HISTORY_MS` | `259200000` (3 days of data-run history) |
+| `OCC_DATA_PAUSE_AFTER` | `5` consecutive failures → `paused` |
+| `OCC_DATA_CONCURRENCY` | `4` `data.source.check` jobs in parallel |
+| `OCC_DATA_COLD_DAYS` | `30` (first-check/baseline window) |
+| `OCC_DATA_MAX_STEADY_DAYS` | `30` (lookback cap after an outage) |
+| `OCC_DATA_MAX_ITEMS` | `20` discovered/ingested filings per source per check |
+| `OCC_FILINGS_CONCURRENCY` | `2` `ingest.filing` jobs |
+| `OCC_FILINGS_FULL_TEXT` | off; `1`/`on` follows EDGAR HTML in the automatic path |
+| `OCC_FILINGS_MAX_PAGES` | `80` |
 | `OCC_GLEIF_BASE_URL` | `https://api.gleif.org/api/v1` (P1.2) |
 | `OCC_WIKIDATA_API_URL` | `https://www.wikidata.org/w/api.php` (P1.2) |
 | `OCC_NEWS_SWEEP` | on; `none` disables the automatic sweep (no public refresh control) |
@@ -528,10 +632,14 @@ Pages:
   - Graph: 1/2 hops, type filter, verified-only, graph/list toggle, zoom/drag,
     node/edge inspector with evidence quote + source, empty state.
   - News: timeline with source popovers.
-  - Filings (P1.4): official announcements in a separate tab, newest first;
-    each row shows date/title/form-category and a **来源** button that opens
-    the original PDF or SEC filing page. Kept separate from News so a busy
-    news day cannot bury announcements.
+  - Filings (P1.4 + P1.5): official announcements in a separate tab, newest
+    first; each row shows date/title/form-category and a **来源** button that
+    opens the original PDF or SEC filing page. Kept separate from News so a
+    busy news day cannot bury announcements. A status line above the list
+    shows `最新报告 2026-09-26 (10-K) · 财报更新于 …`, `披露检查排队中…`, or
+    `披露检查失败，将自动重试（连续 N 次）` (warning colour). The Financials
+    coverage line adds `财报更新于 <date>`. The card polls every 15 s while a
+    check is pending.
   - Sources: grouped by trust tier, deduped, copy-all-citations.
 - **Top-nav TaskDock** (2026-11-01): last control after `EN` / 深色. Collapsed
   34 px ring with the active sweep's progress and a count badge; expanded card
@@ -584,7 +692,12 @@ Backend endpoints added with the UI:
 - `@occ/core` — `CompanyGraphQuerySchema`, `CompanyGraphView`,
   `IndexMemberView`, `IndexView`, `CompanyProfileView.indexMemberships`;
   `SearchCompaniesQuery.sector`; `ResearchJobView.payload/meta`;
-  `RelationView.extractorVersion`/`metadata` (P1.3).
+  `RelationView.extractorVersion`/`metadata` (P1.3); `FilingRefreshView`,
+  `FilingSourceStateView`, `LatestFilingView` and `CompanyCard.filingRefresh`
+  (P1.5).
+- `GET /v1/companies/:ref?include=filings` — now also returns `filingRefresh`
+  (latest periodic/any filing, per-source cursors, `lastStatus`, `pending`);
+  no new endpoint.
 
 Known limitations:
 
@@ -595,12 +708,21 @@ Known limitations:
   asset managers; out-of-universe filers/issuers are counted, never created.
   A/HK F10 top-10 edges and the GLEIF parent edge remain additive and
   unchanged. See [OWNERSHIP.md](OWNERSHIP.md). Do not fake edges in the UI.
-- **Filings are an operator-run layer (P1.4):** the acceptance sample has
-  6 documents / 123 chunks (AAPL, 600519, 00700). Discovery is official-first
-  (EDGAR/CNINFO/HKEXnews) and PDF extraction is deterministic; EDGAR HTML is
-  link-only unless `--full-text`. There is **no daily filing sweep** until
-  P1.5, and A500/SPX stubs are excluded unless `--include-stubs`. See
-  [FILINGS.md](FILINGS.md).
+- **Filings have two layers (P1.4 + P1.5):** the P1.4 operator command
+  (`occ filings sync`) remains the historical/manual path; the P1.4 acceptance
+  sample has 6 documents / 123 chunks (AAPL, 600519, 00700). P1.5 adds the
+  automatic daily `data.sweep`, which checks **251 (company, source) pairs**
+  for 236 researched companies and acts only on new filings. The first check
+  is a **baseline, not a backfill**: historical announcements are not ingested
+  automatically; a recent periodic report is ingested and triggers financials.
+  EDGAR HTML stays link-only unless `OCC_FILINGS_FULL_TEXT=1`. A500/SPX stubs
+  are excluded. See [REFRESH.md](REFRESH.md) and [FILINGS.md](FILINGS.md).
+- **Daily refresh needs the data worker:** `data.sweep` / `data.source.check` /
+  `ingest.filing` progress only while `scripts/dev-data-worker.sh` runs
+  (`work --queues data,financials`). A/HK PDF/announcement checks also need the
+  sidecar (`occ-f10 serve`). With no worker the company page shows `排队中`;
+  with a failing source it shows `重试中` after a 15 min backoff. The TaskDock
+  stays news-only (decision 33).
 - **Sector coverage is complete except one HK REIT:** 235/236 researched
   companies have a canonical 11-sector value (`信息技术` … `房地产`); the only
   gap is `HK:00823` 领展房地产投资信托基金 (F10 `EmptyRender`, same documented
@@ -909,6 +1031,18 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
   the next normal run retries it.
   Deterministic, 0 LLM tokens, no migration. See
   [docs/FILINGS.md](docs/FILINGS.md).
+- **Daily company-data refresh (P1.5, 2026-11-03)**: `data.sweep`
+  (`apps/worker/src/data-sweep.ts`) plans one check per researched
+  (company, source) pair from `securities`/`company_ids`, leases
+  `company_filing_state` and enqueues `data.source.check`
+  (`apps/worker/src/data/plan.ts` holds the pure planner). The check diffs the
+  official index against `filings` by `(source, accession)`, enqueues
+  `ingest.filing` for new announcements and `financials.company` with
+  `bypassCache` for a new periodic report. `ingest.filing` shares the P1.4
+  content loader/PDF cache (`packages/sources/filings/src/content.ts`). The
+  first check is a baseline; a recent periodic report is still acted on.
+  Migration `0011_filing_refresh.sql`; deterministic, 0 LLM tokens. See
+  [docs/REFRESH.md](docs/REFRESH.md).
 - **Structured financial statements** (`apps/worker/src/financials/` +
   `packages/extract/src/financials/`): `financials.company` fetches F10
   `cwfx` (HK `NewFinancialAnalysis`) for **A/HK only** and SEC EDGAR
@@ -1258,6 +1392,47 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
     sources; no article-body scraping, no paywall bypass, no bulk
     redistribution. The 公告文件 tab is separate from News so official
     announcements are not buried (decision 2026-11-02).
+63. **Daily data refresh is a deterministic cursor/lease sweep, not an agent**
+    (decision 2026-11-03): `data.sweep` is a singleton producer (advisory
+    lock + `short` queue) that leases `company_filing_state` and enqueues
+    `data.source.check`. Detection is a set diff on `(source, accession)`; no
+    LLM runs on the daily path. The optional agent fallback stays a P2 idea.
+64. **Detection inbox is separate from the document store** (decision
+    2026-11-03): `filings` holds `(source, accession, form, filed_at,
+    period_end, url, content_hash, status)`; user-facing evidence stays
+    `documents(doc_type='filing')` written by `ingest.filing`. Never point the
+    company page's 公告文件 list at the inbox.
+65. **The first check is a baseline, not a backfill** (decision 2026-11-03):
+    cold start inserts discovered rows as `applied` (`metadata.baseline=true`)
+    without ingesting historical announcements or re-running financials for
+    the whole universe. The exception is a **recent periodic report** (filed
+    within `OCC_DATA_COLD_DAYS`), which is ingested and triggers one
+    financials run. Historical backfill remains `occ filings sync`.
+66. **Periodic classification is deterministic and conservative** (decision
+    2026-11-03): EDGAR 10-K/10-Q/20-F/40-F (amendments inherit); CNINFO
+    年度/半年/季度报告 titles excluding 摘要/说明会/预告/快报/问询/停牌/澄清;
+    HKEXnews annual/interim/quarterly results or reports excluding board
+    dates, profit warnings, monthly returns, clarification/suspension.
+    `8-K` / `6-K` are announcements, not periodic reports. Unknown is null,
+    never guessed.
+67. **A new periodic report uses `bypassCache`, not `force`** (decision
+    2026-11-03): `financials.company` must bypass the 24 h EDGAR/F10 caches to
+    see the new period, but a check retry must not re-run a completed job.
+    `bypassCache` forces the upstream fetch; `force` remains the operator's
+    "reopen completed" flag.
+68. **The automatic filing path shares the P1.4 content loader** (decision
+    2026-11-03): `createFilingContentLoader` in `@occ/sources-filings` owns PDF
+    fetch/extraction caching for both the CLI and `ingest.filing`; EDGAR HTML
+    stays link-only unless `OCC_FILINGS_FULL_TEXT=1`. No duplicate loader in
+    the worker.
+69. **Source selection is derived, not registered** (decision 2026-11-03):
+    one candidate per company/market from securities/identifiers (US+CIK →
+    EDGAR, SSE/SZSE → CNINFO, HKEX → HKEXnews); F10 content-hash fallback only
+    when no official feed exists (e.g. BSE-only). Stubs and fixtures are never
+    polled. Dual-listed A/HK companies get both legs.
+70. **The TaskDock stays news-only** (decision 2026-11-03): P1.5 shows filing
+    state on the company page; a "财报更新" dock group would be an explicit
+    decision-33 change and is not part of this cut.
 
 ---
 
@@ -1319,16 +1494,25 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 | Filings missing from the News tab | By design: `listEvents` is news/profile events; filings live in `listFilingEvents` and the 公告文件 tab (`include=filings`). Do not merge them back into the 10-item news list. |
 | Ownership edges are missing after a rerun | The writer is additive and dedupes by `(holder, issuer, type)`; a same-pair edge from another extractor is reported as a duplicate. Check `occ ownership coverage` and the run's `duplicates` count, not the graph alone. |
 | Large-cap graph is a hairball | Fixed in the web UI (2026-11-02): top-10 default +「其他机构」cluster, two-ring layout, collision-aware labels, faint 13F edges. The data/API still contain every edge. Do not reduce data or hide 13F edges in the API; adjust the web layout in `apps/web/src/lib/graph-layout.ts` instead. |
+| First `data.sweep` ingests nothing | Expected: the first check is a baseline (`filings.status='applied'`, `metadata.baseline=true`). Only a periodic report filed within `OCC_DATA_COLD_DAYS` is ingested and triggers financials. Do not “fix” this by enqueuing a historical backfill. |
+| Company page says `排队中` forever | The data worker is not running. Start `scripts/dev-data-worker.sh start` (queues `data,financials`). The API only schedules/observes; it never fetches filings. |
+| HKEXnews checks fail with `fetch failed` | The F10/PDF/HKEXnews sidecar is not running: `cd services/finance-analyst && uv run occ-f10 serve --port 8090`. The state backs off 15 min and the page says `重试中`; it does not fake success. |
+| New 10-Q detected but financials still show the old period | The financials job must run with `bypassCache: true` (P1.5 check) so the 24 h EDGAR/F10 cache is bypassed. `force` alone is for operators and also bypasses the completed-job guard; do not use it for automatic checks. |
+| `filings` rows exist but 公告文件 is empty | `filings` is the detection inbox. `ingest.filing` writes the user-facing `documents`. Check the `ingest.filing` job in the data run and the worker log; the dead-letter queue is `ingest.filing.dead`. |
+| `data.source.check` jobs queued but never start | No `data` worker. `occ-refresh sweep` only creates the run and jobs; `scripts/dev-data-worker.sh` executes them. |
+| Duplicate checks in one sweep / double financials | `data.sweep` is advisory-locked, `leaseFilingSource` leases each row, and `financials.company`/`ingest.filing` follow-up rows use one key per run. Keep all three guards; do not remove one “because the others work”. |
+| F10 fallback never appears | Expected for the current corpus: every A/HK researched company has a CNINFO/HKEXnews feed. The fallback is only for companies with no official feed (e.g. BSE-only). |
+| Filing detection window misses a late filing | The steady window is the previous check + 2 days, capped at `OCC_DATA_MAX_STEADY_DAYS` (30). A worker outage longer than 30 days only re-reads 30 days; older items need `occ filings sync`. |
+| Two financials workers double the EDGAR request rate | The EDGAR 110 ms limiter is per process. Run `financials` in one process per host (`scripts/dev-data-worker.sh` runs `data,financials`); stop it before starting another worker with `financials`. |
 
 ---
 
-## 10. Next tasks — active plan (2026-11-01)
+## 10. Next tasks — active plan (2026-11-03)
 
-> **Scope rule:** P1 is the only active list. **The next task is P1.5**
-> (P1.4 is done and accepted); do not start P2 before P1.5 is accepted.
+> **Scope rule:** P1 is complete (P1.1–P1.5 shipped). **P2 is deferred**; do
+> not start it unless the user explicitly reopens delivery/engineering quality.
 > **Backfill is out of scope** (STAR 50, any remaining HSI/CYB50 gaps,
-> A500/SPX bulk research). Delivery/engineering quality is P2 and explicitly
-> deferred.
+> A500/SPX bulk research).
 >
 > **Cancelled / permanently deferred** (do not re-propose): manual news
 > refresh, on-demand research, page-entry nudge, first-class sub-agent card,
@@ -1548,7 +1732,8 @@ Shipped end-to-end; **no migration**. Details in
   6 documents / 123 chunks.
 - Known limits: EDGAR recent window only; EDGAR HTML link-only unless
   `--full-text`; CNINFO orgId resolved per run; HKEXnews first result page;
-  PDF caps; no OCR; GDELT/IR RSS opt-in and link-only; no daily sweep (P1.5).
+  PDF caps; no OCR; GDELT/IR RSS opt-in and link-only; the daily sweep is
+  P1.5 (shipped 2026-11-03).
 
 ### P1.4 original scope (kept for reference)
 
@@ -1565,7 +1750,46 @@ Shipped end-to-end; **no migration**. Details in
   every event opens the filing; re-ingest is idempotent; licenses/robots
   respected.
 
-### P1.5 — Daily company-data / financial-report refresh (automatic, pure code)
+### P1.5 — Daily company-data / financial-report refresh ✅ done 2026-11-03
+
+Shipped end-to-end; migration `0011_filing_refresh.sql`; details in
+[`docs/REFRESH.md`](docs/REFRESH.md).
+
+- New `company_filing_state` (per-company/source cursor + lease) and `filings`
+  (detection inbox; unique `(source, accession)`, `periodic`/`period_kind`,
+  `status`, `content_hash`). `backfill_runs.kind` gains `data`.
+- New `data.sweep` producer (advisory-locked, `short` policy, daily
+  `OCC_DATA_SWEEP_CRON` default `0 8 * * *`) and `data.source.check`
+  (`OCC_DATA_CONCURRENCY=4`). `apps/worker/src/data/plan.ts` derives one check
+  per researched company/source (EDGAR/CNINFO/HKEXnews, F10 fallback only
+  when no official feed exists); stubs/fixtures never participate.
+- `data.source.check` diffs the official index against `filings`, inserts only
+  unseen rows, enqueues `ingest.filing` (`OCC_FILINGS_CONCURRENCY=2`) for new
+  announcements and `financials.company` with `bypassCache` for a new periodic
+  report. Periodic classification is deterministic
+  (`@occ/sources-filings` `periodic.ts`).
+- `ingest.filing` turns detected rows into P1.4 `documents`/`chunks`/Qdrant
+  using the shared `createFilingContentLoader` (same PDF cache as the CLI).
+- First check is a **baseline**: historical announcements are not ingested and
+  financials are not re-run for the whole universe; a periodic report filed
+  within `OCC_DATA_COLD_DAYS` (30) is still ingested and triggers one
+  financials run.
+- Success advances `last_checked_at` and `next_due_at` (+23 h); failures
+  back off (15 min × 2^n, capped at TTL) and pause after 5. `occ-refresh
+  status|sweep --now`, `occ-backfill data status|sweep --now`, and
+  `scripts/dev-data-worker.sh` (`work --queues data,financials`).
+- UI/API: `CompanyCard.filingRefresh` (latest periodic/any filing, per-source
+  cursors, `lastStatus`, `pending`); the 公告文件 tab shows
+  `最新报告 … · 财报更新于 …` / `排队中` / `重试中`; the Financials coverage
+  line adds `财报更新于 …`. TaskDock stays news-only.
+- Acceptance: planned **251 checks for 236 companies** (100 EDGAR / 66
+  CNINFO / 85 HKEXnews; 850 stubs excluded); cold sample AAPL 10-K + MSFT 10-Q
+  detected, ingested and **340 EDGAR facts** written per company (AAPL latest
+  period `2026-09-26`); steady rerun inserted/enqueued 0; HK failure backed off
+  and surfaced `lastStatus=failed`; 0 LLM tokens. Tests: filings 25, worker 52,
+  db 11, web 48; **363 total**.
+
+### P1.5 original scope (kept for reference)
 
 **Goal:** every company is checked daily for new filings; when a new periodic
 report appears, the deterministic financials pipeline re-runs and the company
@@ -1648,10 +1872,9 @@ is per process.
 - API productionization: remote auth/API keys, idempotency keys, response
   cache, Scalar `/docs`, `/v1/entities/resolve`.
 - **Optional agent fallback for data refresh (not committed; do not build
-  unless P1.5 leaves a real gap).** Only for: (a) no filing source/IR URL is
-  known, (b) the deterministic parser fails on a *changed* filing, (c)
-  cross-source conflicts need an explanation, (d) on-demand narrative
-  summaries. Guards if it is ever built: change-gated (0 LLM tokens on
+  unless P1.5 leaves a real gap).** P1.5 shipped the deterministic daily path
+  for discovery, periodic detection and financials; there is no required gap
+  today. If one is ever found, the guards are: change-gated (0 LLM tokens on
   unchanged days), one call per company per changed filing, hard daily cap
   (e.g. 20 calls / 200k tokens), cheap model + low reasoning + structured
   JSON, send only the changed table/rows, content-hash cache, results go to
@@ -1663,6 +1886,10 @@ is per process.
 
 ### Done index (details live in the linked docs)
 
+- 2026-11-03 — P1.5 daily company-data/financial-report refresh
+  (`company_filing_state` + `filings`, `data.sweep`/`data.source.check`/
+  `ingest.filing`, financials auto-rerun, 251 checks for 236 companies,
+  0 LLM tokens) → [docs/REFRESH.md](docs/REFRESH.md).
 - 2026-11-02 — P1.4 official filing adapters (EDGAR + CNINFO + HKEXnews +
   IR RSS/GDELT, PDF text/tables, 公告文件 tab, 0 LLM tokens) →
   [docs/FILINGS.md](docs/FILINGS.md).
@@ -1709,22 +1936,17 @@ Current invariants (verify before a demo):
   daily schedule + lazy `/v1/news/status` trigger; 3-day history; no manual
   refresh control; 0 LLM tokens.
 - [x] TaskDock in the top nav and News-tab status line; tests and builds green.
+- [x] P1.5: `company_filing_state` + `filings` exist; the planner covers 236
+  researched companies with 251 checks (100 EDGAR / 66 CNINFO / 85 HKEXnews);
+  the first check is a baseline; a cold recent periodic report enqueues
+  `ingest.filing` + `financials.company` (`bypassCache`); a steady rerun
+  inserts/enqueues 0; HK failures back off and surface `lastStatus=failed`;
+  the company card exposes `filingRefresh`; migration `0011_filing_refresh.sql`
+  applied; 0 LLM tokens.
 - [x] No key/token/`.env` tracked; no NIM gateway on the default path.
 - [x] `corepack pnpm -r --workspace-concurrency=1 test` green; web build green.
 
-P1 (active; see §10):
-
-**Next agent (P1.5):**
-
-- [x] P1.4 official filing adapters: EDGAR + CNINFO + HKEXnews + IR RSS/GDELT,
-  PDF text/tables via the sidecar, separate 公告文件 tab, no migration. See
-  [docs/FILINGS.md](docs/FILINGS.md).
-- [ ] Read §10 P1.5 and [docs/FILINGS.md](docs/FILINGS.md); reuse
-  `ingestFilings`, the news-sweep cursor/lease pattern and the existing
-  `financials.company` queue.
-- [ ] Add `company_filing_state` + `filings` detection, `data.sweep` and
-  `data.source.check`; a new periodic report enqueues `financials.company`.
-  Do not start P2 before P1.5 is accepted.
+P1 (complete; see §10):
 
 - [x] P1.1 A500 + SPX placeholders: 500 + 500 memberships, 862 stubs at
   P1.1, `occ indices sync` idempotent, searchable `未收录` pages; existing
@@ -1739,14 +1961,17 @@ P1 (active; see §10):
   duplicates skipped); reruns insert 0; migration
   `0010_relation_metadata.sql`; per-source labels shipped.
 - [x] **P1.3 follow-up: dense ownership graph readability (web-only).**
-  `apps/web/src/lib/graph-layout.ts` + `CompanyGraph.tsx`; 43 web tests;
+  `apps/web/src/lib/graph-layout.ts` + `CompanyGraph.tsx`; 48 web tests;
   screenshots/overlap report in `docs/screenshots/p1.3/`.
 - [x] **P1.4 official filing adapters + PDF** (`@occ/sources-filings`,
   `ingestFilings`, `occ filings sync|coverage`, sidecar HKEXnews/PDF,
   公告文件 tab). Acceptance sample 6 documents / 123 chunks; reruns insert 0;
   0 LLM tokens; no migration.
-- [ ] **NEXT — P1.5 daily company-data/financial-report refresh** (`data.sweep`,
-  `company_filing_state`, `filings`, deterministic detection, 0 LLM tokens).
+- [x] **P1.5 daily company-data/financial-report refresh** (`data.sweep`,
+  `data.source.check`, `ingest.filing`, `company_filing_state`, `filings`,
+  deterministic periodic detection, `financials.company` auto-enqueue,
+  `occ-refresh`, company-page status line, 0 LLM tokens). Migration
+  `0011_filing_refresh.sql`. See [docs/REFRESH.md](docs/REFRESH.md).
 
 P2 (deferred; do not start):
 
@@ -1775,6 +2000,7 @@ Active docs:
 - [`docs/ENTITY.md`](docs/ENTITY.md)
 - [`docs/OWNERSHIP.md`](docs/OWNERSHIP.md)
 - [`docs/FILINGS.md`](docs/FILINGS.md)
+- [`docs/REFRESH.md`](docs/REFRESH.md)
 - [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)
 - [`docs/PRIOR_ART.md`](docs/PRIOR_ART.md)
 - [`docs/NVIDIA_NIM_MIGRATION.md`](docs/NVIDIA_NIM_MIGRATION.md) — P0

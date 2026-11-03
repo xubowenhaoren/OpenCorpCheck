@@ -557,6 +557,99 @@ export const entityMergeLog = pgTable(
   ],
 );
 
+/**
+ * Per-(company, source) daily filing cursor + lease (P1.5).
+ *
+ * Modelled on `global_news_last_update`: rows are created lazily by the data
+ * sweep and a row with no `next_due_at` is immediately due. The source is one
+ * of `edgar` / `cninfo` / `hkexnews` / `f10`; `f10` is the fallback for
+ * companies with no usable official feed.
+ */
+export const companyFilingState = pgTable(
+  "company_filing_state",
+  {
+    companyId: text("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    market: text("market").notNull(),
+    code: text("code"),
+    cursor: text("cursor"),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    lastChangedAt: timestamp("last_changed_at", { withTimezone: true }),
+    lastRunId: text("last_run_id"),
+    lastStatus: text("last_status").notNull().default("never"),
+    lastError: text("last_error"),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    lastEnqueuedAt: timestamp("last_enqueued_at", { withTimezone: true }),
+    nextDueAt: timestamp("next_due_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.companyId, table.source] }),
+    index("company_filing_state_due_idx").on(table.nextDueAt),
+    index("company_filing_state_status_idx").on(table.lastStatus),
+  ],
+);
+
+/**
+ * Deterministic filing detection inbox (P1.5).
+ *
+ * A row is inserted on first detection and is independent of the P1.4
+ * `documents` row: `ingest.filing` turns it into a filing document, then marks
+ * it `applied`. `periodic`/`period_kind` say whether the row triggers the
+ * deterministic financials pipeline.
+ */
+export const filings = pgTable(
+  "filings",
+  {
+    id: text("id").primaryKey(),
+    companyId: text("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    accession: text("accession").notNull(),
+    title: text("title").notNull(),
+    form: text("form"),
+    category: text("category"),
+    filedAt: timestamp("filed_at", { withTimezone: true }),
+    periodEnd: date("period_end"),
+    periodic: boolean("periodic").notNull().default(false),
+    periodKind: text("period_kind"),
+    url: text("url").notNull(),
+    pdfUrl: text("pdf_url"),
+    contentHash: text("content_hash"),
+    status: text("status").notNull().default("detected"),
+    error: text("error"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    detectedAt: timestamp("detected_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("filings_source_accession_uq").on(table.source, table.accession),
+    index("filings_company_filed_idx").on(table.companyId, table.filedAt),
+    index("filings_company_periodic_idx").on(
+      table.companyId,
+      table.periodic,
+      table.filedAt,
+    ),
+    index("filings_status_idx").on(table.status),
+  ],
+);
+
 export const schema = {
   companies,
   companyIds,
@@ -574,6 +667,8 @@ export const schema = {
   reviewQueue,
   outbox,
   globalNewsLastUpdate,
+  companyFilingState,
+  filings,
   entityMergeLog,
   ownershipSyncRuns,
 };

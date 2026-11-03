@@ -5,6 +5,7 @@ import {
   createBoss as createSharedBoss,
   pendingJobs,
   queueCounts,
+  registerDataSweepSchedule,
   registerNewsSweepSchedule,
   sendJob,
   startBoss as startSharedBoss,
@@ -14,9 +15,11 @@ import { config } from "./config.js";
 
 export {
   QUEUES,
+  DATA_SWEEP_SCHEDULE,
   NEWS_SWEEP_SCHEDULE,
   pendingJobs,
   queueCounts,
+  registerDataSweepSchedule,
   registerNewsSweepSchedule,
   sendJob,
 } from "@occ/jobs";

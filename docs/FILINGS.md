@@ -1,7 +1,8 @@
 # Official filing adapters (P1.4)
 
 > Status: implemented 2026-11-02 · Related: [DATA_SOURCES](DATA_SOURCES.md),
-> [OWNERSHIP](OWNERSHIP.md), [CONTEXT_TRANSFER](../CONTEXT_TRANSFER.md) §10
+> [OWNERSHIP](OWNERSHIP.md), [REFRESH](REFRESH.md) (P1.5 daily sweep),
+> [CONTEXT_TRANSFER](../CONTEXT_TRANSFER.md) §10
 
 ## 1. Goal
 
@@ -168,14 +169,16 @@ Verified:
 ## 8. Known limits
 
 - **EDGAR recent window only**: `submissions.filings.recent` covers the latest
-  filings; older paginated `filings.files` are not followed yet. P1.5 can add
-  them if a company's recent window is too short.
+  filings; older paginated `filings.files` are not followed yet. A later
+  follow-up can add them if a company's recent window is too short. The P1.5
+  daily window is at most 30 days, so this is sufficient for incremental checks.
 - **EDGAR HTML is link-only by default** to keep ingestion volume bounded;
   use `--full-text` for a chosen sample/company. A later `--full-text` run
   backfills the existing link-only documents without `--refresh`.
 - **CNINFO `orgId` is resolved per run.** 601318/601398-type codes are not
   derivable from the ticker; the top-search endpoint is the source of truth.
-  P1.5 can persist `cninfo_org` in `company_ids` to avoid the extra request.
+  A follow-up can persist `cninfo_org` in `company_ids` to avoid the extra
+  request; the P1.5 daily check currently resolves it per check.
 - **CNINFO is one adapter for SSE + SZSE.** Direct SSE/SZSE endpoints were not
   added: CNINFO is the designated disclosure platform and already links the
   exchange PDFs. Add an official SSE/SZSE adapter only if CNINFO coverage
@@ -192,8 +195,10 @@ Verified:
   never blocked by it.
 - **GDELT/IR RSS are link-only secondary sources**; they are opt-in
   (`--sources all`) so the default run stays official-first.
-- **No daily refresh yet**: P1.4 is operator-invoked; P1.5 adds
-  `company_filing_state` + `filings` detection and the daily sweep.
+- **Daily refresh is P1.5**: `company_filing_state` + `filings` detection and
+  the automatic `data.sweep` live in [REFRESH.md](REFRESH.md). This operator
+  command remains the path for a historical batch or a manual re-ingest.
+  The auto path shares the same content loader and PDF cache.
 - **No review queue**: filings are evidence documents, not proposed facts.
 - **Index retry**: a document is marked `metadata.indexed=true` only after a
   successful Qdrant write. `--skip-index` or an embedding/Qdrant failure

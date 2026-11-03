@@ -162,6 +162,15 @@ period_kind)` wins by source precedence:
 > Thomson Reuters) are covered. F10 remains the A/HK structured layer and the
 > generic parser/tests stay. After the cleanup NDX is **100/100 on `xbrl`**.
 
+### Automatic re-run after a new report (P1.5)
+
+`data.source.check` detects a new periodic report from EDGAR/CNINFO/HKEXnews
+and enqueues `financials.company` with **`bypassCache: true`** — it forces the
+fresh EDGAR `companyfacts`/F10 fetch so the new period is visible, while the
+normal `force` flag stays reserved for operators (it also reopens a completed
+job). The check retry cannot re-run a completed financials job. See
+[REFRESH.md](REFRESH.md).
+
 - Pure parsers live in `packages/extract/src/financials/f10-cwfx.ts`,
   `edgar-xbrl.ts` and `canonical.ts`; fixture tests never call the network.
 - The worker stage (`apps/worker/src/financials/run.ts`) caches the raw pages

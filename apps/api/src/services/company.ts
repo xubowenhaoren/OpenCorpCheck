@@ -14,6 +14,7 @@ import {
   getCompanyBundle,
   getCompanyBundles,
   getCompanyCounts,
+  getFilingRefreshView,
   listEvents,
   listFacts,
   listFilingEvents,
@@ -84,32 +85,36 @@ export class CompanyService {
 
     const include = new Set(query.include ?? ALL_SECTIONS);
     const counts = await getCompanyCounts(this.db, companyId);
-    const [financials, facts, relations, events, filings] = await Promise.all([
-      include.has("financials")
-        ? listFinancialFacts(this.db, companyId, {
-            limit: query.financial_limit,
-            ...(query.financial_period_kind
-              ? { periodKind: query.financial_period_kind }
-              : {}),
-          })
-        : Promise.resolve(undefined),
-      include.has("facts")
-        ? listFacts(this.db, companyId, { limit: query.fact_limit })
-        : Promise.resolve(undefined),
-      include.has("relations")
-        ? listRelations(this.db, companyId, {
-            direction: "both",
-            limit: query.relation_limit,
-            status: query.relation_status,
-          })
-        : Promise.resolve(undefined),
-      include.has("events")
-        ? listEvents(this.db, companyId, query.event_limit)
-        : Promise.resolve(undefined),
-      include.has("filings")
-        ? listFilingEvents(this.db, companyId, query.filing_limit)
-        : Promise.resolve(undefined),
-    ]);
+    const [financials, facts, relations, events, filings, filingRefresh] =
+      await Promise.all([
+        include.has("financials")
+          ? listFinancialFacts(this.db, companyId, {
+              limit: query.financial_limit,
+              ...(query.financial_period_kind
+                ? { periodKind: query.financial_period_kind }
+                : {}),
+            })
+          : Promise.resolve(undefined),
+        include.has("facts")
+          ? listFacts(this.db, companyId, { limit: query.fact_limit })
+          : Promise.resolve(undefined),
+        include.has("relations")
+          ? listRelations(this.db, companyId, {
+              direction: "both",
+              limit: query.relation_limit,
+              status: query.relation_status,
+            })
+          : Promise.resolve(undefined),
+        include.has("events")
+          ? listEvents(this.db, companyId, query.event_limit)
+          : Promise.resolve(undefined),
+        include.has("filings")
+          ? listFilingEvents(this.db, companyId, query.filing_limit)
+          : Promise.resolve(undefined),
+        include.has("filings")
+          ? getFilingRefreshView(this.db, companyId)
+          : Promise.resolve(null),
+      ]);
 
     const latestIndexMemberships = new Map<
       string,
@@ -168,6 +173,7 @@ export class CompanyService {
         : {}),
       ...(events ? { events } : {}),
       ...(filings ? { filings } : {}),
+      ...(filingRefresh ? { filingRefresh } : {}),
     };
   }
 

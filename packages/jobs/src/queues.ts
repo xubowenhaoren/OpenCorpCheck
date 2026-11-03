@@ -9,12 +9,19 @@ export const QUEUES = {
   NEWS_SWEEP: "news.sweep",
   F10: "f10.page",
   FINANCIALS: "financials.company",
+  /** One producer job that selects due company/source rows (P1.5). */
+  DATA_SWEEP: "data.sweep",
+  DATA_SOURCE_CHECK: "data.source.check",
+  /** Follow-up: turn newly detected filings into P1.4 filing documents. */
+  FILING_INGEST: "ingest.filing",
   RESEARCH_DEAD: "research.company.dead",
   INGEST_DEAD: "ingest.company.dead",
   REVIEW_DEAD: "review.company.dead",
   NEWS_DEAD: "news.company.dead",
   F10_DEAD: "f10.page.dead",
   FINANCIALS_DEAD: "financials.company.dead",
+  DATA_SOURCE_CHECK_DEAD: "data.source.check.dead",
+  FILING_INGEST_DEAD: "ingest.filing.dead",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -63,6 +70,8 @@ export async function ensureQueues(boss: PgBoss): Promise<void> {
     QUEUES.NEWS_DEAD,
     QUEUES.F10_DEAD,
     QUEUES.FINANCIALS_DEAD,
+    QUEUES.DATA_SOURCE_CHECK_DEAD,
+    QUEUES.FILING_INGEST_DEAD,
   ]) {
     await ensureQueue(boss, name, {
       retryLimit: 0,
@@ -131,6 +140,34 @@ export async function ensureQueues(boss: PgBoss): Promise<void> {
     retryDelayMax: 300,
     expireInSeconds: 900,
     deadLetter: QUEUES.FINANCIALS_DEAD,
+    deleteAfterSeconds: 604_800,
+  });
+  // P1.5: `short` = at most one queued data sweep; the advisory lock inside
+  // the handler is the second guard. Checks run as independent jobs so a slow
+  // HKEXnews sidecar cannot block EDGAR/CNINFO.
+  await ensureQueue(boss, QUEUES.DATA_SWEEP, {
+    policy: "short",
+    retryLimit: 1,
+    retryDelay: 120,
+    expireInSeconds: 1_800,
+    deleteAfterSeconds: 259_200,
+  });
+  await ensureQueue(boss, QUEUES.DATA_SOURCE_CHECK, {
+    retryLimit: 2,
+    retryDelay: 60,
+    retryBackoff: true,
+    retryDelayMax: 600,
+    expireInSeconds: 900,
+    deadLetter: QUEUES.DATA_SOURCE_CHECK_DEAD,
+    deleteAfterSeconds: 604_800,
+  });
+  await ensureQueue(boss, QUEUES.FILING_INGEST, {
+    retryLimit: 2,
+    retryDelay: 60,
+    retryBackoff: true,
+    retryDelayMax: 600,
+    expireInSeconds: 1_800,
+    deadLetter: QUEUES.FILING_INGEST_DEAD,
     deleteAfterSeconds: 604_800,
   });
 }
@@ -226,6 +263,26 @@ export async function registerNewsSweepSchedule(
   await boss.schedule(QUEUES.NEWS_SWEEP, cron, { source: "schedule" }, {
     key: NEWS_SWEEP_SCHEDULE,
     singletonKey: NEWS_SWEEP_SCHEDULE,
+    ...(tz ? { tz } : {}),
+    missed: "once",
+  });
+}
+
+export const DATA_SWEEP_SCHEDULE = "data-sweep";
+
+/**
+ * Register the daily company-data/filing sweep (P1.5). Idempotent like the
+ * news schedule; `missed: "once"` gives the first worker boot after downtime
+ * one catch-up sweep. The producer only enqueues checks; the worker fetches.
+ */
+export async function registerDataSweepSchedule(
+  boss: PgBoss,
+  cron: string,
+  tz?: string,
+): Promise<void> {
+  await boss.schedule(QUEUES.DATA_SWEEP, cron, { source: "schedule" }, {
+    key: DATA_SWEEP_SCHEDULE,
+    singletonKey: DATA_SWEEP_SCHEDULE,
     ...(tz ? { tz } : {}),
     missed: "once",
   });

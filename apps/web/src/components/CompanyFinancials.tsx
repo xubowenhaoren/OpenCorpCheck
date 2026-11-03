@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type {
   CompanyProfileView,
+  FilingRefreshView,
   FinancialFactView,
   PeriodKind,
 } from "@occ/core";
@@ -12,6 +13,7 @@ import {
   financialItemLabel,
   financialSourceKind,
   financialSourceLabel,
+  formatDate,
   formatFinancialValue,
   isCumulativePeriod,
   isDerivedFact,
@@ -22,6 +24,7 @@ import {
   type FinancialSourceKind,
 } from "../format";
 import { useLang } from "../i18n";
+import { relativePast } from "../lib/news-dock";
 import { EmptyState } from "./States";
 
 const STATEMENT_ORDER = ["income", "balance", "cash_flow", "per_share"];
@@ -192,9 +195,11 @@ function buildCoverage(
 export function CompanyFinancials({
   financials,
   company,
+  filingRefresh,
 }: {
   financials: FinancialFactView[];
   company: CompanyProfileView;
+  filingRefresh?: FilingRefreshView;
 }) {
   const { t, lang } = useLang();
   const { openSource } = useSource();
@@ -365,6 +370,19 @@ export function CompanyFinancials({
           {coverage.fiscalYearEnd ? (
             <span>
               · {t("financial.fye")} {coverage.fiscalYearEnd}
+            </span>
+          ) : null}
+          {filingRefresh?.latest?.filedAt ? (
+            <span>
+              · {t("financial.updated")}{" "}
+              {formatDate(filingRefresh.latest.filedAt, lang)}
+            </span>
+          ) : filingRefresh?.lastCheckedAt ? (
+            <span>
+              ·{" "}
+              {t("filing.checked", {
+                time: relativePast(filingRefresh.lastCheckedAt, lang),
+              })}
             </span>
           ) : null}
           {coverage.derived ? (

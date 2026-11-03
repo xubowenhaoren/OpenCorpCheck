@@ -110,16 +110,17 @@ identifier precedence and commands, [OWNERSHIP.md](OWNERSHIP.md) for
   [EXTRACT.md](EXTRACT.md#structured-financial-statements-2026-11-01) and
   [CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §10.
 
-### 2.2 Daily filing refresh (P1.5, planned — pure code)
+### 2.2 Daily filing refresh (P1.5, shipped 2026-11-03 — pure code)
 
 Detection is deterministic, not agentic: poll the SEC EDGAR `submissions`
 index, the CNINFO announcement query, HKEXnews title search and (fallback) the
 F10 `cwfx` page hash; diff by accession/announcement ID or content hash. A new
 periodic report enqueues the existing `financials.company` pipeline; an
 announcement goes through the P1.4 adapters and `ingestFilings`. **0 LLM
-tokens.** P1.4 already ships the adapters and the `documents` writer; P1.5 adds
-`company_filing_state`, the `filings` detection table and the daily sweep.
-See [CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §10 P1.5 and
+tokens.** P1.5 adds `company_filing_state`, the `filings` detection inbox, the
+`data.sweep`/`data.source.check`/`ingest.filing` jobs and the company-page
+refresh line. See [REFRESH.md](REFRESH.md),
+[CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §10 P1.5 and
 [FILINGS.md](FILINGS.md).
 
 An **optional agent fallback** (source discovery, unmapped table, conflict

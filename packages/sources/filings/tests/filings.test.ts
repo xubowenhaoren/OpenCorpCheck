@@ -1,16 +1,28 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
+  baseFilingForm,
   canonicalFilingUrl,
   cleanText,
   cninfoBoard,
   cninfoForm,
   cninfoPdfUrl,
+  cninfoPeriodicKind,
   cninfoPublishedAt,
+  createFilingContentLoader,
+  edgarPeriodicKind,
   fetchCninfoFilings,
   filingKey,
+  filingPeriodicKind,
   gdeltDate,
+  hkexPeriodicKind,
+  htmlToText,
   isAnnouncementForm,
+  isPeriodicReport,
   parseCninfoStocks,
   parseEdgarFilings,
   parseFilingDate,
@@ -18,6 +30,7 @@ import {
   parseHkexNewsRows,
   parseIrFeed,
   pdfPageText,
+  periodicReportKind,
   type EdgarSubmissionsPayload,
 } from "../src/index.js";
 
@@ -321,6 +334,142 @@ describe("PDF page text", () => {
         ],
       }),
     ).toBe("经营情况\n项目 | 金额\n收入 | 11,292,545.23");
+  });
+});
+
+describe("periodic report classification (P1.5)", () => {
+  it("classifies EDGAR periodic forms, including amendments", () => {
+    expect(baseFilingForm("10-K/A")).toBe("10-K");
+    expect(edgarPeriodicKind("10-K")).toBe("annual");
+    expect(edgarPeriodicKind("10-K/A")).toBe("annual");
+    expect(edgarPeriodicKind("20-F")).toBe("annual");
+    expect(edgarPeriodicKind("40-F")).toBe("annual");
+    expect(edgarPeriodicKind("10-Q")).toBe("quarter");
+    expect(edgarPeriodicKind("10-Q/A")).toBe("quarter");
+    expect(edgarPeriodicKind("8-K")).toBeNull();
+    expect(edgarPeriodicKind("6-K")).toBeNull();
+  });
+
+  it("requires an unambiguous CNINFO report title", () => {
+    expect(cninfoPeriodicKind({ title: "2025年年度报告" })).toBe("annual");
+    expect(cninfoPeriodicKind({ title: "2025年半年度报告" })).toBe("half");
+    expect(cninfoPeriodicKind({ title: "2025年第三季度报告" })).toBe(
+      "quarter",
+    );
+    expect(cninfoPeriodicKind({ title: "2025年年度报告摘要" })).toBeNull();
+    expect(
+      cninfoPeriodicKind({ title: "关于召开2025年度业绩说明会的公告" }),
+    ).toBeNull();
+    expect(cninfoPeriodicKind({ title: "2025年年度业绩预告" })).toBeNull();
+    expect(cninfoPeriodicKind({ title: "", form: "季报" })).toBe("quarter");
+  });
+
+  it("classifies HKEXnews results announcements but not notices", () => {
+    expect(
+      hkexPeriodicKind({
+        title: "ANNOUNCEMENT OF ANNUAL RESULTS FOR THE YEAR ENDED 31 DECEMBER 2025",
+      }),
+    ).toBe("annual");
+    expect(
+      hkexPeriodicKind({ title: "ANNOUNCEMENT OF INTERIM RESULTS" }),
+    ).toBe("half");
+    expect(
+      hkexPeriodicKind({ title: "QUARTERLY RESULTS ANNOUNCEMENT" }),
+    ).toBe("quarter");
+    expect(
+      hkexPeriodicKind({ title: "截至2025年12月31日止年度之年度业绩" }),
+    ).toBe("annual");
+    expect(hkexPeriodicKind({ title: "中期业绩" })).toBe("half");
+    expect(hkexPeriodicKind({ title: "PROFIT WARNING" })).toBeNull();
+    expect(hkexPeriodicKind({ title: "DATE OF BOARD MEETING" })).toBeNull();
+    expect(
+      hkexPeriodicKind({ title: "MONTHLY RETURN", category: "月报表" }),
+    ).toBeNull();
+  });
+
+  it("dispatches by source and exposes an item helper", () => {
+    expect(
+      periodicReportKind({
+        source: "edgar",
+        form: "10-Q",
+        title: "10-Q",
+      }),
+    ).toBe("quarter");
+    expect(
+      isPeriodicReport({ source: "edgar", form: "8-K", title: "8-K" }),
+    ).toBe(false);
+    expect(
+      filingPeriodicKind({
+        source: "cninfo",
+        title: "2025年年度报告",
+        form: "年报",
+        category: "上交所",
+      }),
+    ).toBe("annual");
+    expect(
+      filingPeriodicKind({
+        source: "hkexnews",
+        title: "Interim Results",
+        category: "Financial Statements",
+      }),
+    ).toBe("half");
+  });
+});
+
+describe("filing content loader (P1.5)", () => {
+  it("returns null for link-only mode", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "occ-filing-content-"));
+    try {
+      const load = createFilingContentLoader({
+        dir,
+        sidecarUrl: "http://127.0.0.1:8090",
+        skipPdf: true,
+      });
+      await expect(
+        load({
+          source: "edgar",
+          market: "US",
+          externalId: "0000320193-26-000024",
+          title: "8-K",
+          url: "https://www.sec.gov/Archives/x.htm",
+        }),
+      ).resolves.toBeNull();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("extracts EDGAR HTML only when fullText is enabled", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "occ-filing-content-"));
+    try {
+      const fetchImpl = (async () =>
+        new Response("<html><body><p>Annual report</p></body></html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        })) as unknown as typeof fetch;
+      const load = createFilingContentLoader({
+        dir,
+        sidecarUrl: "http://127.0.0.1:8090",
+        fullText: true,
+        fetchImpl,
+      });
+      const content = await load({
+        source: "edgar",
+        market: "US",
+        externalId: "0000320193-26-000024",
+        title: "10-K",
+        url: "https://www.sec.gov/Archives/x.htm",
+      });
+      expect(content?.pages).toHaveLength(1);
+      expect(content?.pages[0]?.text).toBe("Annual report");
+      expect(content?.mime).toBe("text/html");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("strips HTML to text", () => {
+    expect(htmlToText("<b>Apple &amp; Co.</b>")).toBe("Apple & Co.");
   });
 });
 

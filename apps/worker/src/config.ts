@@ -104,6 +104,37 @@ export const config = {
   /** Sweep history kept for the task dock (3 days by default). */
   newsHistoryMs: intEnv("OCC_NEWS_HISTORY_MS", 259_200_000),
   newsPauseAfterFailures: intEnv("OCC_NEWS_PAUSE_AFTER", 5),
+  /**
+   * Automatic company-data / filing refresh (P1.5). The daily loop checks
+   * official filing indexes; a new periodic report enqueues `financials.company`
+   * and a new announcement enqueues `ingest.filing`. Pure code, 0 LLM tokens.
+   */
+  dataSweepEnabled:
+    process.env.OCC_DATA_SWEEP !== "none" && process.env.OCC_DATA_SWEEP !== "off",
+  dataSweepCron: process.env.OCC_DATA_SWEEP_CRON ?? "0 8 * * *",
+  dataSweepTz:
+    process.env.OCC_DATA_SWEEP_TZ?.trim() ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone ||
+    undefined,
+  dataTtlMs: intEnv("OCC_DATA_TTL_MS", 82_800_000), // 23 h
+  dataClaimTimeoutMs: intEnv("OCC_DATA_CLAIM_TIMEOUT_MS", 1_800_000), // 30 min
+  dataSweepBatch: intEnv("OCC_DATA_SWEEP_BATCH", 500),
+  dataHistoryMs: intEnv("OCC_DATA_HISTORY_MS", 259_200_000),
+  dataPauseAfterFailures: intEnv("OCC_DATA_PAUSE_AFTER", 5),
+  dataConcurrency: intEnv("OCC_DATA_CONCURRENCY", 4),
+  /** Cold start window: the first successful check establishes a baseline. */
+  dataColdDays: intEnv("OCC_DATA_COLD_DAYS", 30),
+  /** Max discovered/ingested filings per source per check. */
+  dataMaxItems: intEnv("OCC_DATA_MAX_ITEMS", 20),
+  /** Steady-state lookback cap; a long worker outage still covers this window. */
+  dataMaxSteadyDays: intEnv("OCC_DATA_MAX_STEADY_DAYS", 30),
+  filingsConcurrency: intEnv("OCC_FILINGS_CONCURRENCY", 2),
+  filingsDir: pathEnv("OCC_FILINGS_DIR", ".occ/filings"),
+  filingsFullText:
+    process.env.OCC_FILINGS_FULL_TEXT === "1" ||
+    process.env.OCC_FILINGS_FULL_TEXT === "true" ||
+    process.env.OCC_FILINGS_FULL_TEXT === "on",
+  filingsMaxPages: intEnv("OCC_FILINGS_MAX_PAGES", 80),
   dshHome: pathEnv("OCC_DSH_HOME", "phase0/.dsh-home"),
   runsDir: pathEnv("OCC_RUNS_DIR", ".occ/runs"),
   sectionsDir: pathEnvAny(
@@ -199,6 +230,16 @@ export function publicConfig(): Record<string, unknown> {
     newsClaimTimeoutMs: config.newsClaimTimeoutMs,
     newsSweepBatch: config.newsSweepBatch,
     newsHistoryMs: config.newsHistoryMs,
+    dataSweepEnabled: config.dataSweepEnabled,
+    dataSweepCron: config.dataSweepCron,
+    dataTtlMs: config.dataTtlMs,
+    dataClaimTimeoutMs: config.dataClaimTimeoutMs,
+    dataSweepBatch: config.dataSweepBatch,
+    dataHistoryMs: config.dataHistoryMs,
+    dataConcurrency: config.dataConcurrency,
+    dataColdDays: config.dataColdDays,
+    dataMaxItems: config.dataMaxItems,
+    filingsDir: config.filingsDir,
     dshHome: config.dshHome,
     runsDir: config.runsDir,
     sectionsDir: config.sectionsDir,

@@ -330,6 +330,9 @@ importers:
       '@occ/sources-eastmoney-f10':
         specifier: workspace:*
         version: link:../../packages/sources/eastmoney-f10
+      '@occ/sources-filings':
+        specifier: workspace:*
+        version: link:../../packages/sources/filings
       '@occ/sources-news':
         specifier: workspace:*
         version: link:../../packages/sources/news

@@ -7,12 +7,19 @@ import {
   resetJobForRetry,
   upsertCompanyState,
 } from "./db.js";
+import { handleDataSweepJobs, type DataSweepData } from "./data-sweep.js";
+import type { DataSourceCheckJobData, FilingIngestJobData } from "./data/types.js";
+import {
+  handleDataSourceCheckJobs,
+  type DataSourceCheckDeps,
+} from "./jobs/data-source-check.js";
 import { handleF10Jobs, type F10JobData } from "./jobs/f10.js";
 import {
   closeFinancialsRuntime,
   handleFinancialsJobs,
   type FinancialsJobData,
 } from "./jobs/financials.js";
+import { handleFilingIngestJobs } from "./jobs/filing-ingest.js";
 import { handleIngestJobs, type IngestJobData } from "./jobs/ingest.js";
 import { handleNewsJobs, type NewsJobData } from "./jobs/news.js";
 import { handleNewsSweepJobs, type NewsSweepData } from "./news-sweep.js";
@@ -27,6 +34,7 @@ import {
   QUEUES,
   pendingJobs,
   queueCounts,
+  registerDataSweepSchedule,
   registerNewsSweepSchedule,
   sendJob,
   startBoss,
@@ -38,7 +46,8 @@ export type QueueKind =
   | "review"
   | "news"
   | "f10"
-  | "financials";
+  | "financials"
+  | "data";
 
 export interface WorkerOptions {
   queues: QueueKind[];
@@ -87,18 +96,45 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
   const enqueueFinancials = async (
     data: FinancialsJobData,
   ): Promise<void> => {
-    await resetJobForRetry(data.runId, QUEUES.FINANCIALS, data.key);
+    // The ingest path reopens a completed row for a re-ingest; the P1.5 data
+    // path sets reopenCompleted=false so a check retry cannot redo the run.
+    if (data.reopenCompleted !== false) {
+      await resetJobForRetry(data.runId, QUEUES.FINANCIALS, data.key);
+    }
     await createFollowUpJob({
       runId: data.runId,
       queue: QUEUES.FINANCIALS,
       jobKey: data.key,
-      companyId: data.key,
+      companyId: data.companyId ?? data.key,
       payload: data,
     });
     await sendJob(boss, QUEUES.FINANCIALS, data, {
       key: `${data.runId}:${data.key}:financials`,
       priority: 45,
     });
+  };
+
+  const enqueueFilingIngest = async (
+    data: FilingIngestJobData,
+  ): Promise<void> => {
+    // Never reopen a completed row: a check retry must not re-ingest filings
+    // that were already applied. The handler also skips completed rows.
+    await createFollowUpJob({
+      runId: data.runId,
+      queue: QUEUES.FILING_INGEST,
+      jobKey: data.key,
+      companyId: data.companyId,
+      payload: data,
+    });
+    await sendJob(boss, QUEUES.FILING_INGEST, data, {
+      key: `${data.runId}:${data.key}:filing`,
+      priority: 50,
+    });
+  };
+
+  const dataDeps: DataSourceCheckDeps = {
+    enqueueFinancials,
+    enqueueFilingIngest,
   };
 
   const enqueueResearchRevision = async (
@@ -242,6 +278,48 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
       handleDead,
     );
   }
+  if (kinds.has("data")) {
+    await boss.work<DataSweepData>(
+      QUEUES.DATA_SWEEP,
+      { batchSize: 1, localConcurrency: 1, pollingIntervalSeconds: 5 },
+      (jobs) => handleDataSweepJobs(jobs, { boss }),
+    );
+    await boss.work<DataSourceCheckJobData>(
+      QUEUES.DATA_SOURCE_CHECK,
+      {
+        batchSize: 1,
+        localConcurrency: config.dataConcurrency,
+        pollingIntervalSeconds: 2,
+      },
+      (jobs) => handleDataSourceCheckJobs(jobs, dataDeps),
+    );
+    await boss.work<FilingIngestJobData>(
+      QUEUES.FILING_INGEST,
+      {
+        batchSize: 1,
+        localConcurrency: config.filingsConcurrency,
+        pollingIntervalSeconds: 2,
+      },
+      handleFilingIngestJobs,
+    );
+    await boss.work<DeadJobData>(
+      QUEUES.DATA_SOURCE_CHECK_DEAD,
+      { batchSize: 1, localConcurrency: 1, pollingIntervalSeconds: 2 },
+      handleDead,
+    );
+    await boss.work<DeadJobData>(
+      QUEUES.FILING_INGEST_DEAD,
+      { batchSize: 1, localConcurrency: 1, pollingIntervalSeconds: 2 },
+      handleDead,
+    );
+    if (config.dataSweepEnabled) {
+      await registerDataSweepSchedule(
+        boss,
+        config.dataSweepCron,
+        config.dataSweepTz,
+      );
+    }
+  }
 
   log({
     event: "worker_started",
@@ -253,6 +331,8 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
     newsConcurrency: config.newsConcurrency,
     f10Concurrency: config.f10Concurrency,
     financialsConcurrency: config.financialsConcurrency,
+    dataConcurrency: config.dataConcurrency,
+    filingsConcurrency: config.filingsConcurrency,
     drain: Boolean(options.drain),
   });
 
@@ -338,6 +418,15 @@ function queueNamesFor(kinds: QueueKind[]): string[] {
     if (kind === "f10") names.push(QUEUES.F10, QUEUES.F10_DEAD);
     if (kind === "financials") {
       names.push(QUEUES.FINANCIALS, QUEUES.FINANCIALS_DEAD);
+    }
+    if (kind === "data") {
+      names.push(
+        QUEUES.DATA_SWEEP,
+        QUEUES.DATA_SOURCE_CHECK,
+        QUEUES.DATA_SOURCE_CHECK_DEAD,
+        QUEUES.FILING_INGEST,
+        QUEUES.FILING_INGEST_DEAD,
+      );
     }
   }
   return names;

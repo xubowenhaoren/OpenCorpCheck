@@ -211,6 +211,45 @@ export interface CompanyCounts {
   events: number;
 }
 
+/** Latest detected periodic report (P1.5), shown as “最新报告 …”. */
+export interface LatestFilingView {
+  id: string;
+  source: string;
+  form?: string;
+  title: string;
+  filedAt?: string;
+  periodEnd?: string;
+  url: string;
+  status: string;
+}
+
+/** One per-(company, source) daily check cursor (P1.5). */
+export interface FilingSourceStateView {
+  source: string;
+  market: string;
+  lastCheckedAt?: string;
+  lastChangedAt?: string;
+  lastStatus: string;
+  nextDueAt?: string;
+  consecutiveFailures: number;
+  lastError?: string;
+}
+
+/**
+ * Daily company-data/filing refresh state for one company. `pending` is true
+ * while a `data.source.check` job is queued or active, so the UI can say
+ * 排队中 without pretending the check succeeded.
+ */
+export interface FilingRefreshView {
+  latest?: LatestFilingView;
+  latestAny?: LatestFilingView;
+  lastCheckedAt?: string;
+  lastStatus: string;
+  pending: boolean;
+  consecutiveFailures: number;
+  sources: FilingSourceStateView[];
+}
+
 export interface CompanyCard {
   company: CompanyProfileView;
   counts: CompanyCounts;
@@ -223,6 +262,8 @@ export interface CompanyCard {
   events?: NewsEventView[];
   /** Official filings/announcements, kept separate from news (P1.4). */
   filings?: NewsEventView[];
+  /** Automatic daily filing/financials refresh state (P1.5). */
+  filingRefresh?: FilingRefreshView;
 }
 
 const relationTypeList = z.preprocess(

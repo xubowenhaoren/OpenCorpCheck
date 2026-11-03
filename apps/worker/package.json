@@ -5,7 +5,8 @@
   "description": "OpenCorpCheck parallel backfill worker (pg-boss)",
   "type": "module",
   "bin": {
-    "occ-backfill": "./dist/cli.js"
+    "occ-backfill": "./dist/cli.js",
+    "occ-refresh": "./dist/refresh-cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -18,6 +19,7 @@
     "@occ/ingest": "workspace:*",
     "@occ/jobs": "workspace:*",
     "@occ/sources-eastmoney-f10": "workspace:*",
+    "@occ/sources-filings": "workspace:*",
     "@occ/sources-news": "workspace:*",
     "pg": "^8.23.1",
     "pg-boss": "^12.38.0",

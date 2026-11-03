@@ -12,7 +12,12 @@ the Phase 0 pattern of running companies one at a time in one process.
 | `ingest.company` | one finished section → documents/chunks + Qdrant | [jobs/ingest.ts](src/jobs/ingest.ts) |
 | `review.company` | hidden reviewer (DeepSeek, reasoning on) + bounded revisions | [jobs/review.ts](src/jobs/review.ts) |
 | `news.company` | one company → Google News RSS → `doc_type='news'` documents | [jobs/news.ts](src/jobs/news.ts) |
+| `news.sweep` | daily producer: due companies → `news.company` | [news-sweep.ts](src/news-sweep.ts) |
+| `financials.company` | one company → F10/EDGAR structured statements | [jobs/financials.ts](src/jobs/financials.ts) |
 | `f10.page` | one company × one F10 page | [jobs/f10.ts](src/jobs/f10.ts) |
+| `data.sweep` | daily producer: due (company, source) → `data.source.check` (P1.5) | [data-sweep.ts](src/data-sweep.ts) |
+| `data.source.check` | EDGAR/CNINFO/HKEXnews index diff → `filings` + follow-ups (P1.5) | [jobs/data-source-check.ts](src/jobs/data-source-check.ts) |
+| `ingest.filing` | detected filing rows → P1.4 filing documents (P1.5) | [jobs/filing-ingest.ts](src/jobs/filing-ingest.ts) |
 | `*.dead` | exhausted jobs | marks the DB row `dead` |
 
 - **Granularity**: research is one job per company; F10 is one job per page, so a
@@ -33,14 +38,24 @@ the Phase 0 pattern of running companies one at a time in one process.
   The reviewer child gets `DEEPSEEK_API_KEY` only; research gets `NVIDIA_API_KEY`
   only.
 - **Concurrency**: pg-boss `localConcurrency` — research defaults to 4, ingest to
-  4, review to 2, F10 to 4, news to 2 (`OCC_RESEARCH_CONCURRENCY`,
-  `OCC_INGEST_CONCURRENCY`, `OCC_REVIEW_CONCURRENCY`, `OCC_F10_CONCURRENCY`,
-  `OCC_NEWS_CONCURRENCY`). The sidecar still caps Playwright at 2 pages globally
-  and 5 req/s per domain, so F10 jobs queue behind that limit instead of
-  hammering Eastmoney. News makes one polite RSS request per company.
+  4, review to 2, F10 to 4, news to 2, financials to 2, data checks to 4, filing
+  ingestion to 2 (`OCC_RESEARCH_CONCURRENCY`, `OCC_INGEST_CONCURRENCY`,
+  `OCC_REVIEW_CONCURRENCY`, `OCC_F10_CONCURRENCY`, `OCC_NEWS_CONCURRENCY`,
+  `OCC_FINANCIALS_CONCURRENCY`, `OCC_DATA_CONCURRENCY`,
+  `OCC_FILINGS_CONCURRENCY`). The sidecar still caps Playwright at 2 pages
+  globally and 5 req/s per domain, so F10/HKEXnews/PDF jobs queue behind that
+  limit instead of hammering the source. News makes one polite RSS request per
+  company; EDGAR stays on its 110 ms global limiter.
 - **Retries**: research 2 retries (30s exponential backoff, 10m cap); F10 3
-  retries (15s base, 5m cap). Exhausted jobs move to a dead-letter queue and the
-  DB records `dead` + the last error.
+  retries (15s base, 5m cap); data checks/filing ingestion 2 retries (60s base,
+  10m cap). Exhausted jobs move to a dead-letter queue and the DB records
+  `dead` + the last error.
+- **Daily refresh (P1.5)**: `data.sweep` is a singleton producer
+  (`scripts/dev-data-worker.sh` runs `work --queues data,financials`). The first
+  check per (company, source) is a baseline; later checks insert only unseen
+  `(source, accession)` rows. A new periodic report enqueues
+  `financials.company` with `bypassCache`; a new announcement enqueues
+  `ingest.filing`. 0 LLM tokens. See [docs/REFRESH.md](../../docs/REFRESH.md).
 - **Checkpoint / resume**: `backfill_runs` + `backfill_jobs` hold per-job state.
   Completed jobs are skipped on rerun; pg-boss persists queued/retry jobs across
   worker restarts. Research also has a content cache: `research_cache` stores the
@@ -148,6 +163,12 @@ node apps/worker/dist/cli.js work --queues f10 --drain
 node apps/worker/dist/cli.js enqueue news --tickers AAPL --max-items 10 --since-days 30
 node apps/worker/dist/cli.js work --queues news --drain
 
+# daily data/filing refresh (P1.5): observe / force / run
+node apps/worker/dist/refresh-cli.js status
+node apps/worker/dist/refresh-cli.js sweep --now [--limit N] [--company REF] [--source LIST]
+node apps/worker/dist/cli.js work --queues data,financials --drain
+# persistent local process: scripts/dev-data-worker.sh start
+
 # operations
 node apps/worker/dist/cli.js status
 node apps/worker/dist/cli.js status --run <uuid> --json
@@ -161,9 +182,15 @@ completed checkpoint and the research cache.
 
 ## Tables
 
-- `backfill_runs` — one row per enqueue: kind, status, totals, options.
+- `backfill_runs` — one row per enqueue: kind (`research`/`f10`/`news`/
+  `financials`/`data`), status, totals, options.
 - `backfill_jobs` — per company/page: status, attempts, duration, last error.
 - `research_cache` — company → prompt hash, section hash, tokens.
+- `company_filing_state` (P1.5) — per `(company, source)` daily filing cursor,
+  lease, status and failure count.
+- `filings` (P1.5) — detected filing inbox (`(source, accession)` unique,
+  `periodic`/`period_kind`, status, content hash). User-facing documents stay in
+  `documents(doc_type='filing')`.
 - `f10_pages` — latest snapshot per `(market, code, page)`: HTTP status, text
   length, table count, `html_sha256`, `storage_key`, warnings. With `OCC_S3_*`
   configured, `storage_key` is an `s3://` URI pointing at the structured page

@@ -1507,6 +1507,7 @@
   .news-status {
     margin: -4px 0 10px; color: var(--muted); font-size: 11.5px;
   }
+  .news-status.warn { color: var(--warn); }
 
   @media (max-width: 600px) {
     .dock-btn { width: 30px; height: 30px; }

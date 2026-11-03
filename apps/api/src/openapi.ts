@@ -195,7 +195,7 @@ export function openApiDocument() {
           responses: {
             "200": {
               description:
-                "Company card: profile, counts, financials, facts, relations (in/out), events",
+                "Company card: profile, counts, financials, facts, relations (in/out), events, filings, filingRefresh",
             },
             "400": errorResponse,
             "404": errorResponse,

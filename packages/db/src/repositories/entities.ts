@@ -7,11 +7,13 @@ import type { Db } from "../client.js";
 import {
   aliases,
   companies,
+  companyFilingState,
   companyIds,
   chunks,
   documents,
   entityMergeLog,
   facts,
+  filings,
   financialFacts,
   globalNewsLastUpdate,
   indexMemberships,
@@ -660,6 +662,14 @@ async function countBlockers(
     .select({ count: sql<number>`count(*)::int` })
     .from(globalNewsLastUpdate)
     .where(eq(globalNewsLastUpdate.companyId, companyId));
+  const [filingCount] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(filings)
+    .where(eq(filings.companyId, companyId));
+  const [filingStateCount] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(companyFilingState)
+    .where(eq(companyFilingState.companyId, companyId));
   return {
     documents: documentCount?.count ?? 0,
     chunks: chunkCount?.count ?? 0,
@@ -667,6 +677,8 @@ async function countBlockers(
     financials: financialCount?.count ?? 0,
     relations: (outgoing?.count ?? 0) + (incoming?.count ?? 0),
     news: news?.count ?? 0,
+    filings: filingCount?.count ?? 0,
+    filingState: filingStateCount?.count ?? 0,
     reviewItems: reviews?.count ?? 0,
   };
 }

@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { getCompanyCard, getCompanyFinancials } from "../api";
 import { CompanyFinancials } from "../components/CompanyFinancials";
@@ -40,7 +40,29 @@ export function CompanyPage() {
         include: "facts,relations,events,filings",
       }),
     enabled: Boolean(ref),
+    // A queued/active daily filing check is short; poll until the card sees
+    // the new cursor, then stop and rely on normal cache behaviour.
+    refetchInterval: (state) =>
+      state.state.data?.data.filingRefresh?.pending ? 15_000 : false,
   });
+
+  const queryClient = useQueryClient();
+  const checkedAtRef = useRef<string | null | undefined>(undefined);
+  const lastCheckedAt = query.data?.data.filingRefresh?.lastCheckedAt ?? null;
+
+  // When the daily check advances, the separate statement query is stale too.
+  useEffect(() => {
+    if (checkedAtRef.current === undefined) {
+      checkedAtRef.current = lastCheckedAt;
+      return;
+    }
+    if (lastCheckedAt && lastCheckedAt !== checkedAtRef.current) {
+      checkedAtRef.current = lastCheckedAt;
+      void queryClient.invalidateQueries({
+        queryKey: ["company", ref, "financials"],
+      });
+    }
+  }, [lastCheckedAt, queryClient, ref]);
 
   // Statements are fetched per period kind so a full EDGAR/F10 statement is
   // never cut off by the card's 200-row cap.
@@ -147,6 +169,7 @@ export function CompanyPage() {
           <CompanyFinancials
             financials={card.financials ?? []}
             company={card.company}
+            filingRefresh={card.filingRefresh}
           />
         ) : null}
         {activeTab === "graph" ? (
@@ -163,6 +186,7 @@ export function CompanyPage() {
           <CompanyFilings
             filings={card.filings ?? []}
             company={card.company}
+            refresh={card.filingRefresh}
           />
         ) : null}
         {activeTab === "sources" ? <CompanySources card={card} /> : null}

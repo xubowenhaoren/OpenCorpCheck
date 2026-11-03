@@ -18,6 +18,8 @@ import {
   migrate,
 } from "./db.js";
 import { runF10RelationsCommand } from "./f10-relations-command.js";
+import { dataSweepStatus, runDataSweep } from "./data-sweep.js";
+import { closeIngestRuntime } from "./ingest-runtime.js";
 import { startNimGateway } from "./nim-gateway.js";
 import { newsSweepStatus, runNewsSweep } from "./news-sweep.js";
 import { queueCounts, startBoss } from "./queues.js";
@@ -34,7 +36,9 @@ Usage:
   occ-backfill enqueue financials [options]
   occ-backfill news status
   occ-backfill news sweep --now
-  occ-backfill work [--queues research,ingest,review,news,f10,financials] [--drain]
+  occ-backfill data status
+  occ-backfill data sweep --now [--limit N] [--company REF] [--source LIST]
+  occ-backfill work [--queues research,ingest,review,news,f10,financials,data] [--drain]
   occ-backfill status [--run <uuid>] [--json]
   occ-backfill states [--limit N] [--json]
   occ-backfill relations f10 [--universe hsi|ndx|cyb50|... | --tickers ...] [--force]
@@ -73,6 +77,12 @@ Environment:
   OCC_NEWS_CLAIM_TIMEOUT_MS (default 1,800,000 = 30 min lease)
   OCC_NEWS_SWEEP_BATCH (default 250)
   OCC_NEWS_HISTORY_MS (default 259,200,000 = 3 days of sweep history)
+  OCC_DATA_SWEEP (on default; none disables the daily data/filing sweep)
+  OCC_DATA_SWEEP_CRON (default "0 8 * * *")
+  OCC_DATA_TTL_MS (default 82,800,000 = 23 h)
+  OCC_DATA_CONCURRENCY (default 4)
+  OCC_FILINGS_CONCURRENCY (default 2)
+  OCC_FILINGS_FULL_TEXT (1/on follows EDGAR HTML; default link-only)
   OCC_EDGAR_USER_AGENT (SEC requires a contact, e.g. Name/1.0 (you@example.com))
   OCC_EDGAR_DIR (default .occ/edgar)
   OCC_QDRANT_URL (default http://127.0.0.1:6333)
@@ -116,6 +126,9 @@ async function main(): Promise<void> {
       return;
     case "news":
       await newsCommand(rest);
+      return;
+    case "data":
+      await dataCommand(rest);
       return;
     case "relations":
       await relationsCommand(rest);
@@ -253,7 +266,7 @@ async function workCommand(args: string[]): Promise<void> {
       drain: { type: "boolean" },
     },
   });
-  const queues = (values.queues ?? "research,ingest,review,news,f10,financials")
+  const queues = (values.queues ?? "research,ingest,review,news,f10,financials,data")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean) as QueueKind[];
@@ -264,10 +277,11 @@ async function workCommand(args: string[]): Promise<void> {
       queue !== "review" &&
       queue !== "news" &&
       queue !== "f10" &&
-      queue !== "financials"
+      queue !== "financials" &&
+      queue !== "data"
     ) {
       throw new Error(
-        `unknown queue ${queue}; use research, ingest, review, news, f10 or financials`,
+        `unknown queue ${queue}; use research, ingest, review, news, f10, financials or data`,
       );
     }
   }
@@ -418,7 +432,51 @@ async function newsCommand(args: string[]): Promise<void> {
   }
 }
 
-async function relationsCommand(args: string[]): Promise<void> {  const [kind, ...rest] = args;
+async function dataCommand(args: string[]): Promise<void> {
+  const [sub, ...rest] = args;
+  const { values } = parseArgs({
+    args: rest,
+    options: {
+      now: { type: "boolean" },
+      json: { type: "boolean" },
+      limit: { type: "string" },
+      company: { type: "string" },
+      source: { type: "string" },
+    },
+  });
+  await migrate();
+  if (sub === "status") {
+    console.log(JSON.stringify(await dataSweepStatus(), null, 2));
+    return;
+  }
+  if (sub === "sweep") {
+    if (!values.now) {
+      throw new Error("data sweep requires --now (operator-forced sweep)");
+    }
+    const boss = await startBoss();
+    try {
+      const result = await runDataSweep({
+        boss,
+        source: "cli",
+        ...(values.limit
+          ? { limit: parsePositive(values.limit, "--limit") }
+          : {}),
+        ...(values.company ? { companyRefs: [values.company] } : {}),
+        ...(values.source
+          ? { sources: values.source.split(",").map((value) => value.trim()) }
+          : {}),
+      });
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    } finally {
+      await boss.stop({ graceful: false });
+    }
+  }
+  throw new Error("data requires `status` or `sweep --now`");
+}
+
+async function relationsCommand(args: string[]): Promise<void> {
+  const [kind, ...rest] = args;
   if (kind !== "f10") {
     throw new Error("relations requires `f10` (structured shareholder pass)");
   }
@@ -476,5 +534,6 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
+    await closeIngestRuntime().catch(() => {});
     await closePool().catch(() => {});
   });

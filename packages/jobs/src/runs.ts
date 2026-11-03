@@ -1,11 +1,11 @@
 import { Pool, type QueryResultRow } from "pg";
 
-export type RunKind = "research" | "f10" | "news" | "financials";
+export type RunKind = "research" | "f10" | "news" | "financials" | "data";
 
 const DDL = `
 CREATE TABLE IF NOT EXISTS backfill_runs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  kind text NOT NULL CHECK (kind IN ('research', 'f10', 'news', 'financials')),
+  kind text NOT NULL CHECK (kind IN ('research', 'f10', 'news', 'financials', 'data')),
   status text NOT NULL DEFAULT 'queued'
     CHECK (status IN ('queued', 'running', 'completed', 'partial', 'failed')),
   total_jobs integer NOT NULL DEFAULT 0,
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS backfill_runs (
 
 ALTER TABLE backfill_runs DROP CONSTRAINT IF EXISTS backfill_runs_kind_check;
 ALTER TABLE backfill_runs ADD CONSTRAINT backfill_runs_kind_check
-  CHECK (kind IN ('research', 'f10', 'news', 'financials'));
+  CHECK (kind IN ('research', 'f10', 'news', 'financials', 'data'));
 
 CREATE TABLE IF NOT EXISTS backfill_jobs (
   id bigserial PRIMARY KEY,
@@ -43,6 +43,8 @@ CREATE INDEX IF NOT EXISTS backfill_jobs_run_status_idx
   ON backfill_jobs (run_id, status);
 CREATE INDEX IF NOT EXISTS backfill_jobs_key_idx
   ON backfill_jobs (job_key);
+CREATE INDEX IF NOT EXISTS backfill_jobs_company_status_idx
+  ON backfill_jobs (company_id, status);
 
 ALTER TABLE backfill_jobs ADD COLUMN IF NOT EXISTS duration_ms integer;
 ALTER TABLE backfill_jobs
@@ -681,6 +683,37 @@ export class JobStore {
        FROM backfill_runs ORDER BY created_at DESC LIMIT $1`,
       [limit],
     );
+  }
+
+  /** Runs of one kind, newest first (P1.5 `occ-refresh status`). */
+  async listRunsByKind(
+    kind: RunKind,
+    limit = 10,
+  ): Promise<Record<string, unknown>[]> {
+    return this.query<Record<string, unknown>>(
+      `SELECT id, kind, status, total_jobs, completed_jobs, failed_jobs,
+              options, created_at, updated_at
+       FROM backfill_runs
+       WHERE kind = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [kind, limit],
+    );
+  }
+
+  /** Drop run history of one kind older than the retention window. */
+  async pruneRuns(kind: RunKind, olderThanMs: number): Promise<number> {
+    const rows = await this.query<{ count: number }>(
+      `WITH gone AS (
+         DELETE FROM backfill_runs
+         WHERE kind = $1
+           AND created_at < now() - ($2::int * interval '1 millisecond')
+         RETURNING 1
+       )
+       SELECT count(*)::int AS count FROM gone`,
+      [kind, olderThanMs],
+    );
+    return Number(rows[0]?.count ?? 0);
   }
 
   /**
