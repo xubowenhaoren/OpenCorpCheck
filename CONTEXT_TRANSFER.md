@@ -13,10 +13,16 @@
 > The old 1,394-line document is preserved verbatim in
 > [`context_transfer_history.md`](context_transfer_history.md).
 >
-> **Next agent:** the active plan is complete. Do not start P2 (delivery /
-> packaging) unless the user explicitly reopens it. The automatic refresh
-> needs a running `scripts/dev-data-worker.sh` (queues `data,financials`) and
-> the F10/PDF/HKEXnews sidecar for A/HK; see [docs/REFRESH.md](docs/REFRESH.md).
+> **Next agent:** P1.1–P1.5 and both P1.5 follow-ups are shipped. The next
+> task is **P3-OSS — open-source repo preparation + Chinese README** (§10).
+> It is **approval-gated**: write the Chinese README and the repo docs first,
+> then **STOP for the user to review**. Only after explicit approval, run the
+> app and use Playwright to capture real screenshots and insert them into the
+> README. Do not create/push a remote, change repo visibility, publish
+> anything externally, or commit secrets without explicit instruction. P2
+> (delivery / packaging) stays deferred. The automatic refresh needs a running
+> `scripts/dev-data-worker.sh` (queues `data,financials`) and the
+> F10/PDF/HKEXnews sidecar for A/HK; see [docs/REFRESH.md](docs/REFRESH.md).
 > The daily filing check is deterministic and 0 LLM tokens.
 >
 > **Machine constraint:** macOS VM, no Docker. P2 delivery/packaging
@@ -1620,15 +1626,127 @@ More detail: [`docs/AGENT.md`](docs/AGENT.md).
 
 ## 10. Next tasks — active plan (2026-11-03)
 
-> **Scope rule:** P1.1–P1.5 and both P1.5 follow-ups are shipped; the active
-> plan is **complete**. **P2 is deferred**; do not start it unless the user
-> explicitly reopens delivery/engineering quality. **Backfill is out of scope**
-> (STAR 50, any remaining HSI/CYB50 gaps, A500/SPX bulk research).
+> **Scope rule:** P1.1–P1.5 and both P1.5 follow-ups are shipped. The **active
+> task is P3-OSS — open-source repo preparation + Chinese README**, with a
+> hard approval gate between writing the docs and taking screenshots. **P2 is
+> deferred**; do not start delivery/engineering quality unless the user
+> explicitly reopens it. **Backfill is out of scope** (STAR 50, any remaining
+> HSI/CYB50 gaps, A500/SPX bulk research).
 >
 > **Cancelled / permanently deferred** (do not re-propose): manual news
 > refresh, on-demand research, page-entry nudge, first-class sub-agent card,
 > AI news summaries/full-text fetch, account system, K-line/portfolio, graph
 > editing, financial trend charts, Docker/Electron (P2).
+
+### P3-OSS — open-source repo preparation + Chinese README (next; approval-gated)
+
+**Goal:** turn the local repo into a presentable open-source project for
+Chinese retail investors and non-technical finance readers. The Chinese README
+is the product's front door, not an internal handoff. All work is local; do
+not publish.
+
+**Hard rules**
+
+- **Approval gate:** Phase A writes the Chinese README and repo docs with
+  screenshot placeholders only, then stops and asks the user to review. Do not
+  take screenshots or insert images until the user approves the text, the
+  license choice, and the repo scope.
+- **No external action:** do not create a GitHub/GitLab remote, push, change
+  visibility, open a PR, or publish a page without explicit instruction.
+- **No secrets or local state:** `.env`, `DEEPSEEK_API_KEY.txt`,
+  `NVIDIA_API_KEY.txt`, `.occ/`, `.pgdata/`, `.qdrant/`, `.minio/`,
+  `.embeddings/`, `dist/`, `node_modules/` stay untracked. Re-run
+  `git ls-files | grep -Ei 'key|secret|\.env'` before any public push.
+- **No fabricated content:** screenshots must come from the real running app
+  and the real corpus; no mock/fixture companies, no invented metrics, no
+  edited numbers. The AI-sidebar screenshot is optional and must be a real
+  cited answer (it costs LLM tokens; skip if no key).
+- **Do not change product behavior** for the README (no manual refresh
+  button, no new UI states, no fake data). If a screenshot reveals a UI bug,
+  fix it as a separate change, not by editing the image.
+- Target audience: 非技术出身的股民 / 普通金融从业者. Chinese is the default
+  language; English is secondary.
+
+**Phase A — docs first (STOP for user review)**
+
+1. **Repo audit.** List tracked files that are internal or risky
+   (`CONTEXT_TRANSFER.md`, `context_transfer_history.md`, `phase0/`,
+   `docs/prototypes/`, `docs/screenshots/`, `.github` absent, no LICENSE).
+   Propose what to keep public, move to `docs/internal/`, or exclude; **do not
+   delete anything without the user's decision.** Check data-source
+   licenses/attribution and missing community files.
+2. **Write `README.md` in Chinese** (default language). Keep the existing
+   English README as `README.en.md` (or move it aside) rather than deleting
+   it; link the two at the top. Use this outline:
+   - 项目名 + 一句话定位 + 目标用户（非技术股民 / 普通金融从业者）;
+   - screenshot slots with explicit placeholders (`<!-- 截图待补：首页 -->`),
+     no broken image links yet;
+   - 为什么做 / 与企查查类产品的差异（开源、可溯源、公司情报而非仅工商数据）;
+   - 功能一览: 搜索、公司页 6 个 tab（基本资料 / 财务数据 / 关系图谱 /
+     新闻动态 / 公告文件 / 资料来源）、TaskDock、AI 助手;
+   - 数据范围: 236 家已研究公司 + 850 家 A500/SPX 占位公司、5 个指数、
+     A500/SPX 是占位页、STAR 50 未做;
+   - 架构简图: Postgres 17 真相库 + Qdrant 1.18 混合检索 + pg-boss +
+     dsh ACP + Python F10/PDF sidecar + React/Vite;
+   - 快速开始（macOS / WSL2，原生，无 Docker）: 依赖、`.env.example`、
+     `occ migrate`、启动 Postgres/Qdrant/embeddings/API/web、data/news worker、
+     F10 sidecar、跑一次 `occ filings sync` / `occ-refresh`;
+   - 数据来源与许可: SEC EDGAR、CNINFO、HKEXnews、Eastmoney F10
+     （Apache-2.0 attribution、不做批量再分发）、Google News RSS（仅链接）、
+     SEC 13F、GLEIF、Wikidata；robots/ToS 与礼貌限速;
+   - 可信度原则: 每个数字/关系回到来源、`推导` 标记、数据路径 0 LLM tokens、
+     人工复核队列;
+   - 已知限制: F10 延迟、无 OCR、EDGAR 近窗、baseline 非回填、占位公司;
+   - 路线图: P2 延后、STAR 50/回填不在当前计划;
+   - 贡献指南（先读 `CONTRIBUTING.md`；测试必须串行；不提交密钥）;
+   - 免责声明: 非投资建议，数据以官方披露为准;
+   - License + attribution/NOTICE。
+3. **Propose the community files** (do not assume the license):
+   `LICENSE` (recommend Apache-2.0, because of F10 attribution/patent grant;
+   the user decides), `NOTICE` (data sources), `CONTRIBUTING.md`,
+   `SECURITY.md`, `CODE_OF_CONDUCT.md`. Keep them short and honest; no fake CI
+   badges (there is no CI yet).
+4. **Propose the Chinese README's screenshot plan** (pages + URLs + viewport)
+   in a short table in the reply, but do not capture yet.
+5. **Stop** and ask the user to review: README text, license, what to keep
+   public, screenshot list. Wait for explicit approval.
+
+**Phase B — screenshots after approval**
+
+1. Start/verify the real stack: Postgres, Qdrant, embeddings, API, web,
+   data worker; F10/PDF/HKEXnews sidecar for A/HK pages. Use the existing
+   corpus; do not seed fixtures.
+2. Write a repeatable script (prefer `scripts/readme-screenshots.mjs` or a
+   Python Playwright script under `scripts/`) that:
+   - sets a light theme, `1440×900` desktop (plus `390×844` only if a mobile
+     shot is requested);
+   - waits for network idle and for the relevant data;
+   - captures the pages from the screenshot plan, e.g. home, `/c/600519`
+     overview, financials, graph, news, filings, `/graph?company=NVDA`, the
+     expanded TaskDock (`全部` + `财报更新`), and optionally the AI sidebar;
+   - closes the dock/sidebar between shots so no overlays cover the page;
+   - saves PNG/WebP under `docs/screenshots/readme/`, each < ~300 KB; no
+     browser chrome, no local file paths, no keys.
+3. Insert images into the Chinese README with relative paths and meaningful
+   Chinese alt text; keep the layout readable on GitHub (one hero image, then
+   one per feature section; do not dump every screenshot).
+4. Verify: open the README preview, check every image path, run
+   `git status`, re-run the secret scan, and re-run
+   `corepack pnpm -r --workspace-concurrency=1 test` if any code changed.
+5. Report the final file list and ask before pushing/publishing.
+
+**Acceptance**
+
+- Chinese README is the default `README.md`, accurate for the current corpus,
+  with no fake screenshots, no manual-refresh claims, and a clear
+  non-investment-advice disclaimer.
+- Phase A stops before any image is captured; Phase B only runs after the
+  user's explicit approval.
+- No secret/local-state file is tracked; no remote/push without instruction.
+- Screenshot script is repeatable and the images render on GitHub from the
+  repo.
+
+### Done work (reference — P1.1–P1.5 + follow-ups)
 
 ### P1.1 — A500 + S&P 500 placeholder layer ✅ done 2026-11-01
 
@@ -2172,6 +2290,15 @@ P1 (P1.1–P1.5 and both follow-ups shipped; see §10):
   merge; `dataRefresh` on `/v1/news/status`; manual refresh-news button stays
   cancelled. Desktop/mobile/dark verified. See §10 and
   [docs/UI.md](docs/UI.md) §7.9.
+
+P3-OSS (next task; **approval-gated** — see §10):
+
+- [ ] Phase A: repo audit + **Chinese `README.md`** + license/community-file
+  proposal, screenshot placeholders only. **Stop for the user's review.**
+- [ ] Phase B (only after explicit approval): run the real app, capture
+  Playwright screenshots, insert them into the README, verify paths/secrets.
+- [ ] Do not create/push a remote or publish anything without explicit
+  instruction.
 
 P2 (deferred; do not start):
 
