@@ -2,7 +2,14 @@
 
 > [中文（默认）](README.md) · **English**
 
-**Open, agentic company intelligence for NASDAQ-100 · S&P 500 · CSI A500 · Hang Seng Index · ChiNext 50 · STAR 50.**
+**AI-native company intelligence for NASDAQ-100 · S&P 500 · CSI A500 · Hang Seng Index · ChiNext 50 · STAR 50.**
+
+> **Two AI-native innovations:** **(1)** agentic web search that pairs a **BFS** breadth pass
+> (fundamentals, segments, competitors, events) with a **DFS** depth pass (open the primary
+> filing and verify each key number), so coverage and accuracy are solved together;
+> **(2)** a **headless agent worker pool plus an independent review loop** that turns
+> single-agent mistakes and hallucinations into typed, routed, bounded fixes instead of
+> silently polluting the database.
 
 > Status: 2026-11-03 — search, company pages (profile / financials / relationship
 > graph / news / filings / sources), automatic news refresh + **shared task dock
@@ -23,17 +30,45 @@
 
 OpenCorpCheck is an open-source, AI-native alternative to commercial company-intelligence
 products (the "企查查" category). It builds a cited, queryable profile for every company in
-five indices — NASDAQ-100, S&P 500, CSI A500, Hang Seng Index and ChiNext 50 — plus a
-curated AI watchlist, and exposes it through a web UI, a CLI, an MCP server, and a DeepSeek
-Harness agent sidebar. CSI A500 and S&P 500 are **searchable placeholder pages**
+six indices — NASDAQ-100, S&P 500, CSI A500, Hang Seng Index, ChiNext 50 and STAR 50 — plus
+a curated AI watchlist, and exposes it through a web UI, a CLI, an MCP server, and a
+DeepSeek Harness agent sidebar. CSI A500 and S&P 500 are **searchable placeholder pages**
 (ticker/name/market/index only), not bulk research targets.
+
+## Two AI-native innovations
+
+**1. BFS + DFS agentic web search.** A single search pass is either too shallow or too
+narrow. The research agent first runs a breadth pass — F10 fundamentals (A/HK), four
+`web_search` query groups (annual report, segment revenue, strategy/new products,
+competitors/share), and 2–5 opened URLs — to build the full 13-section skeleton. It then
+runs a convergence check on the three most important claims, and a depth pass that opens
+the primary filing or release to verify numbers, dates and definitions, looking for both
+supporting evidence and counter-evidence. BFS guarantees coverage; DFS guarantees the key
+numbers are not taken from search snippets or model memory.
+
+**2. Headless agent worker pool + review loop.** Each company is researched by a headless
+dsh process in a pg-boss worker pool. A second, read-only agent then reviews the finished
+profile — not the research conversation — and checks section completeness, citation
+coverage, whether cited URLs actually open, currency/unit/period consistency, unsourced
+claims, fabricated URLs and honest data gaps. Each issue carries a `kind`
+(reviewer-supplied, with a deterministic keyword fallback) and is routed: a scoped profile
+rewrite, a deterministic `financials.company` / filing-index re-run, or an operator
+command. Revisions are capped at 2; a profile that still fails becomes `needs_review` with
+structured issues and `last_error`, never a silent pass. Deterministic data paths (news,
+filings, structured financials) use 0 LLM tokens.
+
+In the STAR 50 pilot (50 companies): 38 `ready`, 12 `needs_review` at the cap, 0 reviewer
+parse failures, 50/50 structured F10 financials; 57 review turns routed `financials` and
+8 `filings`. The reviewer caught, among others, an in-text revenue-share calculation that
+did not add up (48.64% vs 49.53%), a Capex narrative whose direction contradicted the
+table (+30%, not a decline), and a ROE figure with no citation.
 
 Phase 0 is a narrow spike: a minimal DeepSeek Harness headless run + a distilled BFS/DFS
 skill that produces cited company profiles. No UI, no database. See
 [phase0/README.md](phase0/README.md).
 
 The web UI is implemented in [`apps/web`](apps/web/README.md): search, company pages with
-financials / relationship graph / news / sources, NDX/SPX/A500/HSI/CYB50 index pages, a
+financials / relationship graph / news / sources, NDX/SPX/A500/HSI/CYB50/STAR50 index pages, a
 shared automatic news + financials task dock, and the live ACP assistant sidebar. Tool-use trajectory (live
 activity panel + grouped static trace) and GFM Markdown are built; the sidebar replays
 dsh's persisted session log and resumes the same session after a restart. A first-class
@@ -93,6 +128,7 @@ sub-agent card is **permanently deferred**.
 ## Docs
 
 - [Roadmap + shipped work](docs/ROADMAP.md)
+- [Review loop — issue routing, state machine, metrics](docs/REVIEW_LOOP.md)
 - [Phase 0 — minimal headless research harness](phase0/README.md)
 - [Phase 0 output — Magnificent Seven profiles](phase0/out/magnificent-seven.md)
 - [finance-analyst sidecar — Eastmoney F10](services/finance-analyst/README.md)
@@ -114,7 +150,7 @@ sub-agent card is **permanently deferred**.
 ## Non-goals (v1)
 
 - All 200M+ legal entities worldwide. We start with NDX + S&P 500 + CSI A500 +
-  HSI + ChiNext 50 (the last two indices as placeholders), the AI watchlist, and
+  HSI + ChiNext 50 + STAR 50 (A500/SPX as searchable placeholders), the AI watchlist, and
   on-demand private companies.
 - Bypassing paywalls, logins, CAPTCHAs, or robots.txt.
 - Investment advice or trading signals.
