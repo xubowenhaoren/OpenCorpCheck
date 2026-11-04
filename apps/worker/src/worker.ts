@@ -1,6 +1,14 @@
 import type { Job } from "pg-boss";
 
+import {
+  getFilingState,
+  leaseFilingSource,
+  listEntityCompanies,
+  resolveCompanyId,
+} from "@occ/db";
+
 import { config } from "./config.js";
+import { candidatesForCompany } from "./data/plan.js";
 import {
   createFollowUpJob,
   markJobDeadByKey,
@@ -28,7 +36,7 @@ import {
   handleReviewJobs,
   type ReviewJobData,
 } from "./jobs/review.js";
-import { closeIngestRuntime } from "./ingest-runtime.js";
+import { closeIngestRuntime, getIngestContext } from "./ingest-runtime.js";
 import { stopNimGateway } from "./nim-gateway.js";
 import {
   QUEUES,
@@ -78,7 +86,10 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
     });
   };
 
-  const enqueueReview = async (data: ReviewJobData): Promise<void> => {
+  const enqueueReview = async (
+    data: ReviewJobData,
+    delayMs = 0,
+  ): Promise<void> => {
     await resetJobForRetry(data.runId, QUEUES.REVIEW, data.key);
     await createFollowUpJob({
       runId: data.runId,
@@ -90,11 +101,13 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
     await sendJob(boss, QUEUES.REVIEW, data, {
       key: `${data.runId}:${data.key}:review:${data.reviewAttempt ?? 0}`,
       priority: 40,
+      ...(delayMs > 0 ? { startAfter: Math.ceil(delayMs / 1_000) } : {}),
     });
   };
 
   const enqueueFinancials = async (
     data: FinancialsJobData,
+    options?: { keySuffix?: string },
   ): Promise<void> => {
     // The ingest path reopens a completed row for a re-ingest; the P1.5 data
     // path sets reopenCompleted=false so a check retry cannot redo the run.
@@ -109,7 +122,9 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
       payload: data,
     });
     await sendJob(boss, QUEUES.FINANCIALS, data, {
-      key: `${data.runId}:${data.key}:financials`,
+      // A review-routed rerun must not collide with the original ingest
+      // financials singleton key when that job is still active.
+      key: `${data.runId}:${data.key}:financials${options?.keySuffix ?? ""}`,
       priority: 45,
     });
   };
@@ -170,6 +185,130 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
     });
   };
 
+  /**
+   * Route a `financials` review issue to the deterministic statement layer.
+   * The review follow-up is scheduled by the review job itself (delayed), so a
+   * separate data/financials worker process can execute this job and the loop
+   * still resumes.
+   */
+  const enqueueFinancialsRerun = async (
+    data: ReviewJobData,
+    nextAttempt: number,
+  ): Promise<void> => {
+    const market = data.market ?? marketFromKey(data.key);
+    if (!market) {
+      throw new Error(`cannot route a financials issue: unknown market for ${data.key}`);
+    }
+    const payload: FinancialsJobData = {
+      runId: data.runId,
+      key: data.key,
+      ticker: data.ticker,
+      code: data.ticker,
+      market,
+      force: true,
+      bypassCache: true,
+      reopenCompleted: true,
+      ...(data.name ? { name: data.name } : {}),
+    };
+    log({
+      event: "review_route_financials",
+      run: data.runId,
+      key: data.key,
+      attempt: nextAttempt,
+    });
+    await enqueueFinancials(payload, {
+      keySuffix: `:review:${nextAttempt}`,
+    });
+  };
+
+  /**
+   * Route a `filings` review issue to the P1.5 index check + ingest pipeline.
+   * The check may itself enqueue financials for a new periodic report; that is
+   * fine because the follow-up review is time-delayed, not completion-bound.
+   */
+  const enqueueFilingsRefresh = async (
+    data: ReviewJobData,
+    nextAttempt: number,
+  ): Promise<void> => {
+    const ctx = await getIngestContext();
+    const companyId = await resolveCompanyId(ctx.db, data.ticker);
+    if (!companyId) {
+      throw new Error(
+        `cannot route a filings issue: company not found for ${data.ticker}`,
+      );
+    }
+    const market = data.market ?? marketFromKey(data.key);
+    const companies = await listEntityCompanies(ctx.db);
+    const company = companies.find((candidate) => candidate.id === companyId);
+    const candidates = company ? candidatesForCompany(company) : [];
+    const candidate =
+      candidates.find((entry) => entry.market === market) ?? candidates[0];
+    if (!candidate) {
+      throw new Error(
+        `cannot route a filings issue: no official filing source for ${data.key}`,
+      );
+    }
+    const state = await getFilingState(ctx.db, companyId, candidate.source);
+    const payload: DataSourceCheckJobData = {
+      runId: data.runId,
+      key: `${companyId}:${candidate.source}`,
+      companyId,
+      source: candidate.source,
+      market: candidate.market,
+      ticker: candidate.ticker,
+      ...(data.name ? { name: data.name } : {}),
+      code: candidate.code,
+      ...(candidate.cik ? { cik: candidate.cik } : {}),
+      lastCheckedAt: state?.lastCheckedAt?.toISOString() ?? null,
+      cursor: state?.cursor ?? null,
+      claimTimeoutMs: config.dataClaimTimeoutMs,
+      ttlMs: config.dataTtlMs,
+      coldDays: config.dataColdDays,
+      maxDays: config.dataMaxSteadyDays,
+      maxItems: config.dataMaxItems,
+      force: true,
+    };
+    // Claim the source so a concurrent daily sweep does not double-check it.
+    // A live lease means a check is already running; enqueueing this one is
+    // still correct for the review loop and the mark-completed guard dedupes.
+    await leaseFilingSource(ctx.db, {
+      companyId,
+      source: candidate.source,
+      market: candidate.market,
+      code: candidate.code,
+      claimTimeoutMs: config.dataClaimTimeoutMs,
+      runId: data.runId,
+    });
+    await createFollowUpJob({
+      runId: data.runId,
+      queue: QUEUES.DATA_SOURCE_CHECK,
+      jobKey: payload.key,
+      companyId,
+      payload,
+    });
+    await sendJob(boss, QUEUES.DATA_SOURCE_CHECK, payload, {
+      key: `${data.runId}:${payload.key}:review:${nextAttempt}`,
+      priority: 35,
+    });
+    log({
+      event: "review_route_filings",
+      run: data.runId,
+      key: data.key,
+      attempt: nextAttempt,
+      source: candidate.source,
+    });
+  };
+
+  const enqueueReviewFollowUp = async (
+    data: ReviewJobData,
+    nextAttempt: number,
+  ): Promise<void> => {
+    await enqueueReview(
+      { ...data, reviewAttempt: nextAttempt },
+      config.reviewRouteDelayMs,
+    );
+  };
+
   if (kinds.has("research")) {
     await boss.work<ResearchJobData>(
       QUEUES.RESEARCH,
@@ -210,7 +349,12 @@ export async function runWorkers(options: WorkerOptions): Promise<void> {
         localConcurrency: config.reviewConcurrency,
         pollingIntervalSeconds: 2,
       },
-      (jobs) => handleReviewJobs(jobs, { enqueueResearchRevision }),
+      (jobs) => handleReviewJobs(jobs, {
+        enqueueResearchRevision,
+        enqueueFinancialsRerun,
+        enqueueFilingsRefresh,
+        enqueueReviewFollowUp,
+      }),
     );
     await boss.work<DeadJobData>(
       QUEUES.REVIEW_DEAD,
@@ -461,6 +605,14 @@ async function waitForDrain(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Company keys are `A:600519`, `HK:00700`, `US:AAPL`, or `NAME:<slug>`. */
+function marketFromKey(key: string): "A" | "HK" | "US" | undefined {
+  const prefix = key.split(":")[0];
+  return prefix === "A" || prefix === "HK" || prefix === "US"
+    ? prefix
+    : undefined;
 }
 
 function log(payload: Record<string, unknown>): void {

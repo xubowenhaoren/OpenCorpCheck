@@ -25,11 +25,11 @@ research layer**, not a generic "deep research" wrapper.
 
 Twelve decisions define the architecture:
 
-1. **Scope the universe**: NASDAQ-100 + HSI + ChiNext 50 (236 researched companies),
-   CSI A500 (500) + S&P 500 (500 companies / 503 securities) as **searchable
-   placeholder pages**, and a curated AI watchlist (OpenAI, Anthropic, DeepSeek,
-   Kimi/Moonshot, Zhipu, ...) + private companies discovered on demand. Not
-   200M legal entities. STAR 50 is the next pilot.
+1. **Scope the universe**: NASDAQ-100 + HSI + ChiNext 50 + STAR 50 (286
+   researched companies after the P4 pilot), CSI A500 (500) + S&P 500 (500
+   companies / 503 securities) as **searchable placeholder pages**, and a
+   curated AI watchlist (OpenAI, Anthropic, DeepSeek, Kimi/Moonshot, Zhipu, ...)
+   + private companies discovered on demand. Not 200M legal entities.
 2. **TypeScript end-to-end**: web, API, workers, CLI, MCP, dsh integration, Electron. One
    debugger, one type system, one toolchain. Python appears only as an isolated Playwright
    scraper sidecar (reusing `finance_analyst`), never in the API request path.
@@ -75,11 +75,10 @@ Twelve decisions define the architecture:
 
 ### 1.2 v1 scope
 
-- **Universe**: NASDAQ-100 + HSI + ChiNext 50 snapshots (236 researched
-  companies after dedupe), plus 850 searchable A500/SPX stubs (`as_of`
-  2026-10-30 / 2026-10-29; 862 before the 12 P1.2 cross-listing merges).
-  A500/SPX placeholders are never bulk-researched; STAR 50 is the next
-  pilot.
+- **Universe**: NASDAQ-100 + HSI + ChiNext 50 + STAR 50 snapshots (286
+  researched companies after the P4 pilot), plus 850 searchable A500/SPX stubs
+  (`as_of` 2026-10-30 / 2026-10-29; 862 before the 12 P1.2 cross-listing
+  merges). A500/SPX placeholders are never bulk-researched.
 - **AI watchlist**: a curated seed of hot private/listed AI companies that are not necessarily
   index members — OpenAI, Anthropic, xAI, Mistral, Perplexity, DeepSeek, Moonshot/Kimi,
   Zhipu, MiniMax, Baichuan, StepFun, 01.AI, ByteDance, Huawei, SenseTime, iFlytek,

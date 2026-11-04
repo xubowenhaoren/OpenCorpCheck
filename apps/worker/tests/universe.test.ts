@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,6 +9,10 @@ import {
   resolveTargets,
   shardOf,
 } from "../src/universe.ts";
+
+const STAR50_SNAPSHOT = fileURLToPath(
+  new URL("../../../config/indices/star50.yaml", import.meta.url),
+);
 
 describe("parseTicker", () => {
   it.each([
@@ -76,6 +83,20 @@ describe("resolveTargets", () => {
     expect(targets.some((target) => target.key === "HK:00700")).toBe(true);
     expect(targets.some((target) => target.key === "HK:00005")).toBe(true);
   });
+
+  it.skipIf(!existsSync(STAR50_SNAPSHOT))(
+    "loads the STAR 50 snapshot as 50 SSE index members",
+    async () => {
+      const targets = await resolveTargets({ universe: "star50" });
+      expect(targets).toHaveLength(50);
+      expect(targets.every((target) => target.market === "A")).toBe(true);
+      expect(targets.every((target) => target.exchange === "SSE")).toBe(true);
+      expect(targets.every((target) => target.indexCode === "STAR50")).toBe(true);
+      expect(
+        targets.every((target) => /^68[89]\d{3}$/.test(target.ticker)),
+      ).toBe(true);
+    },
+  );
 
   it("drops excluded tickers after universe expansion", async () => {
     const targets = await resolveTargets({

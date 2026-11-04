@@ -21,8 +21,48 @@ describe("review prompt", () => {
   });
 });
 
-describe("review output", () => {
-  it("accepts the documented schema", () => {
+describe("missing sections", () => {
+  const sections = [
+    "一句话",
+    "公司快照",
+    "业务与收入结构",
+    "产品与服务",
+    "财务表现",
+    "质量快照",
+    "AI 敞口与战略动向",
+    "护城河与竞争格局",
+    "关键关系",
+    "近 12 个月大事",
+    "风险与反证",
+    "未验证与数据缺口",
+    "来源",
+  ];
+
+  it("accepts whitespace variants of a required heading", () => {
+    const markdown = sections
+      .map((section) => `### ${section.replaceAll(" ", "")}`)
+      .join("\n");
+    expect(missingSections(markdown)).toEqual([]);
+  });
+
+  it("accepts `战略动向` as the AI-exposure variant", () => {
+    const markdown = sections
+      .filter((section) => section !== "AI 敞口与战略动向")
+      .map((section) => `### ${section}`)
+      .join("\n");
+    expect(missingSections(`${markdown}\n### 战略动向`)).toEqual([]);
+  });
+
+  it("still reports a genuinely absent section", () => {
+    const markdown = sections
+      .filter((section) => section !== "风险与反证")
+      .map((section) => `### ${section}`)
+      .join("\n");
+    expect(missingSections(markdown)).toEqual(["风险与反证"]);
+  });
+});
+
+describe("review output", () => {  it("accepts the documented schema", () => {
     const result = parseReviewOutput(
       JSON.stringify({ verdict: "pass", issues: [], fix_instructions: "" }),
     );
@@ -73,6 +113,23 @@ describe("review output", () => {
     expect(result.result.verdict).toBe("revise");
     expect(result.result.issues).toHaveLength(1);
     expect(result.result.issues[0]?.reason).toContain("资本开支上行是主因");
+  });
+
+  it("keeps the reviewer's routing kind and ignores invented ones", () => {
+    const result = parseReviewOutput(
+      JSON.stringify({
+        verdict: "revise",
+        issues: [
+          { field: "财务表现", kind: "financial", reason: "营收错误" },
+          { field: "来源", kind: "vibes", reason: "链接打不开" },
+        ],
+        fix_instructions: "改正",
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.issues[0]?.kind).toBe("financials");
+    expect(result.result.issues[1]?.kind).toBeUndefined();
   });
 
   it("still rejects a genuinely truncated object", () => {

@@ -41,11 +41,11 @@ Usage:
   occ-backfill work [--queues research,ingest,review,news,f10,financials,data] [--drain]
   occ-backfill status [--run <uuid>] [--json]
   occ-backfill states [--limit N] [--json]
-  occ-backfill relations f10 [--universe hsi|ndx|cyb50|... | --tickers ...] [--force]
+  occ-backfill relations f10 [--universe hsi|ndx|cyb50|star50|... | --tickers ...] [--force]
   occ-backfill config
 
 Enqueue options:
-  --universe mag7|ai-watchlist|ndx|hsi|cyb50
+  --universe mag7|ai-watchlist|ndx|hsi|cyb50|star50
   --tickers AAPL,600519:A,00700:HK
   --exclude 00700,AAPL         Drop targets after universe expansion
   --limit N                      Cap targets after priority sort
@@ -91,6 +91,7 @@ Environment:
   OCC_LLM_PROVIDER (deepseek default; nvidia opts into the NIM free tier)
   OCC_NIM_RPM (default 20; only used with OCC_LLM_PROVIDER=nvidia)
   OCC_REVIEW_MAX_CYCLES (default 2)
+  OCC_REVIEW_ROUTE_DELAY_MS (default 120000; delay before a routed re-review)
   NVIDIA_API_KEY (required for live research on NIM)
   DEEPSEEK_API_KEY (required for ingest/extraction and the reviewer)
 `;
@@ -392,14 +393,29 @@ async function statesCommand(args: string[]): Promise<void> {
   }
   for (const state of states) {
     const review = state.review_result as
-      | { verdict?: string; issues?: unknown[] }
+      | {
+          verdict?: string;
+          issues?: unknown[];
+          routing?: {
+            run?: Array<{ kind?: string }>;
+            deferred?: string[];
+            operator?: Array<{ kind?: string }>;
+          };
+        }
       | null
       | undefined;
     const issues = Array.isArray(review?.issues) ? review.issues.length : 0;
+    const routed = review?.routing?.run?.map((action) => action.kind).join("/");
+    const operator = review?.routing?.operator
+      ?.map((action) => action.kind)
+      .join("/");
+    const deferred = review?.routing?.deferred?.join("/");
     console.log(
       `${state.company_id.padEnd(14)} ${state.status.padEnd(13)} ` +
         `attempts=${state.attempts} review=${state.review_attempts} ` +
         `verdict=${review?.verdict ?? "-"} issues=${issues} ` +
+        `route=${routed || "-"}${deferred ? ` deferred=${deferred}` : ""}` +
+        `${operator ? ` operator=${operator}` : ""} ` +
         `${state.last_error ? `error=${state.last_error.slice(0, 160)}` : ""}`,
     );
   }

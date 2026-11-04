@@ -200,6 +200,13 @@ export const config = {
   researchTimeoutMs: intEnv("OCC_RESEARCH_TIMEOUT_MS", 1_800_000),
   reviewTimeoutMs: intEnv("OCC_REVIEW_TIMEOUT_MS", 480_000),
   reviewMaxCycles: intEnv("OCC_REVIEW_MAX_CYCLES", 2),
+  /**
+   * P4: after a routed deterministic fix (financials/filings), schedule the
+   * next review after this delay. The fix may run in another worker process,
+   * so the loop cannot wait on a completion callback. Keep it longer than a
+   * normal F10/CNINFO check (seconds) but short enough to stay in one cycle.
+   */
+  reviewRouteDelayMs: intEnv("OCC_REVIEW_ROUTE_DELAY_MS", 120_000),
   /** Malformed reviewer JSON is re-run this many times before needs_review. */
   reviewParseAttempts: intEnv("OCC_REVIEW_PARSE_ATTEMPTS", 2),
   permissionMode: "read-only",
@@ -253,6 +260,8 @@ export function publicConfig(): Record<string, unknown> {
     model: config.model,
     llmProvider: config.llmProvider,
     reviewModel: config.reviewModel,
+    reviewMaxCycles: config.reviewMaxCycles,
+    reviewRouteDelayMs: config.reviewRouteDelayMs,
     nimGatewayUrl: config.nimGatewayUrl,
     nimRpm: config.nimRpm,
     f10Dir: config.f10Dir,

@@ -223,13 +223,19 @@ headless dsh run on the **official DeepSeek API with reasoning on** (not NIM),
 with a checklist prompt and only web search/fetch tools. It returns:
 
 ```json
-{"verdict":"pass|revise","issues":[{"field":"5. 财务表现","reason":"...","evidence":"..."}],"fix_instructions":"..."}
+{"verdict":"pass|revise","issues":[{"field":"5. 财务表现","kind":"financials","reason":"...","evidence":"..."}],"fix_instructions":"..."}
 ```
 
-`pass` → `ready`. `revise` → the first `review.company` job that pass is not met
-re-enqueues research with the feedback, capped at `OCC_REVIEW_MAX_CYCLES`
-(default 2), then `needs_review`. The reviewer is not exposed in the public UI;
-`occ-backfill states` shows operator status and the last review result.
+`pass` → `ready`. `revise` → the review job routes each issue by `kind`
+(`profile`, `financials`, `filings`, `entity`, `ownership`): a profile issue
+re-enqueues research with scoped feedback; `financials` re-runs the
+deterministic statement layer; `filings` runs the official-index check; entity
+and ownership issues are recorded as operator commands instead of pretending a
+worker can fix them. A deterministic fix schedules its own follow-up review.
+The loop is capped at `OCC_REVIEW_MAX_CYCLES` (default 2), then
+`needs_review`. The reviewer is not exposed in the public UI;
+`occ-backfill states` shows operator status, the last review result and the
+routing decision. Full design: [REVIEW_LOOP.md](REVIEW_LOOP.md).
 
 The 2026-10-31 `HK:00700` pilot is the reference: research 289 s, ingest 27 s,
 three reviewer turns (~73 s each), final verdict `revise` → `needs_review`

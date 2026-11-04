@@ -1,9 +1,11 @@
 import { z } from "zod";
 
-export const REVIEW_PROMPT_VERSION = "reviewer-v1";
+export const REVIEW_PROMPT_VERSION = "reviewer-v2";
 
 const ReviewIssueSchema = z.object({
   field: z.string().trim().min(1).max(160),
+  /** Routing hint; normalised below, unknown values fall back to profile. */
+  kind: z.string().trim().max(32).optional(),
   reason: z.string().trim().min(1).max(1_200),
   evidence: z.string().trim().max(1_200).optional(),
 });
@@ -29,7 +31,13 @@ export const ReviewResultSchema = z.object({
 export type ReviewResultParsed = z.infer<typeof ReviewResultSchema>;
 export interface ReviewResult {
   verdict: "pass" | "revise";
-  issues: Array<{ field: string; reason: string; evidence?: string }>;
+  issues: Array<{
+    field: string;
+    /** Routing hint from the reviewer; absent when it did not classify. */
+    kind?: string;
+    reason: string;
+    evidence?: string;
+  }>;
   fix_instructions: string;
 }
 
@@ -77,6 +85,14 @@ export function buildReviewPrompt(input: ReviewPromptInput): string {
     "6. 是否存在无来源的断言、训练记忆补全、编造 URL、TODO/待补充占位。",
     "7. “未验证与数据缺口”是否诚实列出关键缺口；没有缺口的资料通常可疑。",
     "",
+    "给每个 issue 标一个 kind，便于路由到对应的修复 worker：",
+    "- profile：章节、叙述、引用、措辞、来源标注等需要重写资料的问题（拿不准就用它）；",
+    "- financials：财务数字、口径、币种、报告期、同比/环比等结构化财报问题；",
+    "- filings：公告/披露文件/10-K、10-Q、20-F 等原始文件缺失或链接错误；",
+    "- entity：公司主体、证券代码、上市地、交易所等主体识别问题；",
+    "- ownership：股东、持股比例、实际控制人、投资关系等问题。",
+    "kind 只是修复路由建议，不影响 verdict 的判定。",
+    "",
     "判定规则：",
     "- 只有会误导读者的事实错误、缺失章节、无引用关键数字、编造来源才判 revise。",
     "- 风格、措辞、篇幅、可选的补充信息不构成 revise。",
@@ -85,7 +101,7 @@ export function buildReviewPrompt(input: ReviewPromptInput): string {
     "- 不得用训练记忆判断数字对错；没有证据就写“无法验证”，不要据此判 revise。",
     "",
     "只输出一个 JSON 对象，不要 markdown 代码块，不要解释：",
-    '{"verdict":"pass"|"revise","issues":[{"field":"章节或字段","reason":"问题","evidence":"原文或URL"}],"fix_instructions":"给研究 agent 的具体修改指令"}',
+    '{"verdict":"pass"|"revise","issues":[{"field":"章节或字段","kind":"profile|financials|filings|entity|ownership","reason":"问题","evidence":"原文或URL"}],"fix_instructions":"给研究 agent 的具体修改指令"}',
     "",
     "verdict 只能是 pass 或 revise（不要输出 fail、reject、approved 等其他值）。issues 必须是对象数组，不能是字符串数组。",
     'JSON 字符串内部需要强调时，双引号必须转义为 \\"，或直接改用中文引号「」/“”；字符串必须闭合，对象必须完整。',
@@ -144,8 +160,15 @@ function normalizeReview(raw: Record<string, unknown>): ReviewResult | null {
     );
     if (!reason) continue;
     const evidence = firstString(record.evidence, record.quote);
+    const kind = normalizeKind(
+      record.kind,
+      record.issue_kind,
+      record.category,
+      record.type,
+    );
     issues.push({
       field: field.slice(0, 160),
+      ...(kind ? { kind } : {}),
       reason: reason.slice(0, 1_200),
       ...(evidence ? { evidence: evidence.slice(0, 1_200) } : {}),
     });
@@ -188,6 +211,26 @@ function normalizeVerdict(raw: Record<string, unknown>): "pass" | "revise" | nul
 function firstString(...values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+/**
+ * Map the reviewer's routing hint onto the five canonical kinds. Unknown or
+ * invented values return undefined and the deterministic classifier decides.
+ */
+function normalizeKind(...values: unknown[]): string | undefined {
+  const raw = firstString(...values)?.toLowerCase();
+  if (!raw) return undefined;
+  const value = raw.replace(/[\s_-]+/g, "");
+  if (value.startsWith("financ")) return "financials";
+  if (value.startsWith("filing")) return "filings";
+  if (value.startsWith("entit")) return "entity";
+  if (value.startsWith("owner") || value.startsWith("sharehold")) {
+    return "ownership";
+  }
+  if (value.startsWith("profil") || value.startsWith("narrat")) {
+    return "profile";
   }
   return undefined;
 }
@@ -275,5 +318,25 @@ export function parseReviewOutput(
 }
 
 export function missingSections(markdown: string): string[] {
-  return REQUIRED_SECTIONS.filter((section) => !markdown.includes(section));
+  const normalized = normalizeHeading(markdown);
+  return REQUIRED_SECTIONS.filter((section) => {
+    const variants = SECTION_ALIASES[section] ?? [section];
+    return !variants.some((variant) =>
+      normalized.includes(normalizeHeading(variant)),
+    );
+  });
 }
+
+/** Whitespace and full-width spacing are not meaningful in a heading. */
+function normalizeHeading(value: string): string {
+  return value.replace(/[\s　]+/g, "");
+}
+
+/**
+ * Headings the models legitimately vary. `战略动向` is the same section as
+ * `AI 敞口与战略动向` for companies where AI exposure is not material; the
+ * reviewer still checks the content. Do not use this to waive a real section.
+ */
+const SECTION_ALIASES: Partial<Record<string, string[]>> = {
+  "AI 敞口与战略动向": ["AI 敞口与战略动向", "战略动向"],
+};

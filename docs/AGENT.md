@@ -39,6 +39,12 @@ empty-`content` responses, normalises `reasoning_content → content`, and
 enforces `OCC_NIM_RPM` (default 20; 36 caused 429s). `occ-backfill work --queues research,...`
 starts it automatically. The reviewer never uses the gateway.
 
+The reviewer is read-only and emits typed issue kinds (`profile`,
+`financials`, `filings`, `entity`, `ownership`). The review job — not the
+reviewer — decides which worker runs next, so a financial-cell issue re-runs
+`financials.company` instead of rewriting the profile. See
+[REVIEW_LOOP.md](REVIEW_LOOP.md).
+
 ## What exists
 
 | Piece | Package | Responsibility |

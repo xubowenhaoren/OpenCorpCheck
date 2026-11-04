@@ -2,22 +2,23 @@
 
 > [中文（默认）](README.md) · **English**
 
-**Open, agentic company intelligence for NASDAQ-100 · S&P 500 · CSI A500 · Hang Seng Index · ChiNext 50.**
+**Open, agentic company intelligence for NASDAQ-100 · S&P 500 · CSI A500 · Hang Seng Index · ChiNext 50 · STAR 50.**
 
 > Status: 2026-11-03 — search, company pages (profile / financials / relationship
 > graph / news / filings / sources), automatic news refresh + **shared task dock
-> (news + financials)**, all five index
-> pages (NDX/SPX/A500/HSI/CYB50), `occ` CLI, MCP server, and the DeepSeek
+> (news + financials)**, six index
+> pages (NDX/SPX/A500/HSI/CYB50/STAR50), `occ` CLI, MCP server, and the DeepSeek
 > Harness ACP sidebar. **P1.1 A500/SPX placeholder pages, P1.2 sector + entity
 > resolution, P1.3 US 13F + HKEX DION ownership, the P1.3 dense-graph UI
 > follow-up, P1.4 official filing adapters, P1.5 daily company-data /
-> financial-report refresh, and both P1.5 follow-ups are shipped** (850
-> searchable stubs; 235/236 researched companies have a canonical sector;
-> 13,009 US 13F + 90 HKEX DION ownership edges; SEC EDGAR + CNINFO + HKEXnews
-> filing discovery with PDF text/tables and a separate 公告文件 tab; 251 daily
-> filing checks over 236 companies, with new periodic reports automatically
-> updating structured financials at 0 LLM tokens, and a verified expected
-> period with bounded A/HK F10 retry). P2 is deferred. The roadmap is in
+> financial-report refresh, both P1.5 follow-ups, and P4 review-loop routing +
+> the STAR 50 pilot are shipped** (820 searchable stubs; 284/286 researched
+> companies have a canonical sector; 13,009 US 13F + 90 HKEX DION ownership
+> edges; SEC EDGAR + CNINFO + HKEXnews filing discovery with PDF text/tables
+> and a separate 公告文件 tab; 301 daily filing checks over 286 companies, with
+> new periodic reports automatically updating structured financials at 0 LLM
+> tokens, and a verified expected period with bounded A/HK F10 retry). P2 is
+> deferred. The roadmap is in
 > [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 OpenCorpCheck is an open-source, AI-native alternative to commercial company-intelligence
@@ -49,13 +50,14 @@ sub-agent card is **permanently deferred**.
 
 ## What
 
-- **Universe**: 1,086 non-fixture companies — 236 researched (NASDAQ-100 100,
-  Hang Seng Index 85, ChiNext 50 50, plus the discovered set) and 850 A500/SPX
-  searchable stubs — plus a curated AI watchlist (OpenAI, Anthropic, DeepSeek,
-  Kimi/Moonshot, ...). A500 (500) and S&P 500 (500 companies / 503 securities)
-  are placeholder pages with `未收录` badges, not bulk research targets. STAR 50
-  is the next pilot.
-- **Entity spine (P1.2)**: 11 canonical sectors (235/236 researched companies),
+- **Universe**: 1,106 non-fixture companies — 286 researched (NASDAQ-100 100,
+  Hang Seng Index 85, ChiNext 50 50, STAR 50 50, plus the discovered set) and
+  820 A500/SPX searchable stubs, plus a curated AI watchlist (OpenAI,
+  Anthropic, DeepSeek, Kimi/Moonshot, ...). A500 (500) and S&P 500 (500
+  companies / 503 securities) are placeholder pages with `未收录` badges, not
+  bulk research targets. The STAR 50 (科创50) 50-company backfill shipped
+  2026-11-03.
+- **Entity spine (P1.2)**: 11 canonical sectors (284/286 researched companies),
   ticker/CIK/domain/ISIN/USCC/EIN/LEI/Wikidata identifiers, audited A/HK
   dual-listing merges, and GLEIF parent edges with source + review queue. See
   [docs/ENTITY.md](docs/ENTITY.md).

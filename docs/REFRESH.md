@@ -138,8 +138,8 @@ dock can show `2026-09-30` even when the source publishes only a title.
 
 A dual-listed A/HK company gets **two** checks (e.g. `HK:02318` → cninfo +
 hkexnews). A US company without a CIK is not polled (EDGAR cannot resolve it).
-Current corpus: **236 researched companies → 251 checks** (100 EDGAR,
-66 CNINFO, 85 HKEXnews; 0 F10 fallback).
+Current corpus: **286 researched companies → 301 checks** (100 EDGAR,
+116 CNINFO, 85 HKEXnews; 0 F10 fallback).
 
 ## 5. Detection and cadence
 

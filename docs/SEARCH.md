@@ -228,11 +228,11 @@ full-corpus score. Full method and comparisons: [EVAL.md](EVAL.md).
   so it does not download the second model.
 - The `occ` CLI calls the API for search; entity resolution, graph queries and
   MCP search tools are implemented (P3).
-- Index snapshots are loaded for NDX / SPX / A500 / HSI / ChiNext 50 and write
-  real `index_memberships`. A500 (500) and SPX (500 companies / 503 securities)
-  are **searchable placeholder** rows (`coverage_tier='stub'`); STAR 50 is
-  the next pilot (no snapshot yet). Legacy `A500`/`SPX` seed fixtures remain for E2E
-  compatibility only.
+- Index snapshots are loaded for NDX / SPX / A500 / HSI / ChiNext 50 / STAR 50
+  and write real `index_memberships`. A500 (500) and SPX (500 companies / 503
+  securities) are **searchable placeholder** rows (`coverage_tier='stub'`);
+  STAR 50 (`000688`, SSE) is a local snapshot used by the 50-company pilot.
+  Legacy `A500`/`SPX` seed fixtures remain for E2E compatibility only.
 - Placeholder rows are searchable with a `未收录` badge (decision 30 revised
   2026-11-01); rank them below real profiles and never render fake metrics.
 - `scripts/e2e-search.sh` runs `occ seed --reset`, which **truncates the target

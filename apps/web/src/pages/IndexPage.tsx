@@ -7,7 +7,7 @@ import { EmptyState, ErrorView, Loading } from "../components/States";
 import { formatDate } from "../format";
 import { useLang } from "../i18n";
 
-const INDEX_CODES = ["NDX", "SPX", "A500", "HSI", "CYB50"];
+const INDEX_CODES = ["NDX", "SPX", "A500", "HSI", "CYB50", "STAR50"];
 
 export function IndexPage() {
   const { code: rawCode } = useParams<{ code: string }>();

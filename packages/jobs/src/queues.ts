@@ -185,11 +185,19 @@ export async function sendJob(
   boss: PgBoss,
   queue: string,
   data: object,
-  options: { key: string; priority: number },
+  options: {
+    key: string;
+    priority: number;
+    /** Delay before the job becomes fetchable (seconds or a Date). */
+    startAfter?: number | Date;
+  },
 ): Promise<string | null> {
   return boss.send(queue, data, {
     singletonKey: options.key,
     priority: options.priority,
+    ...(options.startAfter !== undefined
+      ? { startAfter: options.startAfter }
+      : {}),
   });
 }
 

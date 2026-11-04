@@ -32,10 +32,15 @@ the Phase 0 pattern of running companies one at a time in one process.
   ingest job. LLM relation extraction is opt-in with `OCC_EXTRACT_RELATIONS=llm`
   (default `none`); set `OCC_F10_RELATIONS=none` to disable the F10 pass.
 - **Reviewer**: after ingest, `review.company` runs a second headless dsh turn on
-  the **official DeepSeek API with reasoning on**. `revise` re-runs research with
-  the feedback, capped at `OCC_REVIEW_MAX_CYCLES` (default 2), then
-  `needs_review`. `occ-backfill states` shows status + the last review result.
-  The reviewer child gets `DEEPSEEK_API_KEY` only; research gets `NVIDIA_API_KEY`
+  the **official DeepSeek API with reasoning on**. Issues carry a `kind` and are
+  routed: `profile` re-runs research with scoped feedback, `financials` re-runs
+  `financials.company`, `filings` runs the official-index check, and
+  `entity`/`ownership` become operator commands. A routed deterministic fix
+  schedules its own re-review after `OCC_REVIEW_ROUTE_DELAY_MS` (default
+  120 s). The loop is capped at `OCC_REVIEW_MAX_CYCLES` (default 2), then
+  `needs_review`. `occ-backfill states` shows status, the last review result
+  and `route=…`. See [docs/REVIEW_LOOP.md](../../docs/REVIEW_LOOP.md). The
+  reviewer child gets `DEEPSEEK_API_KEY` only; research gets `NVIDIA_API_KEY`
   only.
 - **Concurrency**: pg-boss `localConcurrency` — research defaults to 4, ingest to
   4, review to 2, F10 to 4, news to 2, financials to 2, data checks to 4, filing
@@ -226,8 +231,9 @@ startup fails); US runs stay opt-in with `--include-f10`.
 
 - `config/universe.yaml` covers the AI watchlist; `config/indices/ndx.yaml` is
   the NASDAQ-100 constituent snapshot (100 primary listings, official Nasdaq
-  source, `as_of` recorded). STAR 50 (`000688`) is the next pilot; ChiNext 50 (`399673`) and HSI
-  snapshots are implemented; S&P 500 was cancelled on 2026-10-29.
+  source, `as_of` recorded). ChiNext 50 (`399673`), HSI and STAR 50 (`000688`,
+  `--universe star50`) snapshots are implemented; S&P 500 was cancelled on
+  2026-10-29. Index snapshots stay local (`config/indices` is not published).
 - Live queue counts query `pgboss.job` directly, assuming the default schema.
 - Token/cost is logged per job but not summed per run.
 - Snapshots: ingest uploads each section to `sections/<slug>/<sha256>.md`;

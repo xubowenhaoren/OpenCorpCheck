@@ -13,6 +13,7 @@ import {
 } from "../db.js";
 import { QUEUES } from "../queues.js";
 import { runDshReview } from "../research/dsh.js";
+import { decideReviewOutcome } from "../research/router.js";
 import {
   buildReviewPrompt,
   missingSections,
@@ -40,6 +41,25 @@ export interface ReviewJobContext {
   enqueueResearchRevision?: (
     data: ReviewJobData,
     feedback: string,
+    nextAttempt: number,
+  ) => Promise<void>;
+  /** Deterministic re-run of the structured statement layer. */
+  enqueueFinancialsRerun?: (
+    data: ReviewJobData,
+    nextAttempt: number,
+  ) => Promise<void>;
+  /** Re-discover and ingest official filings for the company. */
+  enqueueFilingsRefresh?: (
+    data: ReviewJobData,
+    nextAttempt: number,
+  ) => Promise<void>;
+  /**
+   * Schedule the next review after a deterministic fix. The fix runs in
+   * another process (e.g. the data worker), so this is time-delayed rather
+   * than a completion callback.
+   */
+  enqueueReviewFollowUp?: (
+    data: ReviewJobData,
     nextAttempt: number,
   ) => Promise<void>;
 }
@@ -139,22 +159,16 @@ async function processReviewJob(
     }
 
     const result = parsed.result;
-    const issues = [
-      ...(missing.length > 0
-        ? [
-            {
-              field: "章节",
-              reason: `缺少章节：${missing.join("、")}`,
-              evidence: undefined,
-            },
-          ]
-        : []),
-      ...result.issues,
-    ];
-    const verdict =
-      result.verdict === "pass" && missing.length === 0 ? "pass" : "revise";
+    const decision = decideReviewOutcome({
+      verdict: result.verdict,
+      issues: result.issues,
+      missingSections: missing,
+      fixInstructions: result.fix_instructions,
+      attempt,
+      maxCycles: config.reviewMaxCycles,
+    });
 
-    if (verdict === "pass") {
+    if (decision.kind === "pass") {
       await markJobCompleted(data.runId, queue, data.key);
       await upsertCompanyState({
         companyId: data.key,
@@ -177,12 +191,42 @@ async function processReviewJob(
       return;
     }
 
-    const feedback = formatFeedback(result.fix_instructions, issues);
-    if (attempt >= config.reviewMaxCycles || !context.enqueueResearchRevision) {
+    const feedback = formatFeedback(result.fix_instructions, decision.issues);
+    // Persist the normalised issues (including synthesized missing-section
+    // ones), not only the raw reviewer payload, so every needs_review row is
+    // auditable from `company_research_state.review_result`.
+    const reviewResult = {
+      ...result,
+      issues: decision.issues,
+      routing: decision.plan,
+    };
+
+    // A selected route without a registered handler would loop forever, so it
+    // is reported as an operator problem, exactly like the old single-handler
+    // path. `operator` routes are recorded but never executed here.
+    const missingHandlers = decision.plan.run.filter((action) => {
+      if (action.route === "research") return !context.enqueueResearchRevision;
+      if (action.route === "financials") return !context.enqueueFinancialsRerun;
+      if (action.route === "filings") return !context.enqueueFilingsRefresh;
+      return true;
+    });
+    const needsFollowUp =
+      decision.kind === "revise" &&
+      decision.plan.run.every((action) => action.route !== "research") &&
+      decision.plan.run.length > 0 &&
+      !context.enqueueReviewFollowUp;
+
+    if (
+      decision.kind === "needs_review" ||
+      missingHandlers.length > 0 ||
+      needsFollowUp
+    ) {
       const message =
-        attempt >= config.reviewMaxCycles
-          ? `reviewer requested revisions ${attempt + 1} time(s); cap reached`
-          : "reviewer requested revisions but no research-revision handler is registered";
+        decision.kind === "needs_review"
+          ? decision.message
+          : missingHandlers.length > 0
+            ? `no handler registered for routed issue kind(s): ${missingHandlers.map((a) => a.kind).join(", ")}`
+            : "routed fix needs a review follow-up handler, but none is registered";
       await markJobDead(data.runId, queue, data.key);
       await upsertCompanyState({
         companyId: data.key,
@@ -190,15 +234,20 @@ async function processReviewJob(
         runId: data.runId,
         reviewAttempts: attempt,
         lastError: `${message}\n${feedback}`.slice(0, 4_000),
-        reviewResult: result,
+        reviewResult,
       });
       log({
         event: "review_needs_review",
         run: data.runId,
         key: data.key,
         attempt,
+        reason:
+          decision.kind === "needs_review" ? decision.reason : "no_handler",
         message,
-        issues: issues.length,
+        issues: decision.issues.length,
+        routed: decision.plan.run.map((action) => action.kind),
+        operator: decision.plan.operator.map((action) => action.kind),
+        deferred: decision.plan.deferred,
         inputTokens,
         outputTokens,
         durationMs: Date.now() - startedAt,
@@ -206,21 +255,47 @@ async function processReviewJob(
       return;
     }
 
+    if (decision.kind !== "revise") {
+      // The needs_review path returned above; this keeps the type narrow.
+      throw new Error("unexpected review decision");
+    }
+    const nextAttempt = decision.nextAttempt;
     await markJobCompleted(data.runId, queue, data.key);
     await upsertCompanyState({
       companyId: data.key,
       status: "running",
       runId: data.runId,
-      reviewAttempts: attempt + 1,
-      reviewResult: result,
+      reviewAttempts: nextAttempt,
+      reviewResult,
     });
-    await context.enqueueResearchRevision(data, feedback, attempt + 1);
+
+    const deterministic = decision.plan.run.filter(
+      (action) => action.route === "financials" || action.route === "filings",
+    );
+    for (const action of deterministic) {
+      if (action.route === "financials") {
+        await context.enqueueFinancialsRerun!(data, nextAttempt);
+      } else {
+        await context.enqueueFilingsRefresh!(data, nextAttempt);
+      }
+    }
+    for (const action of decision.plan.run) {
+      if (action.route !== "research") continue;
+      await context.enqueueResearchRevision!(data, feedback, nextAttempt);
+    }
+    if (deterministic.length > 0 && decision.plan.run.every((a) => a.route !== "research")) {
+      await context.enqueueReviewFollowUp!(data, nextAttempt);
+    }
+
     log({
       event: "review_revise_enqueued",
       run: data.runId,
       key: data.key,
-      attempt: attempt + 1,
-      issues: issues.length,
+      attempt: nextAttempt,
+      issues: decision.issues.length,
+      routed: decision.plan.run.map((action) => action.kind),
+      operator: decision.plan.operator.map((action) => action.kind),
+      deferred: decision.plan.deferred,
       feedback: feedback.slice(0, 1_500),
       inputTokens,
       outputTokens,

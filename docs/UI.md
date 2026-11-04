@@ -714,7 +714,7 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 | 搜索 | `GET /v1/search/companies` | 已支持 market / index / sector / coverage 过滤 |
 | 公司页 | `GET /v1/companies/:ref?include=facts,relations,events` | 基础卡片 |
 | 财务 | `GET /v1/companies/:ref?include=financials&financial_period_kind=…` | 每种期间分别取（annual/quarter/half/ttm），避免 200 行截断；含 `method`/`quote`/`source`，前端据此标来源与「推导」 |
-| 一句话介绍 | `company.description` | 当前 236 家非 fixture 公司都有 description；空值前端回退 |
+| 一句话介绍 | `company.description` | 当前 286 家非 fixture 公司都有 description；空值前端回退 |
 | 关系图 | `GET /v1/graph?company=&depth=`（1/2 层） | 1/2 层 ego network，见下 |
 | 新闻 | `events` | 已含 news + profile_event |
 | 来源 | 各视图的 `source` 去重 | 前端聚合 |
@@ -726,8 +726,8 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 
 - `GET /v1/graph?company=&depth=&types=&status=` — 2 层图谱、全局 `/graph`。
 - `GET /v1/indices/:code` — 指数成分；已加载 NDX 100 / SPX 500 / A500 500 /
-  HSI 85 / CYB50 50（A500/SPX 为 placeholder 成分，含 850 个 stub）。
-  STAR50 暂无快照（下一步试点）。
+  HSI 85 / CYB50 50 / STAR50 50（A500/SPX 为 placeholder 成分，含 850 个
+  stub；STAR50 为本地快照，2026-11-03 试点）。
 - `GET /v1/sectors` — 搜索行业过滤。
 - `GET /v1/search/companies?sector=` — Qdrant + Postgres 双侧过滤（`industry` 为同义参数）。
 - 开发期用 Vite proxy（5173 → 8787），不需要 CORS。
