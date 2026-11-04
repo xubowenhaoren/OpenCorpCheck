@@ -70,6 +70,13 @@ export const config = {
     process.env.DATABASE_URL ?? "postgres://occ@127.0.0.1:5432/occdb",
   financeAnalystUrl:
     process.env.OCC_FINANCE_ANALYST_URL ?? "http://127.0.0.1:8090",
+  /**
+   * HKEXnews search is serialized by the Playwright sidecar (one search at a
+   * time, ~37 s each in the 2026-11 corpus). The worker runs up to
+   * `OCC_DATA_CONCURRENCY` checks, so a 90 s client timeout made every queued
+   * HK check abort and retry. Keep this above the worst-case queue wait.
+   */
+  hkexNewsTimeoutMs: intEnv("OCC_HKEXNEWS_CLIENT_TIMEOUT_MS", 300_000),
   qdrantUrl: process.env.OCC_QDRANT_URL ?? "http://127.0.0.1:6333",
   qdrantApiKey: process.env.OCC_QDRANT_API_KEY,
   embeddingUrl: process.env.OCC_EMBEDDING_URL ?? "http://127.0.0.1:8080",

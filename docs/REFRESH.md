@@ -221,7 +221,12 @@ completed-job guard.
   one TTL.
 - `data.source.check` runs `OCC_DATA_CONCURRENCY` (4) in parallel;
   `ingest.filing` runs `OCC_FILINGS_CONCURRENCY` (2) because PDF extraction is
-  heavy. Keep the F10 sidecar's browser concurrency at 2.
+  heavy. Keep the F10 sidecar's browser concurrency at 2. **HKEXnews is
+  different:** the sidecar runs at most `OCC_HKEXNEWS_CONCURRENCY` searches
+  at once (default 2, ~40 s each) behind a shared 1 req/s limiter. The client
+  timeout is `OCC_HKEXNEWS_CLIENT_TIMEOUT_MS` (300 s), deliberately longer
+  than the queue wait; the old 90 s default made every HK check time out and
+  retry. Raising `OCC_DATA_CONCURRENCY` does not speed HKEXnews up.
 - **Financials retry:** 1 h after the first miss, then 6 h, then daily. The
   window is `OCC_DATA_FIN_RETRY_MAX_DAYS` (7) from `first_seen_at`; a next retry
   that would land past the deadline marks the row `failed` instead. A
@@ -329,6 +334,8 @@ company page shows `重试中` rather than fake success.
 | `OCC_DATA_HISTORY_MS` | `259200000` (3 days of data-run history) |
 | `OCC_DATA_PAUSE_AFTER` | `5` consecutive failures → `paused` |
 | `OCC_DATA_CONCURRENCY` | `4` |
+| `OCC_HKEXNEWS_CLIENT_TIMEOUT_MS` | `300000` (must exceed the serialized sidecar queue wait) |
+| `OCC_HKEXNEWS_CONCURRENCY` | `2` (sidecar; browser limit is 2, rate limiter stays 1 req/s) |
 | `OCC_DATA_COLD_DAYS` | `30` |
 | `OCC_DATA_MAX_STEADY_DAYS` | `30` (lookback cap after an outage) |
 | `OCC_DATA_MAX_ITEMS` | `20` discovered/ingested filings per source per check |

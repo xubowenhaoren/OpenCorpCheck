@@ -341,6 +341,7 @@ async function discover(input: {
         days: input.sinceDays,
         maxItems: data.maxItems,
         sidecarUrl: config.financeAnalystUrl,
+        timeoutMs: config.hkexNewsTimeoutMs,
       });
       if (result.items.length === 0 && result.errors.length > 0) {
         throw new Error(result.errors.join("; "));

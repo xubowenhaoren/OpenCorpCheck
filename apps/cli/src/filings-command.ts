@@ -399,6 +399,7 @@ async function discoverForMarket(
         days: options.days,
         maxItems: options.maxItems,
         sidecarUrl: config.financeAnalystUrl,
+        timeoutMs: config.hkexNewsTimeoutMs,
       });
       items.push(...result.items);
       total += result.total;

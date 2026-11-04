@@ -82,6 +82,8 @@ export const config = {
     "OpenCorpCheck/0.1 (Bowen Xu; xubowenhaoren@gmail.com)",
   financeAnalystUrl:
     process.env.OCC_FINANCE_ANALYST_URL ?? "http://127.0.0.1:8090",
+  /** HKEXnews searches are serialized by the sidecar; allow queue wait. */
+  hkexNewsTimeoutMs: intEnv("OCC_HKEXNEWS_CLIENT_TIMEOUT_MS", 300_000),
   gleifBaseUrl:
     process.env.OCC_GLEIF_BASE_URL ?? "https://api.gleif.org/api/v1",
   wikidataApiUrl:

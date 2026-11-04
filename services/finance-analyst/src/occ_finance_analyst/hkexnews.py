@@ -5,9 +5,9 @@ The public title-search page is a JSF form; the old plain-HTTP
 the same Playwright Chromium as the F10/DION adapters, drive the normal form
 (stock id + date range + submit), and read the server-rendered result table.
 
-Politeness: one search at a time, at most two page loads (search page + form
-submit), with a small settle delay. The TypeScript adapter caps items and
-paces companies.
+Politeness: at most `OCC_HKEXNEWS_CONCURRENCY` searches at once (default 2,
+matching the browser manager), a shared 1 req/s domain limiter, and a small
+settle delay. The TypeScript adapter caps items and paces companies.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -84,6 +85,7 @@ class HkexNewsSettings:
     timeout_ms: int = 60_000
     settle_ms: int = 1_500
     rate_per_sec: float = 1.0
+    concurrency: int = 2
 
     @classmethod
     def from_env(cls) -> "HkexNewsSettings":
@@ -100,13 +102,15 @@ class HkexNewsSettings:
         return cls(
             timeout_ms=integer("OCC_HKEXNEWS_TIMEOUT_MS", 60_000),
             settle_ms=integer("OCC_HKEXNEWS_SETTLE_MS", 1_500),
+            # The browser manager caps pages at 2; keep the same bound here.
+            concurrency=min(integer("OCC_HKEXNEWS_CONCURRENCY", 2), 4),
             rate_per_sec=float(os.getenv("OCC_HKEXNEWS_RATE_PER_SEC", "1.0"))
             or 1.0,
         )
 
 
 class HkexNewsScraper:
-    """One Playwright page per stock-code search; shared browser, serialized."""
+    """One Playwright context per stock-code search; at most N concurrent."""
 
     def __init__(
         self,
@@ -116,7 +120,7 @@ class HkexNewsScraper:
         self.browser_manager = browser_manager
         self.settings = settings or HkexNewsSettings.from_env()
         self.limiter = DomainLimiter(self.settings.rate_per_sec)
-        self._lock = asyncio.Lock()
+        self._semaphore = asyncio.Semaphore(self.settings.concurrency)
 
     async def search(
         self,
@@ -130,14 +134,34 @@ class HkexNewsScraper:
         days = max(1, min(int(days), 3650))
         max_items = max(1, min(int(max_items), 200))
         timeout = timeout_ms or self.settings.timeout_ms
-        async with self._lock:
+        async with self._semaphore:
             await self.limiter.acquire(SEARCH_URL)
-            return await self._search(
-                normalized,
-                days=days,
-                max_items=max_items,
-                timeout=timeout,
-            )
+            started = time.monotonic()
+            try:
+                # The semaphore is process-wide. A page that hangs must not
+                # hold a slot forever: the worker client aborts at its own
+                # timeout, but the server keeps the task alive unless we bound
+                # it here.
+                result = await asyncio.wait_for(
+                    self._search(
+                        normalized,
+                        days=days,
+                        max_items=max_items,
+                        timeout=timeout,
+                    ),
+                    timeout=(timeout / 1000) + 15,
+                )
+            except asyncio.TimeoutError as exc:
+                raise HkexNewsError(
+                    f"HKEXnews search exceeded {timeout}ms for {normalized}"
+                ) from exc
+            finally:
+                logger.info(
+                    "hkexnews search code=%s duration_ms=%d",
+                    normalized,
+                    round((time.monotonic() - started) * 1000),
+                )
+            return result
 
     async def _search(
         self,
@@ -164,7 +188,7 @@ class HkexNewsScraper:
         context = await browser.new_context(locale="en-US")
         page = await context.new_page()
         try:
-            stock = await self._resolve_stock(page, code)
+            stock = await self._resolve_stock(page, code, timeout)
             if not stock:
                 payload["errors"].append(f"stock code {code} not found on HKEXnews")
                 return payload
@@ -231,7 +255,9 @@ class HkexNewsScraper:
         finally:
             await context.close()
 
-    async def _resolve_stock(self, page: Page, code: str) -> dict | None:
+    async def _resolve_stock(
+        self, page: Page, code: str, timeout: int
+    ) -> dict | None:
         response = await page.request.get(
             PREFIX_URL,
             params={
@@ -242,6 +268,7 @@ class HkexNewsScraper:
                 "market": "SEHK",
             },
             headers={"referer": SEARCH_URL},
+            timeout=timeout,
         )
         if not response.ok:
             raise HkexNewsError(f"HKEXnews prefix HTTP {response.status}")

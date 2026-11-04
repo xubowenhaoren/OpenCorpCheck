@@ -49,7 +49,10 @@ the Phase 0 pattern of running companies one at a time in one process.
   `OCC_FINANCIALS_CONCURRENCY`, `OCC_DATA_CONCURRENCY`,
   `OCC_FILINGS_CONCURRENCY`). The sidecar still caps Playwright at 2 pages
   globally and 5 req/s per domain, so F10/HKEXnews/PDF jobs queue behind that
-  limit instead of hammering the source. News makes one polite RSS request per
+  limit instead of hammering the source. HKEXnews runs 2 searches at once in
+  the sidecar (~40 s each) behind a 1 req/s limiter;
+  `OCC_HKEXNEWS_CLIENT_TIMEOUT_MS` (300 s) covers the queue wait. News makes
+  one polite RSS request per
   company; EDGAR stays on its 110 ms global limiter.
 - **Retries**: research 2 retries (30s exponential backoff, 10m cap); F10 3
   retries (15s base, 5m cap); data checks/filing ingestion 2 retries (60s base,
