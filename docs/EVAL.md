@@ -145,7 +145,7 @@ fixtures hidden.
 - The visible corpus is NDX-100 + HSI-85 + ChiNext-50 (236 non-fixture
   companies). The golden set is still NDX/Chinese-NDX names; HSI/CYB50
   natural-language probes are not added yet. STAR 50 and the A500/SPX
-  placeholder stubs are not in the eval (no profiles/documents). S&P 500
+  placeholder stubs are not in the eval yet (no profiles/documents). S&P 500
   placeholder rows have no bulk research.
 - Curated Chinese aliases are hand-maintained. Add a ticker to
   `config/aliases/zh.yaml`, run `occ aliases sync`, and company points are

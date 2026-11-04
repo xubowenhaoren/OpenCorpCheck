@@ -54,7 +54,7 @@ sub-agent card is **permanently deferred**.
   searchable stubs — plus a curated AI watchlist (OpenAI, Anthropic, DeepSeek,
   Kimi/Moonshot, ...). A500 (500) and S&P 500 (500 companies / 503 securities)
   are placeholder pages with `未收录` badges, not bulk research targets. STAR 50
-  is deferred backfill and is not in the current plan.
+  is the next pilot.
 - **Entity spine (P1.2)**: 11 canonical sectors (235/236 researched companies),
   ticker/CIK/domain/ISIN/USCC/EIN/LEI/Wikidata identifiers, audited A/HK
   dual-listing merges, and GLEIF parent edges with source + review queue. See

@@ -231,7 +231,7 @@ full-corpus score. Full method and comparisons: [EVAL.md](EVAL.md).
 - Index snapshots are loaded for NDX / SPX / A500 / HSI / ChiNext 50 and write
   real `index_memberships`. A500 (500) and SPX (500 companies / 503 securities)
   are **searchable placeholder** rows (`coverage_tier='stub'`); STAR 50 is
-  deferred backfill. Legacy `A500`/`SPX` seed fixtures remain for E2E
+  the next pilot (no snapshot yet). Legacy `A500`/`SPX` seed fixtures remain for E2E
   compatibility only.
 - Placeholder rows are searchable with a `未收录` badge (decision 30 revised
   2026-11-01); rank them below real profiles and never render fake metrics.

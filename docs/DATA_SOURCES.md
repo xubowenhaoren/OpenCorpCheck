@@ -102,8 +102,7 @@ identifier precedence and commands, [OWNERSHIP.md](OWNERSHIP.md) for
   page provenance) at 0 LLM tokens. `doc_type='filing'` documents feed the
   separate 公告文件 tab and the `/v1/companies/:id?include=filings` block.
   See [FILINGS.md](FILINGS.md).
-- **STAR 50** (`000688`, SSE) is deferred backfill and out of the current
-  plan.
+- **STAR 50** (`000688`, SSE) is the next pilot; it is not ingested yet.
 - **Structured financial statements (implemented 2026-11-01, US cleanup done
   2026-11-01).** **US = SEC EDGAR XBRL only** (`companyfacts` + 10-K/10-Q
   filing URLs, `method='xbrl'`, `trust_tier='filing'`); the US pipeline does

@@ -226,8 +226,8 @@ startup fails); US runs stay opt-in with `--include-f10`.
 
 - `config/universe.yaml` covers the AI watchlist; `config/indices/ndx.yaml` is
   the NASDAQ-100 constituent snapshot (100 primary listings, official Nasdaq
-  source, `as_of` recorded). STAR 50 (`000688`) / ChiNext 50 (`399673`) / HSI
-  snapshots are still P4; S&P 500 was cancelled on 2026-10-29.
+  source, `as_of` recorded). STAR 50 (`000688`) is the next pilot; ChiNext 50 (`399673`) and HSI
+  snapshots are implemented; S&P 500 was cancelled on 2026-10-29.
 - Live queue counts query `pgboss.job` directly, assuming the default schema.
 - Token/cost is logged per job but not summed per run.
 - Snapshots: ingest uploads each section to `sections/<slug>/<sha256>.md`;
