@@ -15,6 +15,8 @@ phase0/runs/
 phase0/out/sections/
 phase0/out/synthesis.md
 phase0/out/live-*.log
+phase0/out/run-log.md
+phase0/out/run-summary.json
 
 # Worker-owned run artifacts (kept out of phase0/ on purpose)
 .occ/
@@ -33,6 +35,12 @@ phase0/out/live-*.log
 services/embeddings/.venv/
 __pycache__/
 .pytest_cache/
+
+# Internal development history (handoff docs, raw run logs, acceptance
+# screenshots, proprietary index snapshots). Kept local; not part of the
+# public repo. config/indices is a symlink into this directory.
+internal_dev_history/
+config/indices
 
 # Node / OS
 node_modules/

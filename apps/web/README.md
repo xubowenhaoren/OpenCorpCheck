@@ -5,7 +5,7 @@ React 19 + Vite 8 + TypeScript UI for the OpenCorpCheck API.
 > Status: implemented 2026-10-29 · assistant Markdown + tool-use trajectory
 > shipped; sub-agent cards / persistence remain reserved
 > ([docs/UI.md](../../docs/UI.md) §8.4,
-> [CONTEXT_TRANSFER.md](../../CONTEXT_TRANSFER.md) §6 P3.4).
+> [ROADMAP](../../docs/ROADMAP.md)).
 
 ## Run it
 

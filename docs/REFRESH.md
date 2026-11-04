@@ -3,7 +3,7 @@
 > Status: implemented 2026-11-03; follow-ups **financials verification/retry**
 > and the **shared TaskDock** shipped 2026-11-03 · Related:
 > [FILINGS](FILINGS.md), [NEWS](NEWS.md), [EXTRACT](EXTRACT.md),
-> [OWNERSHIP](OWNERSHIP.md), [CONTEXT_TRANSFER](../CONTEXT_TRANSFER.md) §10
+> [OWNERSHIP](OWNERSHIP.md), [ROADMAP](ROADMAP.md)
 
 ## 1. Goal
 

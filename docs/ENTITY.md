@@ -1,7 +1,7 @@
 # Entity resolution and sector classification (P1.2)
 
 > Status: implemented 2026-11-01 · Related: [DATA_SOURCES](DATA_SOURCES.md),
-> [ARCHITECTURE](ARCHITECTURE.md) §5.2, [CONTEXT_TRANSFER](../CONTEXT_TRANSFER.md) §10
+> [ARCHITECTURE](ARCHITECTURE.md) §5.2, [ROADMAP](ROADMAP.md)
 
 ## 1. Goal
 

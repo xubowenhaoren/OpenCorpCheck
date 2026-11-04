@@ -2,7 +2,7 @@
 
 > Status: implemented 2026-11-02 · Related: [DATA_SOURCES](DATA_SOURCES.md),
 > [OWNERSHIP](OWNERSHIP.md), [REFRESH](REFRESH.md) (P1.5 daily sweep),
-> [CONTEXT_TRANSFER](../CONTEXT_TRANSFER.md) §10
+> [ROADMAP](ROADMAP.md)
 
 ## 1. Goal
 
@@ -162,9 +162,7 @@ Verified:
   the human source label (`sec-edgar-submissions`, `cninfo-announcement`,
   `hkexnews-title-search`). No link-only documents remain after the
   `--full-text` pass.
-- Screenshots: [Tencent desktop](screenshots/p1.4/tencent-filings-desktop.png),
-  [Tencent mobile](screenshots/p1.4/tencent-filings-mobile.png),
-  [Moutai desktop](screenshots/p1.4/moutai-filings-desktop.png).
+- 验收截图保存在内部开发记录中，不随仓库发布。
 
 ## 8. Known limits
 

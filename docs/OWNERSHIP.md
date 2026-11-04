@@ -1,7 +1,7 @@
 # Ownership graph (P1.3) — US 13F + HKEX DION
 
 > Status: implemented 2026-11-02 · Related: [DATA_SOURCES](DATA_SOURCES.md),
-> [ENTITY](ENTITY.md), [CONTEXT_TRANSFER](../CONTEXT_TRANSFER.md) §10
+> [ENTITY](ENTITY.md), [ROADMAP](ROADMAP.md)
 
 ## 1. Goal
 

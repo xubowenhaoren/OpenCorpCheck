@@ -74,7 +74,7 @@ the Phase 0 pattern of running companies one at a time in one process.
 ## Setup
 
 Requires Node 24, pnpm (corepack), PostgreSQL 17, and — for F10 — the
-[finance-analyst sidecar](../finance-analyst/README.md).
+[finance-analyst sidecar](../../services/finance-analyst/README.md).
 
 ```bash
 # 1. local Postgres (project-local cluster, gitignored)

@@ -2,7 +2,7 @@
 
 > Status: living document · updated 2026-11-01
 > Related: [Architecture](ARCHITECTURE.md) · [Prior art](PRIOR_ART.md) ·
-> [Context transfer](../CONTEXT_TRANSFER.md) §10
+> [Roadmap](ROADMAP.md)
 
 This document defines where OpenCorpCheck gets its facts, which existing code we reuse, what
 must change before it becomes a database source, and the licensing constraints.
@@ -43,6 +43,12 @@ identifier precedence and commands, [OWNERSHIP.md](OWNERSHIP.md) for
 13F/DION, and [FILINGS.md](FILINGS.md) for P1.4.
 
 ### 2.1 Index constituent snapshots
+
+> **Not shipped in the public repo.** Index constituent snapshots are kept local
+> for licensing reasons. A500 / SPX can be regenerated with
+> `scripts/snapshot-indices.py`; NDX / HSI / CYB50 follow the official sources
+> recorded below. `config/indices` is a local working directory and is not
+> tracked.
 
 - `config/indices/ndx.yaml` is the NASDAQ-100 snapshot used by
   `occ-backfill --universe ndx` and `occ ingest --index NDX`.
@@ -108,7 +114,7 @@ identifier precedence and commands, [OWNERSHIP.md](OWNERSHIP.md) for
   `NewFinancialAnalysis` pages as the structured layer (`method='f10'`,
   `secondary`). See
   [EXTRACT.md](EXTRACT.md#structured-financial-statements-2026-11-01) and
-  [CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §10.
+  [ROADMAP](ROADMAP.md).
 
 ### 2.2 Daily filing refresh (P1.5, shipped 2026-11-03 — pure code)
 
@@ -120,13 +126,13 @@ announcement goes through the P1.4 adapters and `ingestFilings`. **0 LLM
 tokens.** P1.5 adds `company_filing_state`, the `filings` detection inbox, the
 `data.sweep`/`data.source.check`/`ingest.filing` jobs and the company-page
 refresh line. See [REFRESH.md](REFRESH.md),
-[CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §10 P1.5 and
+[ROADMAP](ROADMAP.md) and
 [FILINGS.md](FILINGS.md).
 
 An **optional agent fallback** (source discovery, unmapped table, conflict
 explanation, on-demand summary) is P2, not committed, and must be
 change-gated + capped; it never becomes the polling loop. See
-[CONTEXT_TRANSFER.md](../CONTEXT_TRANSFER.md) §10 P2.
+[ROADMAP](ROADMAP.md).
 
 ## 3. Reused assets from `finance_analyst`
 

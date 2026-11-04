@@ -2,7 +2,7 @@
 
 > Status: **original design document** · 2026-10-27 (status note 2026-11-02).
 > For the current implementation and the only active TODO list, read
-> [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §0/§10. This document is kept
+> [ROADMAP](ROADMAP.md). This document is kept
 > for system design; **do not treat its roadmap as current work**.
 > **Implemented:** monorepo, API/worker/web, Postgres+pg-boss, Qdrant hybrid
 > search, dsh headless + ACP, MCP/CLI, structured financials (EDGAR/F10),
@@ -1252,7 +1252,7 @@ Use Flash for extraction/classification and Pro for planning/verification/synthe
 
 ## 15. Roadmap and acceptance criteria (historical — not the current plan)
 
-> Superseded by [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §10. Kept for
+> Superseded by [ROADMAP](ROADMAP.md). Kept for
 > the original phasing rationale; Docker/Electron/CI/debug-drawer items are P2.
 
 | Phase | Duration | Deliverables | Exit criteria |

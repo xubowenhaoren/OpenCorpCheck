@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
@@ -14,7 +15,14 @@ const SP500_FILE = fileURLToPath(
   new URL("../../../config/indices/sp500.yaml", import.meta.url),
 );
 
-describe("config/indices/ndx.yaml", () => {
+// Index snapshots are proprietary and not shipped in the public repo.
+// Local development keeps them via the gitignored `config/indices` symlink.
+const hasSnapshots = [NDX_FILE, A500_FILE, SP500_FILE].every((file) =>
+  existsSync(file),
+);
+const describeWithSnapshots = hasSnapshots ? describe : describe.skip;
+
+describeWithSnapshots("config/indices/ndx.yaml", () => {
   it("loads the official Nasdaq snapshot with metadata", () => {
     const snapshot = loadIndexSnapshot(NDX_FILE);
     expect(snapshot.index.code).toBe("NDX");
@@ -46,7 +54,7 @@ describe("config/indices/ndx.yaml", () => {
   });
 });
 
-describe("config/indices/a500.yaml", () => {
+describeWithSnapshots("config/indices/a500.yaml", () => {
   it("loads the official CSI A500 snapshot", () => {
     const snapshot = loadIndexSnapshot(A500_FILE);
     expect(snapshot.index.code).toBe("A500");
@@ -74,7 +82,7 @@ describe("config/indices/a500.yaml", () => {
   });
 });
 
-describe("config/indices/sp500.yaml", () => {
+describeWithSnapshots("config/indices/sp500.yaml", () => {
   it("loads the SPY-holdings fallback snapshot", () => {
     const snapshot = loadIndexSnapshot(SP500_FILE);
     expect(snapshot.index.code).toBe("SPX");

@@ -52,7 +52,7 @@ uv run occ-f10 scrape AAPL US --pages cwfx,gsgk --out /tmp/aapl.json
 uv run occ-f10 scrape 600519 A --preset default --out /tmp/moutai.json
 ```
 
-Presets (`default` / `minimal`) come from `CONTEXT_TRANSFER.md`. Run
+Presets (`default` / `minimal`) are defined by the sidecar. Run
 `GET /v1/f10/pages/{market}` to see the valid page hashes.
 
 ## API

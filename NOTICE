@@ -1,0 +1,52 @@
+OpenCorpCheck
+Copyright 2026 Bowen Xu
+
+This product includes data and code from the following sources.
+
+Third-party code
+----------------
+finance_analyst (https://github.com/xubowenhaoren/finance_analyst)
+  Licensed under the Apache License, Version 2.0.
+  The Eastmoney F10 scraping approach and parts of the sidecar implementation
+  are derived from this project. Modified files remain under Apache-2.0.
+
+Data sources
+------------
+SEC EDGAR (https://www.sec.gov/edgar)
+  Public domain. XBRL company facts, submissions and Form 13F data sets.
+  Accessed with a descriptive User-Agent and within SEC fair-access limits.
+
+CNINFO / SSE / SZSE announcements
+  Public company disclosures. Stored as evidence with source links; not
+  redistributed as a licensed dataset.
+
+HKEXnews / HKEX DION (https://www.hkexnews.hk)
+  Public announcements and substantial-shareholder notices. Accessed politely
+  with rate limits; evidence and links are stored, not bulk redistributed.
+
+Eastmoney F10 (https://emweb.eastmoney.com)
+  Proprietary data, used for local research and enrichment with attribution.
+  Raw data is not redistributed in bulk.
+
+Google News RSS
+  Headlines and links only; article content remains on the original site.
+
+GLEIF (https://www.gleif.org)
+  LEI and parent-relationship data, licensed under CC0.
+
+Wikidata (https://www.wikidata.org)
+  Entity identifiers, licensed under CC0.
+
+Wikipedia
+  Index constituent cross-checks, licensed under CC BY-SA; attribution is kept
+  in the relevant documentation.
+
+Index constituent snapshots
+  NASDAQ-100, Hang Seng Index, ChiNext 50, CSI A500 and S&P 500 snapshots are
+  kept for internal research/demo with attribution. They are not licensed
+  market-data feeds and must not be redistributed in bulk.
+
+"企查查" is a trademark of its owner. OpenCorpCheck is not affiliated with it.
+
+The code is licensed under the Apache License, Version 2.0 (see LICENSE).
+Each data source keeps its own license and terms.

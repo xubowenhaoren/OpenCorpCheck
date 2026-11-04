@@ -266,7 +266,7 @@ answer.
   screen-reader chatter.
 - `deep_research` stays a tool card. A first-class sub-agent card with
   `get_run` progress polling is **deferred (2026-10-30: not needed for this
-  project)**; see [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §8 decision 27.
+  project)**; see [roadmap](ROADMAP.md).
 
 ### Session persistence and replay (2026-10-30)
 
@@ -406,7 +406,7 @@ Markdown chunk 162.7 KB (gzip 49 KB); CSS 45.5 KB (gzip 9.3 KB).
   reload (see “Session persistence and replay”). `thought.delta` is deliberately
   not rendered. A first-class sub-agent card (deep-research job status via
   `get_run`, nested tool timeline) is **deferred — not needed for v1**
-  ([`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §8 decision 27).
+  ([roadmap](ROADMAP.md)).
 - `additionalDirectories`, client filesystem, terminals and elicitation are not
   advertised; dsh rejects additional directories by design.
 - **Separate DSH_HOME is mandatory.** The ACP profile stores zstd-compressed

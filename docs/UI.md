@@ -19,7 +19,7 @@
 > 技术栈是 React 19 + Vite 8 + TypeScript + React Router 7 + TanStack Query 5 +
 > 现有 CSS tokens；Tailwind / shadcn/ui 暂未引入。搜索相关性 guard、图谱自适应
 > 布局和 AI 助手真实 SSE 的验收结果见
-> [`CONTEXT_TRANSFER.md`](../CONTEXT_TRANSFER.md) §5–§6。
+> [ROADMAP](ROADMAP.md)。
 
 ---
 
@@ -359,18 +359,7 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 
 验证（1440px 桌面 + 390px 手机，默认视图无节点/标签重叠）：
 
-<p>
-  <img src="screenshots/p1.3/desktop-googl-graph.png" alt="GOOGL 密集关系图（桌面）" width="620" />
-  <img src="screenshots/p1.3/mobile-googl-graph.png" alt="GOOGL 密集关系图（手机）" width="220" />
-</p>
-
-<p>
-  <img src="screenshots/p1.3/desktop-blk-graph.png" alt="BLK 密集关系图（桌面）" width="620" />
-  <img src="screenshots/p1.3/mobile-blk-graph.png" alt="BLK 密集关系图（手机）" width="220" />
-</p>
-
-全部截图与重叠检查报告：[`screenshots/p1.3/`](screenshots/p1.3/)
-（GOOGL / NVDA / AAPL / BLK / 02318，含展开态）。
+验收截图与重叠检查报告保存在内部开发记录中，不随仓库发布（GOOGL / NVDA / AAPL / BLK / 02318，含展开态）。
 
 **与图联动的列表**
 
@@ -483,7 +472,7 @@ OCC 公司百科     [搜索公司名、代码、中文名…]          首页  
 - 视觉参考：[`docs/prototypes/task-dock.html`](prototypes/task-dock.html)
   （两种 kind、筛选 tab、移动端）；原型控制条、手动按钮和 research mock 行
   未接入。
-- 验收截图：[`docs/screenshots/p1.5/`](screenshots/p1.5/)（桌面、暗色、390 px
+- 验收截图保存在内部开发记录中，不随仓库发布（桌面、暗色、390 px
   移动端，以及 00700 的「财报更新中」状态）。
 
 ### 7.10 Placeholder 公司页（P1.1，已实现）

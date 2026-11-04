@@ -6,8 +6,7 @@ headless CLI + 一个蒸馏版的 `mag7-profile` skill，生成美股七姐妹�
 最终交付物：
 
 - `out/magnificent-seven.md` — 7 份中文 profile + 摘要 + 来源
-- `out/run-log.md` — 模型、版本、耗时、工具调用、token
-- `out/run-summary.json` — 机器可读的逐公司验收结果
+- 运行日志（模型、版本、耗时、工具调用、token）与机器可读的逐公司验收结果保存在内部开发记录中，不随仓库发布
 - `runs/{TICKER}.jsonl` — dsh `--json` 原始事件
 
 ## 前置条件
@@ -57,8 +56,8 @@ npm run validate
 
 3. dsh 用内置 `web_search`（`deepseek-official`）和 `web_fetch` 做 BFS → 汇合点 → DFS。
 4. `run.mjs` 解析 NDJSON 事件，把 `final` 文本写入 `out/sections/{TICKER}.md`。
-5. `lib/assemble.mjs` 拼接成最终文档；`lib/validate.mjs` 做结构与引用校验，并写
-   `out/run-summary.json`。
+5. `lib/assemble.mjs` 拼接成最终文档；`lib/validate.mjs` 做结构与引用校验，并写本地
+   `out/run-summary.json`（不随仓库发布）。
 
 `dsh.patch.yml` 把主 agent 模型固定为 `deepseek-flash`（当前 V4.1 Flash 的 dsh 别名），
 并关闭 session zstd 压缩（便于调试）。内置 `web_search` provider 使用它自己的默认
@@ -101,7 +100,7 @@ cd services/finance-analyst && uv run occ-f10 serve --port 8090
 - 没有 `TODO`、`TBD`、`待补充`、`placeholder`；
 - dsh turn 正常完成。
 
-结果同时写入 `out/run-summary.json`，便于 CI 或脚本判定。
+结果同时写入本地 `out/run-summary.json`（不随仓库发布），便于 CI 或脚本判定。
 
 ## 排错
 
